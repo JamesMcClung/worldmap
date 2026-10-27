@@ -36,6 +36,17 @@ make_map --pins pins.txt      # draw the pins; writes worldmap_pins.png
 
 A run takes about 10 s once the data is downloaded. Output goes to the current directory.
 
+## Development
+
+```
+pip install -e '.[dev]'
+pytest           # ~25 s: unit tests plus pixel-exact renders of the default, --earth and --pins maps
+mypy src
+```
+
+The render tests compare against `tests/fingerprints.json`. They are skipped if your library versions differ from the
+recorded ones. After a deliberate change to the map, re-record with `UPDATE_REFERENCE=1 pytest` and commit the file.
+
 ## Data
 
 [Natural Earth](https://www.naturalearthdata.com/) 10m cultural vectors and the Natural Earth I land-cover raster,
