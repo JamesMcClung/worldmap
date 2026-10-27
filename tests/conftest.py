@@ -34,8 +34,11 @@ def fingerprint(png: Path) -> str:
     return hashlib.sha256(f"{arr.shape}|{arr.dtype}".encode() + arr.tobytes()).hexdigest()
 
 
-def environment() -> dict[str, str]:
-    """Versions of everything that can change the rendered pixels."""
+def environment(mode: str = "default") -> dict[str, str]:
+    """Versions of everything that can change the rendered pixels: libraries, and the sizes of the downloaded
+    Natural Earth files (a new NE release would otherwise look like a regression)."""
+    from worldmap.data import COUNTRIES, LAKES, RASTER, STATES, fetch
+
     import geopandas
     import matplotlib
     import matplotlib.ft2font
@@ -53,6 +56,10 @@ def environment() -> dict[str, str]:
         "geopandas": geopandas.__version__,
         "pyproj": pyproj.__version__,
         "pillow": PIL.__version__,
+        "countries": str(os.path.getsize(fetch(COUNTRIES))),
+        "states": str(os.path.getsize(fetch(STATES))),
+        "lakes": str(os.path.getsize(fetch(LAKES))),
+        **({"raster": str(os.path.getsize(fetch(RASTER)))} if mode == "earth" else {}),
     }
 
 
@@ -65,7 +72,7 @@ def check_fingerprint(mode: str, png: Path, store: Path = FINGERPRINTS) -> None:
     import pytest
 
     entries = json.loads(store.read_text()) if store.exists() else {}
-    current = {"sha256": fingerprint(png), "env": environment()}
+    current = {"sha256": fingerprint(png), "env": environment(mode)}
     REFERENCE_DIR.mkdir(parents=True, exist_ok=True)
     if os.environ.get("UPDATE_REFERENCE") == "1":
         entries[mode] = current

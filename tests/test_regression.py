@@ -26,6 +26,12 @@ def test_render_failure_shows_stderr(tmp_path: Path) -> None:
         render(tmp_path, "--no-such-flag")
 
 
+def test_environment_includes_map_data() -> None:
+    env = environment("earth")
+    assert {"countries", "states", "lakes", "raster"} <= env.keys()
+    assert "raster" not in environment("default")
+
+
 def tiny_png(tmp_path: Path) -> Path:
     png = tmp_path / "tiny.png"
     Image.new("RGBA", (2, 2), (10, 20, 30, 255)).save(png)
