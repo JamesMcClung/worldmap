@@ -22,6 +22,7 @@ Install with `-e` (editable): map data is downloaded into the repo's `.cache/` d
 make_map                      # writes worldmap.png
 make_map out.png              # choose the output file
 make_map --earth              # natural colours (sand to green) from Natural Earth land-cover imagery
+make_map --regions            # also label dependencies and outlying regions, e.g. "Alaska (United States)"
 make_map --pick pins.txt      # click on the rendered map to add pins to pins.txt
 make_map --pins pins.txt      # draw the pins; writes worldmap_pins.png
 ```
@@ -29,11 +30,14 @@ make_map --pins pins.txt      # draw the pins; writes worldmap_pins.png
 | Option | Effect |
 | --- | --- |
 | `--earth` | Colour each region by what it looks like from space instead of distinct political colours. The first run downloads a ~75 MB raster. |
+| `--regions` | Also label dependencies (Greenland, Bermuda, Guam...) and outlying parts of countries (Alaska, Tasmania, Kaliningrad...), in italics with the parent country in parentheses. Without it they are unlabelled. |
 | `--pins FILE` | Draw pins from `FILE`, one `lon,lat` per line (`#` starts a comment). |
 | `--pin-size IN` | Pin diameter in inches on the 36 in poster (default 0.24). |
 | `--dpi DPI` | Output dots per inch on the 36 in poster (default 200, i.e. 7200 px wide). The layout is the same at any resolution; e.g. `--dpi 50` makes an 1800 px preview. |
 | `--pick FILE` | Open the already-rendered map in a window. Left-click adds a pin, right-click or `u` undoes it, and closing the window appends the new pins to `FILE`. |
 | `--recolor` | Recompute the country colouring instead of using the cached one. |
+
+Dependencies such as Greenland, Puerto Rico or Hong Kong are always coloured like the country they belong to.
 
 A run takes about 10 s once the data is downloaded. Output goes to the current directory.
 
@@ -77,7 +81,7 @@ A pin file has one `lon,lat` per line, and `#` starts a comment:
 
 ```
 pip install -e '.[dev]'
-pytest           # ~25 s: unit tests plus pixel-exact renders of the default, --earth and --pins maps
+pytest           # ~25 s: unit tests plus pixel-exact renders of the default, --earth, --pins and --regions maps
 mypy src
 ```
 
