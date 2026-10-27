@@ -36,6 +36,42 @@ make_map --pins pins.txt      # draw the pins; writes worldmap_pins.png
 
 A run takes about 10 s once the data is downloaded. Output goes to the current directory.
 
+## Examples
+
+The images in [`examples/`](examples) are scaled down to 1800 px wide; the real output is 7200 px.
+
+Political colours (the default):
+
+```
+make_map examples/political.png
+```
+
+![Political world map](examples/political.png)
+
+Natural colours with `--earth`:
+
+```
+make_map examples/earth.png --earth
+```
+
+![World map in natural colours](examples/earth.png)
+
+Pins from [`examples/pins.txt`](examples/pins.txt), a list of 23 large cities:
+
+```
+make_map examples/pins.png --pins examples/pins.txt
+```
+
+![World map with pins on large cities](examples/pins.png)
+
+A pin file has one `lon,lat` per line, and `#` starts a comment:
+
+```
+-74.0060,40.7128    # New York
+-0.1276,51.5072     # London
+139.6503,35.6762    # Tokyo
+```
+
 ## Development
 
 ```
