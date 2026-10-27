@@ -8,8 +8,6 @@ import argparse
 import json
 import os
 import sys
-import urllib.request
-import zipfile
 
 import geopandas as gpd
 import matplotlib
@@ -26,6 +24,7 @@ from shapely.geometry import MultiPolygon, Point, Polygon, box
 from shapely.geometry.polygon import orient
 from shapely.ops import unary_union
 
+from worldmap.data import CACHE, COUNTRIES, CRS, RASTER, fetch, is_labeled, load_countries, load_lakes, load_states, project
 from worldmap.colorspace import darken, fit_gamut, srgb_to_oklch
 
 
@@ -43,59 +42,8 @@ def parse_args(argv=None):
     return p.parse_args(argv)
 
 
-# Data files and caches live in the repo's .cache/ (found from this file, so it needs an editable install).
-CACHE = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", ".cache"))
-NE_URL = "https://naciscdn.org/naturalearth/10m/"
-COUNTRIES, STATES = "ne_10m_admin_0_countries.zip", "ne_10m_admin_1_states_provinces_lines.zip"
-LAKES = "ne_10m_lakes.zip"
-LAKE_MIN_KM2 = 2000  # lakes at least this big are drawn as water (~8 px across on the poster)
-DRY_LAKES = {"Lake Eyre North", "Lake Torrens", "Lake Gairdner", "Lake Mackay", "Lake Frome", "Lake Barlee"}  # Australian salt pans, usually dry
-RASTER = "ne1/NE1_LR_LC.tif"  # unzipped from NE1_LR_LC.zip
-
-
-def fetch(name):
-    """Path of Natural Earth file `name` in CACHE, downloading it first if it isn't there yet."""
-    path = os.path.join(CACHE, name)
-    if os.path.exists(path):
-        return path
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    url = NE_URL + ("raster/NE1_LR_LC.zip" if name == RASTER else ("physical/" if name == LAKES else "cultural/") + name)
-    print("downloading", url)
-    part = path + ".part"
-    urllib.request.urlretrieve(url, part)
-    if name == RASTER:
-        with zipfile.ZipFile(part) as z:
-            z.extractall(os.path.dirname(path))
-        os.remove(part)
-    else:
-        os.replace(part, path)
-    return path
-
-
-CRS ="+proj=robin +lon_0=0 +datum=WGS84"
 W_IN, DPI = 36, 200  # 7200 px wide
-STATE_COUNTRIES = {
-    "United States of America",
-    "Canada",
-    "Russia",
-    "China",
-    "Brazil",
-    "Australia",
-    "India",
-    "Mexico",
-    "Argentina",
-    "Kazakhstan",
-    "Indonesia",
-}
 OCEAN, BORDER, STATE = "#e3f0f7", "#3a3a3a", "#7d7d7d"
-
-
-NOT_LABELED = {"Jersey", "Guernsey", "Isle of Man", "Åland", "Macau", "Hong Kong", "Sint Maarten", "Aruba", "Curaçao", "Northern Cyprus", "Turkish Republic of Northern Cyprus", "Somaliland"}
-LABELED_EXTRA = {"Palestine", "Kosovo", "Western Sahara", "Israel", "Puerto Rico", "Falkland Islands", "Faroe Islands"}
-
-
-def labeled(row):
-    return row.NAME_EN in LABELED_EXTRA or (row.TYPE in ("Sovereign country", "Country", "Sovereignty") and row.NAME_EN not in NOT_LABELED)
 
 
 def adjacency(gdf):
@@ -287,7 +235,7 @@ SAND, GREEN, ICE = (0.85, 0.09, 78), (0.84, 0.095, 135), "#eef3f4"  # OKLCH (L, 
 
 
 def earth_values(countries):
-    """[[(mean G-R, icy fraction) per polygon] per country], in the polygon order of `prep(countries)`. Cached in earth.json."""
+    """[[(mean G-R, icy fraction) per polygon] per country], in the polygon order of `project(countries)`. Cached in earth.json."""
     cache = os.path.join(CACHE, "earth.json")
     raster = fetch(RASTER)
     key = {"raster": os.path.getsize(raster), "countries": os.path.getsize(fetch(COUNTRIES)), "rule": "v1", "min_pix": MIN_PIX}
@@ -417,12 +365,6 @@ def pin_sprite(diameter_px):
     return np.dstack([rgb, A])
 
 
-def prep(gdf):
-    gdf = gdf.copy()
-    gdf["geometry"] = gdf.geometry.intersection(box(-180, -90, 180, 90))
-    return gdf.to_crs(CRS)
-
-
 def patches(geom):
     polys = geom.geoms if isinstance(geom, MultiPolygon) else [geom]
     for p in polys:
@@ -522,9 +464,8 @@ def main(argv=None):
     EARTH = args.earth
     PALETTE = None  # set below via make_palette()
 
-    countries = gpd.read_file(fetch(COUNTRIES))
-    countries = countries.reset_index(drop=True)
-    _major = [labeled(r) for _, r in countries.iterrows()]
+    countries = load_countries()
+    _major = [is_labeled(r) for _, r in countries.iterrows()]
     # The graph colouring (which countries share a colour class) is cached in coloring.json, so palette tweaks never
     # reshuffle it and runs skip the border/distance work. It is rebuilt when the inputs change or with --recolor.
 
@@ -645,13 +586,8 @@ def main(argv=None):
             return max(regs, key=lambda r: r[0].area)[1]
         return min(regs, key=lambda r: r[0].distance(pt))[1]
 
-    states = gpd.read_file(fetch(STATES))
-    states = states[states.ADM0_NAME.isin(STATE_COUNTRIES)]
-
-    lakes = gpd.read_file(fetch(LAKES))
-    lakes = lakes[(lakes.to_crs("+proj=eqearth").area >= LAKE_MIN_KM2 * 1e6) & ~lakes.name.isin(DRY_LAKES)]
-
-    countries_p, states_p, lakes_p = prep(countries), prep(states), prep(lakes)
+    states, lakes = load_states(), load_lakes()
+    countries_p, states_p, lakes_p = project(countries), project(states), project(lakes)
     REGIONS = {}  # --earth: country index -> [(projected polygon, fill)]
     if EARTH:
         for (_i, _row), _v in zip(countries_p.iterrows(), earth_values(countries)):
@@ -721,7 +657,7 @@ def main(argv=None):
     gx, gy = t.transform(-53, 4)  # French Guiana
     kx, ky = t.transform(21, 54.7)  # Kaliningrad
     for _, row in countries_p.iterrows():
-        if not labeled(row):
+        if not is_labeled(row):
             continue
         polys = [p for p in (row.geometry.geoms if isinstance(row.geometry, MultiPolygon) else [row.geometry]) if not p.is_empty]
         if not polys:
