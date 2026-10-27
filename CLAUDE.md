@@ -7,7 +7,7 @@ large countries, non-overlapping country labels). Output default: `worldmap.png`
 
 ```
 python3 -m venv .venv && .venv/bin/pip install -e .   # deps in pyproject.toml
-.venv/bin/make_map [out.png] [--recolor] [--ocean] [--earth]
+.venv/bin/make_map [out.png] [--recolor] [--earth]
 ```
 
 A run takes ~7-12 s. Output goes to the current directory.
@@ -88,8 +88,6 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
   country; stuck labels shrink slightly (floor ~5 pt) rather than being dropped.
 - Cost terms: label must lie inside the globe outline (`OUTLINE_PX`), label-label overlap, covering another leader's dot, leader/label and leader/leader crossings,
   drifting outside the country, leader length. All labels are movable.
-- `--ocean` (off by default, slower ~50 s): experimental mode where open water counts as part of the country and
-  labels grow to fill free space. The owner judged it looked worse than the default; leave it off unless asked.
 
 ## Gotchas
 
