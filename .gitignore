@@ -9,3 +9,5 @@ __pycache__/
 *.txt
 !tests/*.json
 !tests/*.txt
+!examples/*.png
+!examples/*.txt
