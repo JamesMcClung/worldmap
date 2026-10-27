@@ -21,5 +21,11 @@ dependencies = [
     "shapely>=2.1",  # maximum_inscribed_circle
 ]
 
+[project.optional-dependencies]
+dev = ["pytest>=8", "mypy>=1.10"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
 [project.scripts]
 make_map = "worldmap.make_map:main"
