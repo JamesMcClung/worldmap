@@ -17,10 +17,12 @@ import numpy as np
 import shapely
 from matplotlib.collections import PatchCollection
 from matplotlib.colors import to_rgb
-from matplotlib.patches import Polygon as MplPolygon
+from matplotlib.patches import PathPatch, Polygon as MplPolygon
+from matplotlib.path import Path
 from pyproj import Transformer
 from shapely import affinity, maximum_inscribed_circle
 from shapely.geometry import MultiPolygon, Point, Polygon, box
+from shapely.geometry.polygon import orient
 from shapely.ops import unary_union
 
 
@@ -39,6 +41,9 @@ def flag_value(name):
 CACHE = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", ".cache"))
 NE_URL = "https://naciscdn.org/naturalearth/10m/"
 COUNTRIES, STATES = "ne_10m_admin_0_countries.zip", "ne_10m_admin_1_states_provinces_lines.zip"
+LAKES = "ne_10m_lakes.zip"
+LAKE_MIN_KM2 = 2000  # lakes at least this big are drawn as water (~8 px across on the poster)
+DRY_LAKES = {"Lake Eyre North", "Lake Torrens", "Lake Gairdner", "Lake Mackay", "Lake Frome", "Lake Barlee"}  # Australian salt pans, usually dry
 RASTER = "ne1/NE1_LR_LC.tif"  # unzipped from NE1_LR_LC.zip
 
 
@@ -48,7 +53,7 @@ def fetch(name):
     if os.path.exists(path):
         return path
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    url = NE_URL + ("raster/NE1_LR_LC.zip" if name == RASTER else "cultural/" + name)
+    url = NE_URL + ("raster/NE1_LR_LC.zip" if name == RASTER else ("physical/" if name == LAKES else "cultural/") + name)
     print("downloading", url)
     part = path + ".part"
     urllib.request.urlretrieve(url, part)
@@ -465,6 +470,15 @@ def patches(geom):
                 pass
 
 
+def holed_patches(geom):
+    """Like patches(), but keeping holes (e.g. islands in a lake)."""
+    polys = geom.geoms if isinstance(geom, MultiPolygon) else [geom]
+    for p in polys:
+        if p.geom_type == "Polygon" and not p.is_empty:
+            p = orient(p)  # holes wind opposite to the exterior, so the nonzero fill rule leaves them empty
+            yield PathPatch(Path.make_compound_path(*(Path(np.asarray(ring.coords), closed=True) for ring in [p.exterior, *p.interiors])))
+
+
 def biggest(geom):
     return max(geom.geoms, key=lambda g: g.area) if isinstance(geom, MultiPolygon) else geom
 
@@ -710,7 +724,10 @@ def main():
     states = gpd.read_file(fetch(STATES))
     states = states[states.ADM0_NAME.isin(STATE_COUNTRIES)]
 
-    countries_p, states_p = prep(countries), prep(states)
+    lakes = gpd.read_file(fetch(LAKES))
+    lakes = lakes[(lakes.to_crs("+proj=eqearth").area >= LAKE_MIN_KM2 * 1e6) & ~lakes.name.isin(DRY_LAKES)]
+
+    countries_p, states_p, lakes_p = prep(countries), prep(states), prep(lakes)
     REGIONS = {}  # --earth: country index -> [(projected polygon, fill)]
     if EARTH:
         for (_i, _row), _v in zip(countries_p.iterrows(), earth_values(countries)):
@@ -756,6 +773,11 @@ def main():
             plt.rcParams["hatch.linewidth"] = 1.6
             ax.add_collection(PatchCollection(list(patches(row.geometry)), fc="none", ec=stripe, lw=0, hatch="////", zorder=1.5))
     states_p.plot(ax=ax, color=STATE, linewidth=0.35, zorder=2)
+    # The country polygons include the lakes; paint the big ones back as water (borders through them then run on the shore),
+    # above the state lines, which also cross them. Labels then treat the lakes as water too.
+    for g in lakes_p.geometry:
+        ax.add_collection(PatchCollection(list(holed_patches(g)), fc=OCEAN, ec=BORDER, lw=0.6, zorder=2.5))
+    countries_p["geometry"] = countries_p.geometry.difference(unary_union(list(lakes_p.geometry)))
     ax.set_xlim(minx, maxx)
     ax.set_ylim(miny, maxy)
 
