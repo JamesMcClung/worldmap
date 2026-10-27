@@ -13,6 +13,7 @@ from worldmap.labels.label import RENAME
 
 Box = tuple[float, float, float, float]  # lon0, lat0, lon1, lat1
 
+PARENT_SHORT = {"United States of America": "US", "United Kingdom": "UK"}  # parent names in the parentheses
 TOUCH_TOLERANCE_DEG = 0.01  # a dependency this close to its parent counts as attached (Hong Kong, Macau): no label
 
 # (label name, parent NAME_EN, lon/lat boxes): the parent's polygons whose representative point lies in a box.
@@ -45,7 +46,7 @@ HAND_PICKED: list[tuple[str, str, list[Box]]] = [
 @dataclass
 class ChildRegion:
     name: str  # e.g. "Tasmania", "Falkland Islands"
-    parent_name: str  # the parent's label text, e.g. "United States"
+    parent_name: str  # the parent's label text, or its PARENT_SHORT, e.g. "Australia", "US"
     feature: int  # row whose fill colours it: the dependency itself, or the parent for a hand-picked region
     polys: list[Polygon]  # projected polygons it labels
 
@@ -63,7 +64,7 @@ def child_regions(countries: gpd.GeoDataFrame, countries_projected: gpd.GeoDataF
 
     def label_name(i: int) -> str:
         name = countries.NAME_EN[i]
-        return RENAME.get(name, name)
+        return PARENT_SHORT.get(name) or RENAME.get(name, name)
 
     regions = []
     for dep, parent in parent_index(countries).items():

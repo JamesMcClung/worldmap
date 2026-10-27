@@ -10,7 +10,7 @@ from worldmap.earth import Fill, build_regions, fill_at
 from worldmap.frame import MapFrame, make_frame
 from worldmap.labels.label import RENAME, Label, make_labels
 import worldmap.labels.regions as regions_module
-from worldmap.labels.regions import HAND_PICKED, ChildRegion, child_regions
+from worldmap.labels.regions import HAND_PICKED, PARENT_SHORT, ChildRegion, child_regions
 from worldmap.render import new_figure, subtract_lakes
 
 
@@ -46,7 +46,8 @@ def test_counts(regions: list[ChildRegion]) -> None:
 def test_text(regions: list[ChildRegion]) -> None:
     by = {r.name: r for r in regions}
     assert by["Tasmania"].text == "Tasmania (Australia)"
-    assert by["Hawaii"].text == "Hawaii (United States)"
+    assert by["Hawaii"].text == "Hawaii (US)"
+    assert by["Bermuda"].text == "Bermuda (UK)"
     assert by["Oecusse"].text == "Oecusse (East Timor)"
     assert by["Greenland"].text == "Greenland (Denmark)"
 
@@ -73,7 +74,7 @@ def test_alaska_includes_aleutians_east_of_180(regions: list[ChildRegion], frame
 
 def test_parents_are_labeled_countries(regions: list[ChildRegion], countries: gpd.GeoDataFrame) -> None:
     labeled = {RENAME.get(r.NAME_EN, r.NAME_EN) for _, r in countries.iterrows() if is_labeled(r)}
-    assert {r.parent_name for r in regions} <= labeled
+    assert {r.parent_name for r in regions} <= labeled | set(PARENT_SHORT.values())
 
 
 def build_labels(countries: gpd.GeoDataFrame, countries_projected: gpd.GeoDataFrame, frame: MapFrame, children: list[ChildRegion], fill_of: Callable[[int, Point | None], Fill]) -> list[Label]:
@@ -102,7 +103,7 @@ def test_earth_child_label_uses_its_own_polygon(countries: gpd.GeoDataFrame, cou
     earth = build_regions(countries_projected, countries)
     labels = build_labels(countries, countries_projected, frame, regions, lambda i, pt: fill_at(earth, i, pt))
     color = {label.name: label.color for label in labels}
-    assert color["Hawaii (United States)"] != color["United States"]
+    assert color["Hawaii (US)"] != color["United States"]
 
 
 def test_scattered_child_labels_sized_by_land(countries: gpd.GeoDataFrame, countries_projected: gpd.GeoDataFrame, frame: MapFrame, regions: list[ChildRegion]) -> None:
@@ -110,7 +111,7 @@ def test_scattered_child_labels_sized_by_land(countries: gpd.GeoDataFrame, count
     labels = build_labels(countries, countries_projected, frame, regions, lambda i, pt: (0.5, 0.5, 0.5))
     by = {label.name: label for label in labels}
     region = {r.text: r for r in regions}
-    for name in ["French Polynesia (France)", "Saint Helena (United Kingdom)", "Cook Islands (New Zealand)"]:
+    for name in ["French Polynesia (France)", "Saint Helena (UK)", "Cook Islands (New Zealand)"]:
         label = by[name]
         assert label.text.get_text() == name, name  # not capitalised, so under UPPERCASE_ABOVE_PT
         anchor = Point(label.anchor_x / frame.px_per_unit + frame.xmin, label.anchor_y / frame.px_per_unit + frame.ymin)
