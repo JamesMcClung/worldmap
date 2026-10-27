@@ -166,7 +166,8 @@ def pick_pins(path: str, rendered_png: str, frame: MapFrame, diameter_in: float,
             print("removed %.4f,%.4f" % new.pop())
 
     def on_click(e) -> None:
-        if e.inaxes is not ax or getattr(fig.canvas.toolbar, "mode", ""):  # ignore clicks while zoom/pan is active
+        toolbar = fig.canvas.toolbar
+        if e.inaxes is not ax or (toolbar is not None and toolbar.mode):  # ignore clicks while zoom/pan is active
             return
         if e.button == 3:
             undo()
