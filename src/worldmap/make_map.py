@@ -9,21 +9,15 @@ import os
 import sys
 
 import matplotlib
-import numpy as np
-from matplotlib.collections import PatchCollection
-from matplotlib.patches import PathPatch, Polygon as MplPolygon
-from matplotlib.path import Path
-from shapely.geometry import MultiPolygon
-from shapely.geometry.polygon import orient
-from shapely.ops import unary_union
 
 from worldmap.data import is_labeled, load_countries, load_lakes, load_states, project
-from worldmap.coloring import OCEAN, load_or_compute_coloring, make_palette, spot_check
+from worldmap.coloring import load_or_compute_coloring, make_palette, spot_check
 from worldmap.earth import build_regions, fill_at
-from worldmap.labels.placement import leader_ends, place_labels
+from worldmap.labels.placement import place_labels
 from worldmap.labels.label import decide_out_and_wrap, make_labels
-from worldmap.frame import DPI, POSTER_WIDTH_IN, make_frame
+from worldmap.frame import DPI, make_frame
 from worldmap.pins import draw_pins, load_pins, pick_pins, pin_sprite
+from worldmap.render import draw_countries, draw_labels, draw_lakes, draw_states, new_figure, subtract_lakes
 
 
 def parse_args(argv=None):
@@ -40,33 +34,6 @@ def parse_args(argv=None):
     return p.parse_args(argv)
 
 
-BORDER, STATE = "#3a3a3a", "#7d7d7d"
-
-
-
-
-def patches(geom):
-    polys = geom.geoms if isinstance(geom, MultiPolygon) else [geom]
-    for p in polys:
-        if p.geom_type == "Polygon" and not p.is_empty:
-            yield MplPolygon(np.asarray(p.exterior.coords), closed=True)
-            for r in p.interiors:
-                pass
-
-
-def holed_patches(geom):
-    """Like patches(), but keeping holes (e.g. islands in a lake)."""
-    polys = geom.geoms if isinstance(geom, MultiPolygon) else [geom]
-    for p in polys:
-        if p.geom_type == "Polygon" and not p.is_empty:
-            p = orient(p)  # holes wind opposite to the exterior, so the nonzero fill rule leaves them empty
-            yield PathPatch(Path.make_compound_path(*(Path(np.asarray(ring.coords), closed=True) for ring in [p.exterior, *p.interiors])))
-
-
-def biggest(geom):
-    return max(geom.geoms, key=lambda g: g.area) if isinstance(geom, MultiPolygon) else geom
-
-
 def main(argv=None):
     args = parse_args(argv)
     PINS, PICK = args.pins, args.pick  # pin-list files: --pins draws them, --pick adds to one by clicking
@@ -74,8 +41,6 @@ def main(argv=None):
 
     if not PICK:  # --pick needs an interactive backend
         matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
     OUT = args.out or ("worldmap_pins.png" if PINS else "worldmap.png")
     # --earth: colour countries by how they look from space (sandy desert -> light green vegetation) instead of graph colours.
     EARTH = args.earth
@@ -108,39 +73,15 @@ def main(argv=None):
         pick_pins(PICK, OUT, frame, PIN_IN, DPI)
         return
 
-    fig_w = POSTER_WIDTH_IN
-    fig_h = fig_w * frame.height / frame.width
-    fig = plt.figure(figsize=(fig_w, fig_h), dpi=DPI)
-    ax = fig.add_axes([0, 0, 1, 1])
-    ax.set_xlim(frame.xmin, frame.xmax)
-    ax.set_ylim(frame.ymin, frame.ymax)
-    ax.set_aspect("equal")
-    ax.axis("off")
-    fig.patch.set_alpha(0)  # transparent outside the globe outline
-    ax.add_patch(MplPolygon(frame.outline, closed=True, fc=OCEAN, ec="none", zorder=0))
-    ax.add_patch(MplPolygon(frame.outline, closed=True, fc="none", ec=BORDER, lw=2.2, zorder=3))
-
-    for _, row in countries_p.iterrows():
-        col = "#ffffff" if row.NAME_EN == "Antarctica" else fill_of(_)  # Antarctica: hardcoded white, unlabelled
-        if EARTH and row.NAME_EN != "Antarctica":
-            for p, c in REGIONS[_]:
-                ax.add_collection(PatchCollection(list(patches(p)), fc=c, ec=BORDER, lw=0.6, zorder=1))
-        else:
-            ax.add_collection(PatchCollection(list(patches(row.geometry)), fc=col, ec=BORDER, lw=0.6, zorder=1))
-        if row.NAME_EN == "Baikonur" and not EARTH:
-            stripe = fill_of(_idx["Kazakhstan"])
-            plt.rcParams["hatch.linewidth"] = 1.6
-            ax.add_collection(PatchCollection(list(patches(row.geometry)), fc="none", ec=stripe, lw=0, hatch="////", zorder=1.5))
-    states_p.plot(ax=ax, color=STATE, linewidth=0.35, zorder=2)
-    # The country polygons include the lakes; paint the big ones back as water (borders through them then run on the shore),
-    # above the state lines, which also cross them. Labels then treat the lakes as water too.
-    for g in lakes_p.geometry:
-        ax.add_collection(PatchCollection(list(holed_patches(g)), fc=OCEAN, ec=BORDER, lw=0.6, zorder=2.5))
-    countries_p["geometry"] = countries_p.geometry.difference(unary_union(list(lakes_p.geometry)))
+    fig, ax = new_figure(frame)
+    draw_countries(ax, countries_p, fill_of, REGIONS if EARTH else None)
+    draw_states(ax, states_p)
+    draw_lakes(ax, lakes_p)
+    countries_p = subtract_lakes(countries_p, lakes_p)
     ax.set_xlim(frame.xmin, frame.xmax)
     ax.set_ylim(frame.ymin, frame.ymax)
 
-    # Graticule-free; labels ----------------------------------------------------
+    # Labels are measured in rendered pixels, so draw once first.
     fig.canvas.draw()
     rend = fig.canvas.get_renderer()
 
@@ -150,14 +91,7 @@ def main(argv=None):
 
     placement = place_labels(labels, frame)
 
-    nx, ny = leader_ends(placement)
-    for i, L in enumerate(labels):
-        L.text.set_position(frame.px_to_map(placement.x[i], placement.y[i]))
-        if placement.out[i]:
-            x0_, y0_ = frame.px_to_map(placement.anchor_x[i], placement.anchor_y[i])
-            x1_, y1_ = frame.px_to_map(nx[i], ny[i])
-            ax.plot([x0_, x1_], [y0_, y1_], color=L.color, lw=0.7, zorder=4, solid_capstyle="round")
-            ax.plot([x0_], [y0_], marker="o", ms=1.3, color=L.color, zorder=4)
+    draw_labels(ax, labels, placement, frame)
     if PINS:
         _pins = load_pins(PINS)
         draw_pins(ax, frame, _pins, pin_sprite(PIN_IN * DPI), PIN_IN)
