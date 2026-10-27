@@ -29,7 +29,6 @@ RENAME = {"People's Republic of China": "China", "United States of America": "Un
 MIN_PT, MAX_PT = 6, 30
 FONT_SCALE = 1.6  # font size (pt) = FONT_SCALE / 10 x sqrt(area), with the area measured in points^2
 POINTS_PER_INCH = 72
-UPPERCASE_ABOVE_PT = 14  # bigger labels are set in capitals
 LABEL_ZORDER = 6
 HALO = [pe.withStroke(linewidth=2.2, foreground=(1, 1, 1, 0.55))]
 BOX_PAD_X, BOX_PAD_Y = 1.06, 1.15  # label box = rendered text extent scaled by these
@@ -95,7 +94,7 @@ def new_label(ax: Axes, renderer: RendererBase, frame: MapFrame, name: str, anch
     ppu = frame.px_per_unit
     x, y = anchor
     size = float(np.clip(FONT_SCALE * np.sqrt(area) * ppu / DPI * POINTS_PER_INCH / 10, MIN_PT, MAX_PT))
-    text = ax.text(x, y, name.upper() if size > UPPERCASE_ABOVE_PT else name, fontsize=size, ha="center", va="center", color=color, zorder=LABEL_ZORDER, path_effects=HALO, fontstyle="italic" if italic else "normal")
+    text = ax.text(x, y, name, fontsize=size, ha="center", va="center", color=color, zorder=LABEL_ZORDER, path_effects=HALO, fontstyle="italic" if italic else "normal")
     label = Label(name, area, color, text, 0.0, 0.0, (x - frame.xmin) * ppu, (y - frame.ymin) * ppu, frame.to_px(geom))
     measure(label, renderer)
     return label

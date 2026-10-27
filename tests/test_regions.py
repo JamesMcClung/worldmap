@@ -113,7 +113,7 @@ def test_scattered_child_labels_sized_by_land(countries: gpd.GeoDataFrame, count
     region = {r.text: r for r in regions}
     for name in ["French Polynesia (France)", "Saint Helena (UK)", "Cook Islands (New Zealand)"]:
         label = by[name]
-        assert label.text.get_text() == name, name  # not capitalised, so under UPPERCASE_ABOVE_PT
+        assert label.text.get_fontsize() <= 14, name
         anchor = Point(label.anchor_x / frame.px_per_unit + frame.xmin, label.anchor_y / frame.px_per_unit + frame.ymin)
         assert max(region[name].polys, key=lambda p: p.area).contains(anchor), name
 
@@ -122,3 +122,8 @@ def test_hand_picked_without_polygons_is_named(countries: gpd.GeoDataFrame, coun
     monkeypatch.setattr(regions_module, "HAND_PICKED", [("Atlantis", "Portugal", [(-40.0, 0.0, -39.0, 1.0)])])
     with pytest.raises(ValueError, match="Atlantis"):
         child_regions(countries, countries_projected, frame)
+
+
+def test_labels_keep_their_case(countries: gpd.GeoDataFrame, countries_projected: gpd.GeoDataFrame, frame: MapFrame, regions: list[ChildRegion]) -> None:
+    labels = build_labels(countries, countries_projected, frame, regions, lambda i, pt: (0.5, 0.5, 0.5))
+    assert [label.name for label in labels if label.text.get_text() != label.name] == []
