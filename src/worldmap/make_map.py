@@ -9,7 +9,6 @@ import json
 import os
 import sys
 
-import geopandas as gpd
 import matplotlib
 import matplotlib.patheffects as pe
 import numpy as np
@@ -18,15 +17,15 @@ from matplotlib.collections import PatchCollection
 from matplotlib.colors import to_rgb
 from matplotlib.patches import PathPatch, Polygon as MplPolygon
 from matplotlib.path import Path
-from pyproj import Transformer
-from shapely import affinity, maximum_inscribed_circle
+from shapely import maximum_inscribed_circle
 from shapely.geometry import MultiPolygon, Point, Polygon, box
 from shapely.geometry.polygon import orient
 from shapely.ops import unary_union
 
-from worldmap.data import CACHE, COUNTRIES, CRS, RASTER, fetch, is_labeled, load_countries, load_lakes, load_states, project
+from worldmap.data import CACHE, COUNTRIES, RASTER, fetch, is_labeled, load_countries, load_lakes, load_states, project
 from worldmap.coloring import OCEAN, load_or_compute_coloring, make_palette, spot_check
 from worldmap.colorspace import darken, fit_gamut
+from worldmap.frame import DPI, POSTER_WIDTH_IN, make_frame
 
 
 def parse_args(argv=None):
@@ -43,7 +42,6 @@ def parse_args(argv=None):
     return p.parse_args(argv)
 
 
-W_IN, DPI = 36, 200  # 7200 px wide
 BORDER, STATE = "#3a3a3a", "#7d7d7d"
 
 
@@ -292,10 +290,10 @@ def main(argv=None):
 
     def draw_pins(ax, pins, sprite):
         """Draw pins given as (lon, lat), northern ones first so southern ones overlap them. Returns the image artists."""
-        half = PIN_PAD * PIN_IN / 2 * (maxx - minx) / W_IN
+        half = PIN_PAD * PIN_IN / 2 * frame.width / POSTER_WIDTH_IN
         out = []
         for lon, lat in sorted(pins, key=lambda p: -p[1]):
-            x, y = t.transform(lon, lat)
+            x, y = frame.to_map.transform(lon, lat)
             out.append(ax.imshow(sprite, extent=(x - half, x + half, y - half, y + half), zorder=10, interpolation="bilinear"))
         return out
 
@@ -304,7 +302,6 @@ def main(argv=None):
         appends the new pins to `path` (existing lines are left alone)."""
         from matplotlib.path import Path
         from PIL import Image
-        from pyproj import Transformer
 
         if not os.path.exists(OUT):
             sys.exit("--pick shows the rendered map: run make_map first to create %s" % OUT)
@@ -312,11 +309,10 @@ def main(argv=None):
         existing = load_pins(path) if os.path.exists(path) else []
         new = []
         sprite = pin_sprite(PIN_IN * DPI)
-        outline = Path(np.array(edge))
-        t_inv = Transformer.from_crs(CRS, "EPSG:4326", always_xy=True)
-        fig_ = plt.figure(figsize=(14, 14 * (maxy - miny) / (maxx - minx)))
+        outline = Path(np.array(frame.outline))
+        fig_ = plt.figure(figsize=(14, 14 * frame.height / frame.width))
         ax_ = fig_.add_axes([0, 0, 1, 1])
-        ax_.imshow(np.asarray(im), extent=(minx, maxx, miny, maxy))
+        ax_.imshow(np.asarray(im), extent=(frame.xmin, frame.xmax, frame.ymin, frame.ymax))
         ax_.axis("off")
         arts = []
 
@@ -324,8 +320,8 @@ def main(argv=None):
             for a in arts:
                 a.remove()
             arts[:] = draw_pins(ax_, existing + new, sprite)
-            ax_.set_xlim(minx, maxx)
-            ax_.set_ylim(miny, maxy)
+            ax_.set_xlim(frame.xmin, frame.xmax)
+            ax_.set_ylim(frame.ymin, frame.ymax)
             fig_.canvas.draw_idle()
 
         def undo():
@@ -338,7 +334,7 @@ def main(argv=None):
             if e.button == 3:
                 undo()
             elif e.button == 1 and outline.contains_point((e.xdata, e.ydata)):
-                new.append(t_inv.transform(e.xdata, e.ydata))
+                new.append(frame.to_lonlaframe.to_map.transform(e.xdata, e.ydata))
                 print("added   %.4f,%.4f" % new[-1])
             redraw()
 
@@ -391,29 +387,22 @@ def main(argv=None):
             if not REGIONS[_i]:
                 REGIONS[_i] = [(Polygon(), "#ffffff")]
 
-    # Robinson outline of the whole globe (poles included); the canvas is its bounding box plus a little room for the stroke.
-
-    t = Transformer.from_crs("EPSG:4326", CRS, always_xy=True)
-    lat = np.linspace(-90, 90, 200)
-    edge = [t.transform(180 - 1e-6, la) for la in lat] + [t.transform(-180 + 1e-6, la) for la in lat[::-1]]
-    _ex, _ey = np.array(edge).T
-    _pad = 0.006 * (_ex.max() - _ex.min())
-    minx, miny, maxx, maxy = _ex.min() - _pad, _ey.min() - _pad, _ex.max() + _pad, _ey.max() + _pad
+    frame = make_frame()
     if PICK:
         pick_pins(PICK)
         return
 
-    fig_w = W_IN
-    fig_h = fig_w * (maxy - miny) / (maxx - minx)
+    fig_w = POSTER_WIDTH_IN
+    fig_h = fig_w * frame.height / frame.width
     fig = plt.figure(figsize=(fig_w, fig_h), dpi=DPI)
     ax = fig.add_axes([0, 0, 1, 1])
-    ax.set_xlim(minx, maxx)
-    ax.set_ylim(miny, maxy)
+    ax.set_xlim(frame.xmin, frame.xmax)
+    ax.set_ylim(frame.ymin, frame.ymax)
     ax.set_aspect("equal")
     ax.axis("off")
     fig.patch.set_alpha(0)  # transparent outside the globe outline
-    ax.add_patch(MplPolygon(edge, closed=True, fc=OCEAN, ec="none", zorder=0))
-    ax.add_patch(MplPolygon(edge, closed=True, fc="none", ec=BORDER, lw=2.2, zorder=3))
+    ax.add_patch(MplPolygon(frame.outline, closed=True, fc=OCEAN, ec="none", zorder=0))
+    ax.add_patch(MplPolygon(frame.outline, closed=True, fc="none", ec=BORDER, lw=2.2, zorder=3))
 
     for _, row in countries_p.iterrows():
         col = "#ffffff" if row.NAME_EN == "Antarctica" else fill_of(_)  # Antarctica: hardcoded white, unlabelled
@@ -432,24 +421,20 @@ def main(argv=None):
     for g in lakes_p.geometry:
         ax.add_collection(PatchCollection(list(holed_patches(g)), fc=OCEAN, ec=BORDER, lw=0.6, zorder=2.5))
     countries_p["geometry"] = countries_p.geometry.difference(unary_union(list(lakes_p.geometry)))
-    ax.set_xlim(minx, maxx)
-    ax.set_ylim(miny, maxy)
+    ax.set_xlim(frame.xmin, frame.xmax)
+    ax.set_ylim(frame.ymin, frame.ymax)
 
     # Graticule-free; labels ----------------------------------------------------
     fig.canvas.draw()
     rend = fig.canvas.get_renderer()
-    px_per_unit = fig.get_size_inches()[0] * DPI / (maxx - minx)
 
-    # Everything below works in window pixels: px = (x - minx) * PPU, py = (y - miny) * PPU.
-    PPU = px_per_unit
-    TO_PX = [PPU, 0, 0, PPU, -minx * PPU, -miny * PPU]
-
-    def to_px(g, simplify=2.0):
-        return affinity.affine_transform(g, TO_PX).simplify(simplify, preserve_topology=False)
+    # Everything below works in poster pixels (frame.to_px).
+    PPU = frame.px_per_unit
+    to_px = frame.to_px
 
     labels, island_names = [], []
-    gx, gy = t.transform(-53, 4)  # French Guiana
-    kx, ky = t.transform(21, 54.7)  # Kaliningrad
+    gx, gy = frame.to_map.transform(-53, 4)  # French Guiana
+    kx, ky = frame.to_map.transform(21, 54.7)  # Kaliningrad
     for _, row in countries_p.iterrows():
         if not is_labeled(row):
             continue
@@ -461,14 +446,14 @@ def main(argv=None):
         sig = [p for p in polys if p.area >= 0.02 * big.area]
         hull = unary_union(sig).convex_hull
         hb = hull.bounds
-        island = len(sig) >= 2 and big.area / sum(p.area for p in sig) < 0.65 and (hb[2] - hb[0]) < 0.25 * (maxx - minx)
+        island = len(sig) >= 2 and big.area / sum(p.area for p in sig) < 0.65 and (hb[2] - hb[0]) < 0.25 * frame.width
         if row.NAME_EN in FORCE_ISLAND and len(sig) >= 2:
             island = True
         if island:
             island_names.append(row.NAME_EN)
             pieces.append((row.NAME_EN, hull.centroid.coords[0], unary_union(sig), hull, max(sum(p.area for p in sig), hull.area)))
         else:
-            c = maximum_inscribed_circle(big, tolerance=(maxx - minx) / 5000).coords[0]
+            c = maximum_inscribed_circle(big, tolerance=frame.width / 5000).coords[0]
             pieces.append((row.NAME_EN, c, big, big, big.area))
         extra = []
         if row.NAME_EN == "France":
@@ -476,7 +461,7 @@ def main(argv=None):
         if row.NAME_EN == "Russia":
             extra = [("Kaliningrad (Russia)", p) for p in polys if p.contains(Point(kx, ky))]
         for nm, p in extra:
-            c = maximum_inscribed_circle(p, tolerance=(maxx - minx) / 5000).coords[0]
+            c = maximum_inscribed_circle(p, tolerance=frame.width / 5000).coords[0]
             pieces.append((nm, c, p, p, p.area))
         for nm, c, geom, home, area in pieces:
             nm = RENAME.get(nm, nm)
@@ -487,7 +472,7 @@ def main(argv=None):
             L.txt = ax.text(c[0], c[1], nm.upper() if size > 14 else nm, fontsize=size, ha="center", va="center", color=L.color, zorder=6, path_effects=halo)
             ext = L.txt.get_window_extent(rend)
             L.w, L.h = ext.width * 1.06, ext.height * 1.15
-            L.ax, L.ay = (c[0] - minx) * PPU, (c[1] - miny) * PPU
+            L.ax, L.ay = (c[0] - frame.xmin) * PPU, (c[1] - frame.ymin) * PPU
             L.x, L.y = L.ax, L.ay
             L.geom, L.home = to_px(geom), to_px(home)
             labels.append(L)
@@ -520,7 +505,7 @@ def main(argv=None):
     AY = np.array([L.ay for L in labels])
     X = AX.copy()
     Y = AY.copy()
-    OUTLINE_PX = to_px(Polygon(edge), simplify=0.5)
+    OUTLINE_PX = to_px(Polygon(frame.outline), simplify=0.5)
     shapely.prepare(OUTLINE_PX)
     def leader_ends():
         nx, ny = nearest_pt(AX, AY, X, Y, W_, H_)
@@ -644,17 +629,17 @@ def main(argv=None):
 
     nx, ny = leader_ends()
     for i, L in enumerate(labels):
-        L.txt.set_position((X[i] / PPU + minx, Y[i] / PPU + miny))
+        L.txt.set_position(frame.px_to_map(X[i], Y[i]))
         if OUT_[i]:
-            x0_, y0_ = AX[i] / PPU + minx, AY[i] / PPU + miny
-            x1_, y1_ = nx[i] / PPU + minx, ny[i] / PPU + miny
+            x0_, y0_ = frame.px_to_map(AX[i], AY[i])
+            x1_, y1_ = frame.px_to_map(nx[i], ny[i])
             ax.plot([x0_, x1_], [y0_, y1_], color=L.color, lw=0.7, zorder=4, solid_capstyle="round")
             ax.plot([x0_], [y0_], marker="o", ms=1.3, color=L.color, zorder=4)
     if PINS:
         _pins = load_pins(PINS)
         draw_pins(ax, _pins, pin_sprite(PIN_IN * DPI))
-        ax.set_xlim(minx, maxx)
-        ax.set_ylim(miny, maxy)
+        ax.set_xlim(frame.xmin, frame.xmax)
+        ax.set_ylim(frame.ymin, frame.ymax)
         print("pins:", len(_pins))
     fig.savefig(OUT, dpi=DPI, transparent=True)
     print("wrote", OUT, "labels:", N, "leaders:", int(OUT_.sum()))
