@@ -1,10 +1,16 @@
-import geopandas as gpd
-import pytest
+from collections.abc import Callable
 
-from worldmap.data import is_labeled, load_countries, project
+import geopandas as gpd
+import matplotlib
+import pytest
+from shapely.geometry import Point
+
+from worldmap.data import CACHE, RASTER, is_labeled, load_countries, project
+from worldmap.earth import Fill, build_regions, fill_at
 from worldmap.frame import MapFrame, make_frame
-from worldmap.labels.label import RENAME
+from worldmap.labels.label import RENAME, Label, make_labels
 from worldmap.labels.regions import HAND_PICKED, ChildRegion, child_regions
+from worldmap.render import new_figure
 
 
 @pytest.fixture(scope="module")
@@ -66,3 +72,44 @@ def test_alaska_includes_aleutians_east_of_180(regions: list[ChildRegion], frame
 def test_parents_are_labeled_countries(regions: list[ChildRegion], countries: gpd.GeoDataFrame) -> None:
     labeled = {RENAME.get(r.NAME_EN, r.NAME_EN) for _, r in countries.iterrows() if is_labeled(r)}
     assert {r.parent_name for r in regions} <= labeled
+
+
+def build_labels(countries: gpd.GeoDataFrame, countries_projected: gpd.GeoDataFrame, frame: MapFrame, children: list[ChildRegion], fill_of: Callable[[int, Point | None], Fill]) -> list[Label]:
+    matplotlib.use("Agg")
+    fig, ax = new_figure(frame)
+    ax.set_xlim(frame.xmin, frame.xmax)
+    ax.set_ylim(frame.ymin, frame.ymax)
+    fig.canvas.draw()
+    return make_labels(countries_projected, frame, ax, fig.canvas.get_renderer(), fill_of, children)  # type: ignore[attr-defined]
+
+
+def test_child_labels_are_italic(countries: gpd.GeoDataFrame, countries_projected: gpd.GeoDataFrame, frame: MapFrame, regions: list[ChildRegion]) -> None:
+    def grey(i: int, pt: Point | None) -> Fill:
+        return (0.5, 0.5, 0.5)
+
+    with_children = build_labels(countries, countries_projected, frame, regions, grey)
+    italic = [label for label in with_children if label.text.get_fontstyle() == "italic"]
+    assert len(italic) == 66
+    assert {label.name for label in italic} == {r.text for r in regions}
+    assert not [label for label in build_labels(countries, countries_projected, frame, [], grey) if label.text.get_fontstyle() == "italic"]
+
+
+def test_earth_child_label_uses_its_own_polygon(countries: gpd.GeoDataFrame, countries_projected: gpd.GeoDataFrame, frame: MapFrame, regions: list[ChildRegion]) -> None:
+    if not (CACHE / RASTER).exists():
+        pytest.skip("land-cover raster not downloaded")
+    earth = build_regions(countries_projected, countries)
+    labels = build_labels(countries, countries_projected, frame, regions, lambda i, pt: fill_at(earth, i, pt))
+    color = {label.name: label.color for label in labels}
+    assert color["Hawaii (United States)"] != color["United States"]
+
+
+def test_scattered_child_labels_sized_by_land(countries: gpd.GeoDataFrame, countries_projected: gpd.GeoDataFrame, frame: MapFrame, regions: list[ChildRegion]) -> None:
+    """Archipelagos spread over an ocean are sized by their land, not their convex hull, and point at an island."""
+    labels = build_labels(countries, countries_projected, frame, regions, lambda i, pt: (0.5, 0.5, 0.5))
+    by = {label.name: label for label in labels}
+    region = {r.text: r for r in regions}
+    for name in ["French Polynesia (France)", "Saint Helena (United Kingdom)", "Cook Islands (New Zealand)"]:
+        label = by[name]
+        assert label.text.get_text() == name, name  # not capitalised, so under UPPERCASE_ABOVE_PT
+        anchor = Point(label.anchor_x / frame.px_per_unit + frame.xmin, label.anchor_y / frame.px_per_unit + frame.ymin)
+        assert max(region[name].polys, key=lambda p: p.area).contains(anchor), name

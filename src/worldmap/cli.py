@@ -19,6 +19,7 @@ from worldmap.earth import Fill, build_regions, fill_at
 from worldmap.frame import DPI, make_frame
 from worldmap.labels.label import decide_out_and_wrap, make_labels
 from worldmap.labels.placement import place_labels
+from worldmap.labels.regions import child_regions
 from worldmap.pins import draw_pins, load_pins, pick_pins, pin_sprite
 from worldmap.render import draw_countries, draw_labels, draw_lakes, draw_states, new_figure, subtract_lakes
 
@@ -40,6 +41,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--recolor", action="store_true", help="rebuild the cached graph colouring")
     p.add_argument("--earth", action="store_true",
                    help="colour by land cover as seen from space (sandy desert -> light green) instead of graph colours")
+    p.add_argument("--regions", action="store_true",
+                   help="label dependencies and outlying regions (Alaska, Greenland, Kaliningrad...) with their parent country")
     p.add_argument("--pins", metavar="FILE", help="draw the pins listed in FILE (one lon,lat per line)")
     p.add_argument("--pin-size", metavar="INCHES", type=float, default=DEFAULT_PIN_SIZE_IN,
                    help="pin diameter in inches on the 36 in poster (default %(default)s)")
@@ -97,7 +100,8 @@ def main(argv: list[str] | None = None) -> None:
     # Labels are measured in rendered pixels, so draw once first.
     fig.canvas.draw()
     renderer = fig.canvas.get_renderer()  # type: ignore[attr-defined]  # Agg canvas
-    labels = make_labels(countries_p, frame, ax, renderer, fill_of)
+    children = child_regions(countries, countries_p, frame) if args.regions else []
+    labels = make_labels(countries_p, frame, ax, renderer, fill_of, children)
     decide_out_and_wrap(labels, renderer)
     placement = place_labels(labels, frame)
     draw_labels(ax, labels, placement, frame)

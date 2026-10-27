@@ -28,3 +28,8 @@ def test_console_script_help() -> None:
     out = subprocess.run([Path(sys.executable).parent / "make_map", "-h"], check=True, capture_output=True, text=True).stdout
     assert "--pin-size" in out
     assert "--ocean" not in out
+
+
+def test_regions_flag() -> None:
+    assert parse_args([]).regions is False
+    assert parse_args(["--regions"]).regions is True

@@ -50,5 +50,22 @@
       "states": "5993148"
     },
     "sha256": "f2dce5a272df2f54ca80177081df3ddee7e5a369a20f10026d103dfb0f1f2770"
+  },
+  "regions": {
+    "env": {
+      "countries": "4930492",
+      "freetype": "2.14.3",
+      "geopandas": "1.2.0",
+      "geos": "3.14.1",
+      "lakes": "2349685",
+      "matplotlib": "3.11.2",
+      "numpy": "2.5.4",
+      "pillow": "12.3.0",
+      "pyproj": "3.8.0",
+      "python": "3.14.3",
+      "shapely": "2.2.0",
+      "states": "5993148"
+    },
+    "sha256": "c362b6cd9caba06521f2ffe87d3e6bad4e7f9bdadb1c7f83b2ef4487cd384463"
   }
 }
