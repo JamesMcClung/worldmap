@@ -21,6 +21,11 @@ def test_render_pins(tmp_path: Path) -> None:
     check_fingerprint("pins", render(tmp_path, "--pins", str(TESTS / "pins.txt")))
 
 
+def test_render_failure_shows_stderr(tmp_path: Path) -> None:
+    with pytest.raises(pytest.fail.Exception, match="unrecognized arguments"):
+        render(tmp_path, "--no-such-flag")
+
+
 def tiny_png(tmp_path: Path) -> Path:
     png = tmp_path / "tiny.png"
     Image.new("RGBA", (2, 2), (10, 20, 30, 255)).save(png)

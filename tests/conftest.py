@@ -18,8 +18,13 @@ REFERENCE_DIR = TESTS.parent / ".cache" / "reference"
 
 
 def render(tmp_path: Path, *args: str) -> Path:
-    """Run `python -m worldmap out.png ARGS...` in tmp_path and return the output path."""
-    subprocess.run([sys.executable, "-m", "worldmap", "out.png", *args], cwd=tmp_path, check=True, capture_output=True)
+    """Run `python -m worldmap out.png ARGS...` in tmp_path and return the output path. A failed run fails the
+    test with the end of its stderr (the traceback)."""
+    import pytest
+
+    result = subprocess.run([sys.executable, "-m", "worldmap", "out.png", *args], cwd=tmp_path, capture_output=True, text=True)
+    if result.returncode != 0:
+        pytest.fail(f"make_map {' '.join(args)} exited with {result.returncode}:\n{result.stderr[-4000:]}")
     return tmp_path / "out.png"
 
 
