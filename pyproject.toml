@@ -27,5 +27,8 @@ dev = ["pytest>=8", "mypy>=1.10"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
+[tool.mypy]
+ignore_missing_imports = true  # geopandas, shapely, pyproj ship no stubs
+
 [project.scripts]
 make_map = "worldmap.cli:main"
