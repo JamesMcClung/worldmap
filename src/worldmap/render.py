@@ -106,7 +106,8 @@ def draw_labels(ax: Axes, labels: list[Label], placement: Placement, frame: MapF
     """Move each label's text to its placed position, and draw leader lines and dots for 'out' labels."""
     end_x, end_y = leader_ends(placement)
     for i, label in enumerate(labels):
-        label.text.set_position(frame.px_to_map(placement.x[i], placement.y[i]))
+        x, y = frame.px_to_map(placement.x[i], placement.y[i])
+        label.text.set_position((float(x), float(y)))
         if placement.out[i]:
             x0, y0 = frame.px_to_map(placement.anchor_x[i], placement.anchor_y[i])
             x1, y1 = frame.px_to_map(end_x[i], end_y[i])
