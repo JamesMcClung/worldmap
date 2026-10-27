@@ -26,6 +26,8 @@ from shapely.geometry import MultiPolygon, Point, Polygon, box
 from shapely.geometry.polygon import orient
 from shapely.ops import unary_union
 
+from worldmap.colorspace import darken, fit_gamut, srgb_to_oklch
+
 
 def parse_args(argv=None):
     p = argparse.ArgumentParser(prog="make_map", description=__doc__.split("\n")[0])
@@ -86,44 +88,6 @@ STATE_COUNTRIES = {
     "Indonesia",
 }
 OCEAN, BORDER, STATE = "#e3f0f7", "#3a3a3a", "#7d7d7d"
-
-
-# --- OKLab palette: 9 fills with maximal minimum pairwise distance (light enough for dark text) ---
-def srgb_to_lin(c):
-    c = np.asarray(c, float)
-    return np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
-
-
-def lin_to_srgb(c):
-    c = np.asarray(c, float)
-    return np.where(c <= 0.0031308, c * 12.92, 1.055 * np.clip(c, 0, None) ** (1 / 2.4) - 0.055)
-
-
-def lab_to_lin(L, a, b):
-    l_ = L + 0.3963377774 * a + 0.2158037573 * b
-    m_ = L - 0.1055613458 * a - 0.0638541728 * b
-    s_ = L - 0.0894841775 * a - 1.2914855480 * b
-    l, m, s = l_**3, m_**3, s_**3
-    return np.array([4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s, -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s, -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s])
-
-
-def lch_to_rgb(L, C, h):
-    """OKLCH -> sRGB in [0,1], or None if out of gamut."""
-    lin = lab_to_lin(L, C * np.cos(np.radians(h)), C * np.sin(np.radians(h)))
-    if (lin < -1e-6).any() or (lin > 1 + 1e-6).any():
-        return None
-    return np.clip(lin_to_srgb(np.clip(lin, 0, 1)), 0, 1)
-
-
-def srgb_to_lch(rgb):
-    lin = srgb_to_lin(rgb)
-    l = np.cbrt(0.4122214708 * lin[0] + 0.5363325363 * lin[1] + 0.0514459929 * lin[2])
-    m = np.cbrt(0.2119034982 * lin[0] + 0.6806995451 * lin[1] + 0.1073969566 * lin[2])
-    s_ = np.cbrt(0.0883024619 * lin[0] + 0.2817188376 * lin[1] + 0.6299787005 * lin[2])
-    L = 0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s_
-    a = 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s_
-    b = 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s_
-    return L, np.hypot(a, b), np.degrees(np.arctan2(b, a)) % 360
 
 
 NOT_LABELED = {"Jersey", "Guernsey", "Isle of Man", "Åland", "Macau", "Hong Kong", "Sint Maarten", "Aruba", "Curaçao", "Northern Cyprus", "Turkish Republic of Northern Cyprus", "Somaliland"}
@@ -298,16 +262,13 @@ def make_palette(k, pairs, C=0.115, l_red=0.64, l_green=0.77):
     classes that end up adjacent are as far apart as possible in OKLab (hue *and* brightness)."""
     from itertools import permutations
 
-    ocean_h = srgb_to_lch(to_rgb(OCEAN))[2]
+    ocean_h = srgb_to_oklch(to_rgb(OCEAN))[2]
     hues = [(ocean_h + (i + 1) * 360 / (k + 1)) % 360 for i in range(k)]
     rgbs, labs = [], []
     for h in hues:
         L = lightness_for_hue(h, l_red, l_green)
-        for cc in np.linspace(C, 0, 40):  # most chroma the sRGB gamut allows, up to C
-            rgb = lch_to_rgb(L, cc, h)
-            if rgb is not None:
-                break
-        rgbs.append(tuple(rgb))
+        rgb, cc = fit_gamut(L, C, h)  # most chroma the sRGB gamut allows, up to C
+        rgbs.append(rgb)
         labs.append((L, cc * np.cos(np.radians(h)), cc * np.sin(np.radians(h))))
     D = np.linalg.norm(np.array(labs)[:, None] - np.array(labs)[None], axis=-1)
     best = max(permutations(range(k)), key=lambda p: (min(D[p[a], p[b]] for a, b in pairs), sum(D[p[a], p[b]] for a, b in pairs)))
@@ -384,10 +345,7 @@ def earth_fill(gr, ice):
     g = float(np.clip((gr - GR_DESERT) / (GR_LUSH - GR_DESERT), 0, 1))
     f = float(np.clip((ice - 0.15) / 0.6, 0, 1))  # bluish-white land = ice cap
     L, C, h = (1 - g) * np.array(SAND) + g * np.array(GREEN)  # hue 78 -> 135 interpolates through yellow-olive, no wrap
-    for c in np.linspace(C, 0, 40):  # gamut-reduce
-        rgb = lch_to_rgb(L, c, h)
-        if rgb is not None:
-            break
+    rgb, _ = fit_gamut(L, C, h)
     return tuple((1 - f) * np.array(rgb) + f * np.array(to_rgb(ICE)))
 
 
@@ -496,16 +454,6 @@ halo = [pe.withStroke(linewidth=2.2, foreground=(1, 1, 1, 0.55))]
 
 class Label:
     pass
-
-
-def darken(rgb, L=0.26):
-    """Same OKLab hue/chroma as the fill, but dark."""
-    _, C, h = srgb_to_lch(rgb)
-    for c in np.linspace(C, 0, 40):
-        out = lch_to_rgb(L, c, h)
-        if out is not None:
-            return tuple(out)
-    return (0.1, 0.1, 0.1)
 
 
 def rect(x, y, w, h):
