@@ -9,22 +9,20 @@ import os
 import sys
 
 import matplotlib
-import matplotlib.patheffects as pe
 import numpy as np
 import shapely
 from matplotlib.collections import PatchCollection
 from matplotlib.patches import PathPatch, Polygon as MplPolygon
 from matplotlib.path import Path
-from shapely import maximum_inscribed_circle
-from shapely.geometry import MultiPolygon, Point, Polygon
+from shapely.geometry import MultiPolygon, Polygon
 from shapely.geometry.polygon import orient
 from shapely.ops import unary_union
 
 from worldmap.data import is_labeled, load_countries, load_lakes, load_states, project
 from worldmap.coloring import OCEAN, load_or_compute_coloring, make_palette, spot_check
-from worldmap.colorspace import darken
 from worldmap.earth import build_regions, fill_at
-from worldmap.labels.geometry import nearest_point_on_rect, rect, segment_hits_rects, segments_cross, two_line
+from worldmap.labels.geometry import nearest_point_on_rect, segment_hits_rects, segments_cross
+from worldmap.labels.label import decide_out_and_wrap, make_labels
 from worldmap.frame import DPI, POSTER_WIDTH_IN, make_frame
 from worldmap.pins import draw_pins, load_pins, pick_pins, pin_sprite
 
@@ -70,20 +68,7 @@ def biggest(geom):
     return max(geom.geoms, key=lambda g: g.area) if isinstance(geom, MultiPolygon) else geom
 
 
-RENAME = {"People's Republic of China": "China", "United States of America": "United States", "Democratic Republic of the Congo": "DR Congo", "Republic of the Congo": "Congo", "Central African Republic": "C.A.R.", "Bosnia and Herzegovina": "Bosnia & Herz.", "United Arab Emirates": "UAE", "Dominican Republic": "Dominican Rep."}
-MIN_PT, MAX_PT = 6, 30
-FORCE_ISLAND = {"Greece"}
-
-halo = [pe.withStroke(linewidth=2.2, foreground=(1, 1, 1, 0.55))]
-
-
-class Label:
-    pass
-
-
 TARGET = 1.3
-
-
 STEPS = [(a * 0.25, b) for a in (-2, -1, 0, 1, 2) for b in (-1, 0, 1) if (a, b) != (0, 0)]
 ANG = np.radians(np.arange(0, 360, 15))
 
@@ -166,80 +151,16 @@ def main(argv=None):
     rend = fig.canvas.get_renderer()
 
     # Everything below works in poster pixels (frame.to_px).
-    PPU = frame.px_per_unit
     to_px = frame.to_px
-
-    labels, island_names = [], []
-    gx, gy = frame.to_map.transform(-53, 4)  # French Guiana
-    kx, ky = frame.to_map.transform(21, 54.7)  # Kaliningrad
-    for _, row in countries_p.iterrows():
-        if not is_labeled(row):
-            continue
-        polys = [p for p in (row.geometry.geoms if isinstance(row.geometry, MultiPolygon) else [row.geometry]) if not p.is_empty]
-        if not polys:
-            continue
-        big = max(polys, key=lambda p: p.area)
-        pieces = []
-        sig = [p for p in polys if p.area >= 0.02 * big.area]
-        hull = unary_union(sig).convex_hull
-        hb = hull.bounds
-        island = len(sig) >= 2 and big.area / sum(p.area for p in sig) < 0.65 and (hb[2] - hb[0]) < 0.25 * frame.width
-        if row.NAME_EN in FORCE_ISLAND and len(sig) >= 2:
-            island = True
-        if island:
-            island_names.append(row.NAME_EN)
-            pieces.append((row.NAME_EN, hull.centroid.coords[0], unary_union(sig), hull, max(sum(p.area for p in sig), hull.area)))
-        else:
-            c = maximum_inscribed_circle(big, tolerance=frame.width / 5000).coords[0]
-            pieces.append((row.NAME_EN, c, big, big, big.area))
-        extra = []
-        if row.NAME_EN == "France":
-            extra = [("French Guiana", p) for p in polys if p.contains(Point(gx, gy))]
-        if row.NAME_EN == "Russia":
-            extra = [("Kaliningrad (Russia)", p) for p in polys if p.contains(Point(kx, ky))]
-        for nm, p in extra:
-            c = maximum_inscribed_circle(p, tolerance=frame.width / 5000).coords[0]
-            pieces.append((nm, c, p, p, p.area))
-        for nm, c, geom, home, area in pieces:
-            nm = RENAME.get(nm, nm)
-            size = float(np.clip(1.6 * np.sqrt(area) * PPU / DPI * 72 / 10, MIN_PT, MAX_PT))
-            L = Label()
-            L.name, L.area = nm, area
-            L.color = darken(fill_of(_, geom.representative_point() if geom.geom_type == "Polygon" else None))
-            L.txt = ax.text(c[0], c[1], nm.upper() if size > 14 else nm, fontsize=size, ha="center", va="center", color=L.color, zorder=6, path_effects=halo)
-            ext = L.txt.get_window_extent(rend)
-            L.w, L.h = ext.width * 1.06, ext.height * 1.15
-            L.ax, L.ay = (c[0] - frame.xmin) * PPU, (c[1] - frame.ymin) * PPU
-            L.x, L.y = L.ax, L.ay
-            L.geom, L.home = to_px(geom), to_px(home)
-            labels.append(L)
-    labels.sort(key=lambda l: -l.area)
+    labels = make_labels(countries_p, frame, ax, rend, fill_of)
     N = len(labels)
-    print("island-heavy (hull-centred):", island_names)
-
-    # Mode: 'in' = sits on its country; 'out' = would hide its country, so it moves aside with a leader line.
-    def covers(L):
-        return rect(L.x, L.y, L.w, L.h).intersection(L.geom).area / L.geom.area if L.geom.area > 0 else 1.0
-
-    for L in labels:
-        gb = L.geom.bounds
-        L.out = covers(L) >= 0.6 or (L.w > 1.6 * (gb[2] - gb[0]) and (gb[3] - gb[1]) < 6 * L.h)
+    decide_out_and_wrap(labels, rend)
     OUT_ = np.array([L.out for L in labels])
 
-    # Wrap long names onto two lines when a label sitting on its country is wider than the country.
-    for L in labels:
-        gb = L.geom.bounds
-        if not L.out and " " in L.txt.get_text() and L.w > 0.9 * (gb[2] - gb[0]) and (gb[3] - gb[1]) > 2.5 * L.h:
-            L.txt.set_multialignment("center")
-            L.txt.set_linespacing(1.0)
-            L.txt.set_text(two_line(L.txt.get_text()))
-            ext = L.txt.get_window_extent(rend)
-            L.w, L.h = ext.width * 1.06, ext.height * 1.15
-
-    W_ = np.array([L.w for L in labels])
-    H_ = np.array([L.h for L in labels])
-    AX = np.array([L.ax for L in labels])
-    AY = np.array([L.ay for L in labels])
+    W_ = np.array([L.width for L in labels])
+    H_ = np.array([L.height for L in labels])
+    AX = np.array([L.anchor_x for L in labels])
+    AY = np.array([L.anchor_y for L in labels])
     X = AX.copy()
     Y = AY.copy()
     OUTLINE_PX = to_px(Polygon(frame.outline), simplify=0.5)
@@ -355,9 +276,9 @@ def main(argv=None):
         if not bad:
             break
         for i in bad:  # still colliding: shrink the text slightly and retry
-            if labels[i].txt.get_fontsize() > 5:
+            if labels[i].text.get_fontsize() > 5:
                 f = 0.94
-                labels[i].txt.set_fontsize(labels[i].txt.get_fontsize() * f)
+                labels[i].text.set_fontsize(labels[i].text.get_fontsize() * f)
                 W_[i] *= f
                 H_[i] *= f
         optimize(15)
@@ -366,7 +287,7 @@ def main(argv=None):
 
     nx, ny = leader_ends()
     for i, L in enumerate(labels):
-        L.txt.set_position(frame.px_to_map(X[i], Y[i]))
+        L.text.set_position(frame.px_to_map(X[i], Y[i]))
         if OUT_[i]:
             x0_, y0_ = frame.px_to_map(AX[i], AY[i])
             x1_, y1_ = frame.px_to_map(nx[i], ny[i])
