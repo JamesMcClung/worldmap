@@ -1,22 +1,27 @@
 # worldmap
 
-One script, `make_map.py`, renders a poster-sized political world map PNG (country borders, state/province borders for
+One module, `src/worldmap/make_map.py` (console script `make_map`), renders a poster-sized political world map PNG (country borders, state/province borders for
 large countries, non-overlapping country labels). Output default: `worldmap.png`, an RGBA PNG 7200 x 3693 px (36 in wide at 200 dpi), transparent outside the globe outline.
 
 ## Setup and run
 
 ```
-python3 -m venv .venv && .venv/bin/pip install matplotlib geopandas shapely pyproj pyogrio
-# data (Natural Earth 10m, public domain) into data/:
-#   https://naciscdn.org/naturalearth/10m/cultural/ne_10m_admin_0_countries.zip
-#   https://naciscdn.org/naturalearth/10m/cultural/ne_10m_admin_1_states_provinces_lines.zip
-.venv/bin/python make_map.py [out.png] [--recolor] [--ocean] [--earth]
+python3 -m venv .venv && .venv/bin/pip install -e .   # deps in pyproject.toml
+.venv/bin/make_map [out.png] [--recolor] [--ocean] [--earth]
 ```
 
-A run takes ~7-12 s. `data/ne_10m_admin_0_map_units.zip` is downloaded but unused.
-Not a git repo.
+A run takes ~7-12 s. Output goes to the current directory.
+
+Natural Earth data (public domain) is downloaded by `fetch(name)` on first use into `.cache/` at the repo root, located
+relative to `make_map.py` (`CACHE`), so the package must be installed editable (`-e`). The land-cover raster (~75 MB zip,
+394 MB unzipped into `.cache/ne1/`) is fetched only for `--earth`. `coloring.json` and `earth.json` live in `.cache/` too.
+`.cache/` is gitignored. User-facing docs are in `README.md`; MIT `LICENSE`.
 
 ## How make_map.py is organised (top to bottom)
+
+Module level holds constants and pure helpers; `main()` parses `sys.argv` and runs the whole pipeline, with the helpers
+that need its state (`fill_of`, `draw_pins`, `pick_pins`, `cost_batch`, `candidates`, `optimize`...) nested inside it.
+Importing the module has no side effects.
 
 1. **Colour maths** (OKLab/OKLCH helpers) and `make_palette`.
 2. **Colouring** of all country features: border adjacency (`adjacency`), plus across-water links
@@ -40,7 +45,7 @@ Not a git repo.
 
 ## Caching
 
-`coloring.json` (next to the script) stores each country's colour class and which classes touch. It is rebuilt when the
+`coloring.json` (in `.cache/`) stores each country's colour class and which classes touch. It is rebuilt when the
 country file, country list, `N_COLORS`, `MAX_GAP`, `MIN_DEG` or the `rule` string in `_key` change, or with `--recolor`.
 Palette tweaks never change which countries share a class. If you change the colouring *logic*, bump `rule`.
 The script prints a spot-check of same-coloured pairs (Korea/Japan, Malaysia/Philippines, Italy/Greece, France/UK,
@@ -49,7 +54,7 @@ UK/Norway, India/Sri Lanka, Russia/US) on every run; it should be empty.
 ## `--earth` colouring mode
 
 Replaces the graph colouring with a natural palette derived from real imagery: the Natural Earth I land-cover raster
-(`data/ne1/NE1_LR_LC.tif`, from https://naciscdn.org/naturalearth/10m/raster/NE1_LR_LC.zip, unzipped into `data/ne1/`).
+(`.cache/ne1/NE1_LR_LC.tif`, from https://naciscdn.org/naturalearth/10m/raster/NE1_LR_LC.zip, fetched automatically).
 `earth_values()` rasterises each *polygon* (not country) and takes the mean of (G - R) over its land pixels (ocean = white) plus
 its fraction of bluish-white "ice" pixels. `earth_fill()` maps G-R linearly (`GR_DESERT`..`GR_LUSH`) onto an OKLCH sand -> light-green
 ramp and blends toward ice. Every disjoint polygon is coloured independently (Alaska, French Guiana, Kaliningrad, Baikonur, islands);
@@ -60,11 +65,11 @@ of the polygon they sit on (`fill_of(i, pt)`; `REGIONS` maps country -> [(projec
 ## Pins (`--pick`, `--pins`)
 
 Digitises the physical pin-the-hometown poster. A pin list is a text file, one `lon,lat` per line (`#` comments allowed).
-- `make_map.py --pick pins.txt` opens an interactive window showing the *already rendered* `OUT` (default `worldmap.png`,
+- `make_map --pick pins.txt` opens an interactive window showing the *already rendered* `OUT` (default `worldmap.png`,
   downsampled 4x; errors if it doesn't exist). Left-click adds a pin (inverse Robinson to lon/lat; clicks outside the globe are
   ignored), right-click or `u` undoes, closing the window appends the new pins to the file (existing lines untouched; undo only
   reaches this session's pins). The picker runs right after the globe extent is computed, then exits, so it skips the label work.
-- `make_map.py [out.png] --pins pins.txt [--pin-size 0.24]` draws golden shaded spheres (`pin_sprite`: shaded by a reflected environment: cream sky, dark band above a domed horizon, gold ground, window strips at the sides; styled after `pin-example.png`
+- `make_map [out.png] --pins pins.txt [--pin-size 0.24]` draws golden shaded spheres (`pin_sprite`: shaded by a reflected environment: cream sky, dark band above a domed horizon, gold ground, window strips at the sides; styled after `pin-example.png`
   environment for a chrome-like look, broad specular glare with a hot core, baked drop shadow) at zorder 10, above labels. Pins are drawn northernmost first so southern ones overlap them.
   Diameter is in inches on the 36 in poster. Default output with `--pins` is `worldmap_pins.png`, so the bare map isn't overwritten.
 - Flags that take a value are stripped from `sys.argv` by `flag_value()` before the positional `out.png` is parsed.
