@@ -74,49 +74,48 @@ def leader_ends(p: Placement) -> tuple[np.ndarray, np.ndarray]:
 
 def cost_batch(p: Placement, labels: list[Label], i: int, cx: np.ndarray, cy: np.ndarray, weights: CostWeights, outline_px: Polygon) -> np.ndarray:
     """Cost of placing label i at each candidate centre (cx[k], cy[k])."""
-    wt = weights
-    c = len(cx)
+    n_candidates = len(cx)
     w, h = p.width[i], p.height[i]
-    ax_, ay_ = p.anchor_x[i], p.anchor_y[i]
-    boxes = np.stack([cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2], -1)  # (c, 4)
+    anchor_x, anchor_y = p.anchor_x[i], p.anchor_y[i]
+    boxes = np.stack([cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2], -1)  # (candidates, 4)
     others = np.arange(p.n) != i
     ox, oy = p.x[others], p.y[others]
     ow, oh = p.width[others], p.height[others]
-    other_boxes = np.stack([ox - ow / 2, oy - oh / 2, ox + ow / 2, oy + oh / 2], -1)  # (m, 4)
+    other_boxes = np.stack([ox - ow / 2, oy - oh / 2, ox + ow / 2, oy + oh / 2], -1)  # (others, 4)
     overlap_x = np.clip(np.minimum(boxes[:, None, 2], other_boxes[None, :, 2]) - np.maximum(boxes[:, None, 0], other_boxes[None, :, 0]), 0, None)
     overlap_y = np.clip(np.minimum(boxes[:, None, 3], other_boxes[None, :, 3]) - np.maximum(boxes[:, None, 1], other_boxes[None, :, 1]), 0, None)
-    cost = wt.overlap * (overlap_x * overlap_y).sum(1) / (h * h)
+    cost = weights.overlap * (overlap_x * overlap_y).sum(1) / (h * h)
 
     # Other labels' leader dots and lines.
     other_out = p.out[others]
     if other_out.any():
         dot_x, dot_y = p.anchor_x[others][other_out], p.anchor_y[others][other_out]
-        dot_r = wt.dot_radius * p.height[others][other_out]
+        dot_r = weights.dot_radius * p.height[others][other_out]
         gap_x = np.clip(np.abs(cx[:, None] - dot_x[None]) - w / 2, 0, None)
         gap_y = np.clip(np.abs(cy[:, None] - dot_y[None]) - h / 2, 0, None)
         gap = np.hypot(gap_x, gap_y)
-        cost += wt.dot_cover * (np.clip(dot_r[None] - gap, 0, None) / dot_r[None]).sum(1)
+        cost += weights.dot_cover * (np.clip(dot_r[None] - gap, 0, None) / dot_r[None]).sum(1)
         end_x, end_y = nearest_point_on_rect(dot_x, dot_y, ox[other_out], oy[other_out], ow[other_out], oh[other_out])
         their_start = np.stack([dot_x, dot_y], -1)[None]
         their_end = np.stack([end_x, end_y], -1)[None]
-        cost += wt.leader_hits_label * segment_hits_rects(their_start, their_end, boxes[:, None, :]).sum(1)
+        cost += weights.leader_hits_label * segment_hits_rects(their_start, their_end, boxes[:, None, :]).sum(1)
 
     if p.out[i]:
-        start = np.array([ax_, ay_])[None, None, :]
-        nx, ny = nearest_point_on_rect(ax_, ay_, cx, cy, w, h)
+        start = np.array([anchor_x, anchor_y])[None, None, :]
+        nx, ny = nearest_point_on_rect(anchor_x, anchor_y, cx, cy, w, h)
         end = np.stack([nx, ny], -1)[:, None, :]
-        length = np.hypot(nx - ax_, ny - ay_)
-        cost += wt.leader_length * ((length - wt.leader_target * h) / h) ** 2 + wt.leader_too_short * np.clip(wt.leader_min * h - length, 0, None) / h
+        length = np.hypot(nx - anchor_x, ny - anchor_y)
+        cost += weights.leader_length * ((length - weights.leader_target * h) / h) ** 2 + weights.leader_too_short * np.clip(weights.leader_min * h - length, 0, None) / h
         # Our leader vs other label boxes (unless that box covers our anchor: unavoidable).
-        keep = ~((other_boxes[:, 0] <= ax_) & (ax_ <= other_boxes[:, 2]) & (other_boxes[:, 1] <= ay_) & (ay_ <= other_boxes[:, 3]))
-        cost += wt.leader_hits_label * segment_hits_rects(start, end, other_boxes[None, keep, :]).sum(1)
+        keep = ~((other_boxes[:, 0] <= anchor_x) & (anchor_x <= other_boxes[:, 2]) & (other_boxes[:, 1] <= anchor_y) & (anchor_y <= other_boxes[:, 3]))
+        cost += weights.leader_hits_label * segment_hits_rects(start, end, other_boxes[None, keep, :]).sum(1)
         if other_out.any():
-            cost += wt.leader_crosses_leader * segments_cross(np.broadcast_to(start, (c, 1, 2)), end, their_start, their_end).sum(1)
+            cost += weights.leader_crosses_leader * segments_cross(np.broadcast_to(start, (n_candidates, 1, 2)), end, their_start, their_end).sum(1)
     else:
         shapes = shapely.box(boxes[:, 0], boxes[:, 1], boxes[:, 2], boxes[:, 3])
         inside = shapely.area(shapely.intersection(shapes, labels[i].geom)) / (w * h)
-        cost += wt.outside_country * (1 - inside) + wt.drift * np.hypot(cx - ax_, cy - ay_) / h
-    cost += wt.outside_globe * ~shapely.contains(outline_px, shapely.box(boxes[:, 0], boxes[:, 1], boxes[:, 2], boxes[:, 3]))
+        cost += weights.outside_country * (1 - inside) + weights.drift * np.hypot(cx - anchor_x, cy - anchor_y) / h
+    cost += weights.outside_globe * ~shapely.contains(outline_px, shapely.box(boxes[:, 0], boxes[:, 1], boxes[:, 2], boxes[:, 3]))
     return cost
 
 
@@ -150,9 +149,9 @@ def overlapping(p: Placement) -> list[int]:
     """Indices of labels whose boxes overlap another's."""
     bad = []
     for i in range(p.n):
-        m = np.arange(p.n) != i
-        ox = np.minimum(p.x[i] + p.width[i] / 2, p.x[m] + p.width[m] / 2) - np.maximum(p.x[i] - p.width[i] / 2, p.x[m] - p.width[m] / 2)
-        oy = np.minimum(p.y[i] + p.height[i] / 2, p.y[m] + p.height[m] / 2) - np.maximum(p.y[i] - p.height[i] / 2, p.y[m] - p.height[m] / 2)
+        others = np.arange(p.n) != i
+        ox = np.minimum(p.x[i] + p.width[i] / 2, p.x[others] + p.width[others] / 2) - np.maximum(p.x[i] - p.width[i] / 2, p.x[others] - p.width[others] / 2)
+        oy = np.minimum(p.y[i] + p.height[i] / 2, p.y[others] + p.height[others] / 2) - np.maximum(p.y[i] - p.height[i] / 2, p.y[others] - p.height[others] / 2)
         if ((ox > 0) & (oy > 0)).any():
             bad.append(i)
     return bad
