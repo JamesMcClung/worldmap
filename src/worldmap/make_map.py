@@ -4,6 +4,7 @@ Data: Natural Earth 10m (public domain), downloaded into .cache/ on first use. R
 Pins: --pick pins.txt (click the rendered map to add pins) and --pins pins.txt [--pin-size inches] (draw them).
 """
 
+import argparse
 import json
 import os
 import sys
@@ -26,15 +27,20 @@ from shapely.geometry.polygon import orient
 from shapely.ops import unary_union
 
 
-def flag_value(name):
-    """Remove `name VALUE` from sys.argv and return VALUE (None if the flag is absent)."""
-    if name not in sys.argv:
-        return None
-    i = sys.argv.index(name)
-    if i + 1 >= len(sys.argv) or sys.argv[i + 1].startswith("--"):
-        sys.exit("%s needs a value" % name)
-    sys.argv.pop(i)
-    return sys.argv.pop(i)
+def parse_args(argv=None):
+    p = argparse.ArgumentParser(prog="make_map", description=__doc__.split("\n")[0])
+    p.add_argument("out", nargs="?", help="output PNG (default worldmap.png, or worldmap_pins.png with --pins)")
+    p.add_argument("--recolor", action="store_true", help="rebuild the cached graph colouring")
+    p.add_argument("--ocean", action="store_true",
+                   help="experimental, slower: open water counts as the country and labels grow to fill it")
+    p.add_argument("--earth", action="store_true",
+                   help="colour by land cover as seen from space (sandy desert -> light green) instead of graph colours")
+    p.add_argument("--pins", metavar="FILE", help="draw the pins listed in FILE (one lon,lat per line)")
+    p.add_argument("--pin-size", metavar="INCHES", type=float, default=0.24,
+                   help="pin diameter in inches on the 36 in poster (default %(default)s)")
+    p.add_argument("--pick", metavar="FILE",
+                   help="click the rendered map to add pins; they are appended to FILE when the window closes")
+    return p.parse_args(argv)
 
 
 # Data files and caches live in the repo's .cache/ (found from this file, so it needs an editable install).
@@ -583,19 +589,19 @@ ANG = np.radians(np.arange(0, 360, 15))
 
 
 def main():
-    PINS, PICK = flag_value("--pins"), flag_value("--pick")  # pin-list files: --pins draws them, --pick adds to one by clicking
-    PIN_IN = float(flag_value("--pin-size") or 0.24)  # pin diameter in inches on the 36-inch-wide poster
+    args = parse_args()
+    PINS, PICK = args.pins, args.pick  # pin-list files: --pins draws them, --pick adds to one by clicking
+    PIN_IN = args.pin_size  # pin diameter in inches on the 36-inch-wide poster
 
     if not PICK:  # --pick needs an interactive backend
         matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
     # --ocean: experimental ocean-aware label placement (open water counts as the country; labels grow). Slower.
-    OCEAN_AWARE = "--ocean" in sys.argv
-    _args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    OUT = _args[0] if _args else ("worldmap_pins.png" if PINS else "worldmap.png")
+    OCEAN_AWARE = args.ocean
+    OUT = args.out or ("worldmap_pins.png" if PINS else "worldmap.png")
     # --earth: colour countries by how they look from space (sandy desert -> light green vegetation) instead of graph colours.
-    EARTH = "--earth" in sys.argv
+    EARTH = args.earth
     PALETTE = None  # set below via make_palette()
 
     countries = gpd.read_file(fetch(COUNTRIES))
@@ -608,7 +614,7 @@ def main():
     _key = {"n_colors": N_COLORS, "max_gap": MAX_GAP, "min_deg": MIN_DEG, "rule": "top10-exempt-count-balance/v2", "files": {COUNTRIES: os.path.getsize(fetch(COUNTRIES))}}
     _names = list(countries.NAME_EN)
     _cached = None
-    if "--recolor" not in sys.argv and os.path.exists(_CACHE):
+    if not args.recolor and os.path.exists(_CACHE):
         try:
             _d = json.load(open(_CACHE))
             if _d["key"] == _key and _d["names"] == _names:
