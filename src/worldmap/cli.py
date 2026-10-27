@@ -43,7 +43,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--pins", metavar="FILE", help="draw the pins listed in FILE (one lon,lat per line)")
     p.add_argument("--pin-size", metavar="INCHES", type=float, default=DEFAULT_PIN_SIZE_IN,
                    help="pin diameter in inches on the 36 in poster (default %(default)s)")
-    p.add_argument("--resolution", metavar="DPI", type=positive_float, default=DPI,
+    p.add_argument("--dpi", metavar="DPI", type=positive_float, default=DPI,
                    help="output dots per inch on the 36 in poster (default %(default)s); "
                         "the layout is the same at any resolution, only the pixel count changes")
     p.add_argument("--pick", metavar="FILE",
@@ -104,12 +104,12 @@ def main(argv: list[str] | None = None) -> None:
 
     if args.pins:
         pins = load_pins(args.pins)
-        draw_pins(ax, frame, pins, pin_sprite(args.pin_size * args.resolution), args.pin_size)
+        draw_pins(ax, frame, pins, pin_sprite(args.pin_size * args.dpi), args.pin_size)
         ax.set_xlim(frame.xmin, frame.xmax)
         ax.set_ylim(frame.ymin, frame.ymax)
         print("pins:", len(pins))
     # Layout above is measured at DPI; saving at another resolution only rescales it.
-    fig.savefig(out, dpi=args.resolution, transparent=True)
+    fig.savefig(out, dpi=args.dpi, transparent=True)
     print("wrote", out, "labels:", len(labels), "leaders:", int(placement.out.sum()))
 
 

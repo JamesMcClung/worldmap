@@ -14,12 +14,12 @@ def test_ocean_flag_rejected() -> None:
     assert e.value.code == 2
 
 
-def test_resolution_flag() -> None:
-    assert parse_args([]).resolution == DPI
-    assert parse_args(["--resolution", "50"]).resolution == 50
+def test_dpi_flag() -> None:
+    assert parse_args([]).dpi == DPI
+    assert parse_args(["--dpi", "50"]).dpi == 50
     for bad in ["0", "-1", "x"]:
         with pytest.raises(SystemExit) as e:
-            parse_args(["--resolution", bad])
+            parse_args(["--dpi", bad])
         assert e.value.code == 2
 
 
