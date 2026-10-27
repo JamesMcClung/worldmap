@@ -25,6 +25,7 @@ from worldmap.coloring import OCEAN, load_or_compute_coloring, make_palette, spo
 from worldmap.colorspace import darken
 from worldmap.earth import build_regions, fill_at
 from worldmap.frame import DPI, POSTER_WIDTH_IN, make_frame
+from worldmap.pins import draw_pins, load_pins, pick_pins, pin_sprite
 
 
 def parse_args(argv=None):
@@ -44,74 +45,6 @@ def parse_args(argv=None):
 BORDER, STATE = "#3a3a3a", "#7d7d7d"
 
 
-
-
-# --- pins: golden spheres at (lon, lat) points ---
-PIN_PAD = 1.4  # the sprite canvas extends this many sphere radii from the centre (room for the drop shadow)
-
-
-def load_pins(path):
-    """(lon, lat) pairs from a text file with one 'lon,lat' per line; '#' starts a comment."""
-    pins = []
-    for n, line in enumerate(open(path), 1):
-        line = line.split("#")[0].strip()
-        if not line:
-            continue
-        try:
-            lon, lat = (float(s) for s in line.replace(",", " ").split()[:2])
-        except ValueError:
-            sys.exit("%s:%d: expected 'lon,lat', got %r" % (path, n, line))
-        if not (-180 <= lon <= 180 and -90 <= lat <= 90):
-            sys.exit("%s:%d: coordinates out of range: %r" % (path, n, line))
-        pins.append((lon, lat))
-    return pins
-
-
-def pin_sprite(diameter_px):
-    """RGBA gold sphere lit from the upper left (dark rim, bounce light from below, white highlight) with a soft drop shadow."""
-    R = diameter_px / 2
-    n = int(round(2 * PIN_PAD * R))
-    c = np.linspace(-PIN_PAD, PIN_PAD, n)
-    u, v = np.meshgrid(c, -c)  # in sphere radii, v up
-    r = np.hypot(u, v)
-    nz = np.sqrt(np.clip(1 - r**2, 0, 1))
-    N = np.stack([u, v, nz], -1)
-
-    def lit(d):
-        d = np.asarray(d, float)
-        return np.clip(N @ (d / np.linalg.norm(d)), 0, None)
-
-    key = np.array([-0.45, 0.6, 0.65])
-    key /= np.linalg.norm(key)
-
-    def sstep(e0, e1, x):
-        q = np.clip((x - e0) / (e1 - e0), 0, 1)
-        return q * q * (3 - 2 * q)
-
-    # Metal: shade by what the surface reflects, not by diffuse light. From the bottom up: warm gold ground, a crisp horizon,
-    # a dark band just above it, a bright cream sky; plus a window-like bright strip down each side (stronger on the right).
-    ry = 2 * nz * v + 0.7 * u**2  # elevation of the reflected view ray; the u^2 term bends the horizon into a dome
-    rx = 2 * nz * u
-    ground = 0.68 - 0.2 * (1 - sstep(-1.0, -0.3, ry))
-    sky = 0.8 + 0.2 * sstep(0.4, 1.0, ry)
-    shade = ground + (sky - ground) * sstep(0.05, 0.5, ry)
-    y_band = -0.2
-    shade += 0.1 * np.exp(-(((ry - y_band) / np.where(ry < y_band, 0.07, 0.3)) ** 2))
-    strip = np.where(rx > 0, 0.55, 0.3) * np.exp(-(((np.abs(rx) - 0.85) / 0.14) ** 2)) * sstep(0.0, 0.35, ry)
-    shade = np.clip(shade + strip, 0, 1)
-    stops = [0, 0.35, 0.65, 0.9, 1]
-    ramp = np.array([(0.30, 0.17, 0.02), (0.65, 0.42, 0.05), (0.92, 0.70, 0.16), (0.98, 0.80, 0.28), (1.0, 0.93, 0.68)])
-    rgb = np.stack([np.interp(shade, stops, ramp[:, k]) for k in range(3)], -1)
-    rgb *= (0.7 + 0.3 * np.sqrt(nz))[..., None]
-    h = lit(key + [0, 0, 1])
-    spec = np.clip(0.4 * h**12 + 0.8 * h**70, 0, 1)[..., None]  # broad soft glare plus a hot core
-    rgb = rgb + (1 - rgb) * spec
-    a = np.clip((1 - r) * R + 0.5, 0, 1)
-    s = np.clip((1.15 - np.hypot(u - 0.12, v + 0.16)) / 0.35, 0, 1)
-    sa = 0.45 * s * s * (3 - 2 * s)  # black shadow, offset down and right
-    A = a + sa * (1 - a)
-    rgb = np.where(A[..., None] > 0, rgb * a[..., None] / np.maximum(A, 1e-9)[..., None], 0)
-    return np.dstack([rgb, A])
 
 
 def patches(geom):
@@ -211,82 +144,12 @@ def main(argv=None):
     OUT = args.out or ("worldmap_pins.png" if PINS else "worldmap.png")
     # --earth: colour countries by how they look from space (sandy desert -> light green vegetation) instead of graph colours.
     EARTH = args.earth
+    if PICK and not os.path.exists(OUT):
+        sys.exit("--pick shows the rendered map: run make_map first to create %s" % OUT)
 
     countries = load_countries()
     major = [is_labeled(r) for _, r in countries.iterrows()]
     coloring = load_or_compute_coloring(countries, major, args.recolor)
-
-    def draw_pins(ax, pins, sprite):
-        """Draw pins given as (lon, lat), northern ones first so southern ones overlap them. Returns the image artists."""
-        half = PIN_PAD * PIN_IN / 2 * frame.width / POSTER_WIDTH_IN
-        out = []
-        for lon, lat in sorted(pins, key=lambda p: -p[1]):
-            x, y = frame.to_map.transform(lon, lat)
-            out.append(ax.imshow(sprite, extent=(x - half, x + half, y - half, y + half), zorder=10, interpolation="bilinear"))
-        return out
-
-    def pick_pins(path):
-        """Show the rendered map (OUT) in a window; left-click adds a pin, right-click or `u` undoes one. Closing the window
-        appends the new pins to `path` (existing lines are left alone)."""
-        from matplotlib.path import Path
-        from PIL import Image
-
-        if not os.path.exists(OUT):
-            sys.exit("--pick shows the rendered map: run make_map first to create %s" % OUT)
-        im = Image.open(OUT).convert("RGBA").reduce(4)
-        existing = load_pins(path) if os.path.exists(path) else []
-        new = []
-        sprite = pin_sprite(PIN_IN * DPI)
-        outline = Path(np.array(frame.outline))
-        fig_ = plt.figure(figsize=(14, 14 * frame.height / frame.width))
-        ax_ = fig_.add_axes([0, 0, 1, 1])
-        ax_.imshow(np.asarray(im), extent=(frame.xmin, frame.xmax, frame.ymin, frame.ymax))
-        ax_.axis("off")
-        arts = []
-
-        def redraw():
-            for a in arts:
-                a.remove()
-            arts[:] = draw_pins(ax_, existing + new, sprite)
-            ax_.set_xlim(frame.xmin, frame.xmax)
-            ax_.set_ylim(frame.ymin, frame.ymax)
-            fig_.canvas.draw_idle()
-
-        def undo():
-            if new:
-                print("removed %.4f,%.4f" % new.pop())
-
-        def on_click(e):
-            if e.inaxes is not ax_ or getattr(fig_.canvas.toolbar, "mode", ""):  # ignore clicks while zoom/pan is active
-                return
-            if e.button == 3:
-                undo()
-            elif e.button == 1 and outline.contains_point((e.xdata, e.ydata)):
-                new.append(frame.to_lonlaframe.to_map.transform(e.xdata, e.ydata))
-                print("added   %.4f,%.4f" % new[-1])
-            redraw()
-
-        def on_key(e):
-            if e.key == "u":
-                undo()
-                redraw()
-
-        def save(_):
-            if not new:
-                return print("no new pins")
-            text = open(path).read() if os.path.exists(path) else ""
-            with open(path, "a") as f:
-                if text and not text.endswith("\n"):
-                    f.write("\n")
-                f.writelines("%.4f,%.4f\n" % p for p in new)
-            print("added %d pins to %s (%d total)" % (len(new), path, len(existing) + len(new)))
-
-        fig_.canvas.mpl_connect("button_press_event", on_click)
-        fig_.canvas.mpl_connect("key_press_event", on_key)
-        fig_.canvas.mpl_connect("close_event", save)
-        redraw()
-        print("left-click: add pin; right-click or u: undo; close the window to save to", path)
-        plt.show()
 
     PALETTE = make_palette(coloring.k, coloring.class_pairs)
     COLOR_OF = dict(zip(countries.index, coloring.color_class))
@@ -307,7 +170,7 @@ def main(argv=None):
 
     frame = make_frame()
     if PICK:
-        pick_pins(PICK)
+        pick_pins(PICK, OUT, frame, PIN_IN, DPI)
         return
 
     fig_w = POSTER_WIDTH_IN
@@ -555,7 +418,7 @@ def main(argv=None):
             ax.plot([x0_], [y0_], marker="o", ms=1.3, color=L.color, zorder=4)
     if PINS:
         _pins = load_pins(PINS)
-        draw_pins(ax, _pins, pin_sprite(PIN_IN * DPI))
+        draw_pins(ax, frame, _pins, pin_sprite(PIN_IN * DPI), PIN_IN)
         ax.set_xlim(frame.xmin, frame.xmax)
         ax.set_ylim(frame.ymin, frame.ymax)
         print("pins:", len(_pins))
