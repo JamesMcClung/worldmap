@@ -7,7 +7,7 @@ It can also draw pins (golden spheres) at a list of locations, e.g. to digitise 
 ## Install
 
 ```
-git clone <repo-url> worldmap
+git clone https://github.com/JamesMcClung/worldmap
 cd worldmap
 python3 -m venv .venv
 source .venv/bin/activate
