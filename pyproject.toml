@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "worldmap"
+version = "0.1.0"
+description = "Poster-sized political world map PNG with non-overlapping country labels"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "James McClung" }]
+requires-python = ">=3.10"
+dependencies = [
+    "geopandas>=1.0",
+    "matplotlib>=3.8",
+    "numpy>=1.24",
+    "pillow>=10",
+    "pyogrio>=0.7",
+    "pyproj>=3.6",
+    "shapely>=2.1",  # maximum_inscribed_circle
+]
+
+[project.scripts]
+make_map = "worldmap.make_map:main"
