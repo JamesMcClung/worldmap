@@ -17,12 +17,16 @@ outputs from type signatures, and change a named constant instead of hunting for
 2. **Tests:** a pixel-exact regression test of the rendered output, plus unit tests for pure pieces.
 3. **Then the smaller things:** descriptive variable names, named constants for magic numbers, removal of dead or
    duplicated code.
+4. **Remove the `--ocean` mode entirely** (decided by the owner): the flag, the `OCEAN_AWARE` branches, and everything
+   only it uses (`fits`, `max_growth`, `local_land`, `LAND_PX`, `land_local`, `GROW_STEP`/`GROW_MAX`, the shrink-before-out
+   loop, the ocean-aware cost and candidate-grid branches, and `two_line` if the default wrapping doesn't need it). The
+   default output must stay pixel-identical.
 
 ## Non-goals
 
 - No new features, flags, or visual changes made for their own sake.
-- No change to the command-line interface (`make_map [out] --recolor --ocean --earth --pins --pin-size --pick`) or to the
-  `.cache/` data layout.
+- No change to the command-line interface apart from dropping `--ocean`
+  (`make_map [out] --recolor --earth --pins --pin-size --pick`), and no change to the `.cache/` data layout.
 - No tuning of the label-placement algorithm or the palette.
 
 ## Anti-goals
@@ -61,8 +65,7 @@ placement-state object holding the label position arrays). Importing any module 
 
 - **pytest**, in `tests/`, added as an optional dev dependency in `pyproject.toml`.
 - **Regression (pixel-exact):** render the map and compare a SHA-256 of its decoded pixel data to a committed
-  **fingerprint**. Covers the default map, `--earth`, and `--pins` with a small committed pin list. `--ocean` (~50 s) is
-  covered by a test marked slow, skipped by default.
+  **fingerprint**. Covers the default map, `--earth`, and `--pins` with a small committed pin list.
   - **Fingerprints are committed** (decided by the owner) in a small JSON file in `tests/`, one entry per mode, each with the
     hash plus the Python, matplotlib, freetype (and other rendering-relevant) versions it was made with. A commit that
     deliberately changes the output updates this file in the same commit, so `git bisect` and rebasing see the right
@@ -79,11 +82,13 @@ placement-state object holding the label position arrays). Importing any module 
 ## Order of work
 
 1. Add the test setup and regression references (from the current code).
-2. Structural split, in small commits that each keep the program running (per the owner's commit rules in the global
+2. Remove `--ocean` (goal 4), checked against the regression test. Doing it before the split means the split never has
+   to carry the ocean branches.
+3. Structural split, in small commits that each keep the program running (per the owner's commit rules in the global
    CLAUDE.md: one logical change per commit, `X: desc` / `X; *: desc` messages).
-3. Type annotations throughout (can be folded into step 2 as each module is extracted).
-4. Naming and magic-number cleanup, module by module, and removal of dead or duplicated code.
-5. Update the repo `CLAUDE.md` and `README.md` to describe the new layout.
+4. Type annotations throughout (can be folded into step 3 as each module is extracted).
+5. Naming and magic-number cleanup, module by module, and removal of dead or duplicated code.
+6. Update the repo `CLAUDE.md` and `README.md` to describe the new layout and drop `--ocean`.
 
 ## Builder's calls (marked as such)
 
