@@ -1,12 +1,14 @@
 """Render a poster-sized world map (country + large-country state borders, non-overlapping labels).
 
-Data: Natural Earth 10m (public domain). Run: .venv/bin/python make_map.py [out.png]
+Data: Natural Earth 10m (public domain), downloaded into .cache/ on first use. Run: make_map [out.png]
 Pins: --pick pins.txt (click the rendered map to add pins) and --pins pins.txt [--pin-size inches] (draw them).
 """
 
 import json
 import os
 import sys
+import urllib.request
+import zipfile
 
 import geopandas as gpd
 import matplotlib
@@ -33,7 +35,33 @@ def flag_value(name):
     return sys.argv.pop(i)
 
 
-CRS = "+proj=robin +lon_0=0 +datum=WGS84"
+# Data files and caches live in the repo's .cache/ (found from this file, so it needs an editable install).
+CACHE = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", ".cache"))
+NE_URL = "https://naciscdn.org/naturalearth/10m/"
+COUNTRIES, STATES = "ne_10m_admin_0_countries.zip", "ne_10m_admin_1_states_provinces_lines.zip"
+RASTER = "ne1/NE1_LR_LC.tif"  # unzipped from NE1_LR_LC.zip
+
+
+def fetch(name):
+    """Path of Natural Earth file `name` in CACHE, downloading it first if it isn't there yet."""
+    path = os.path.join(CACHE, name)
+    if os.path.exists(path):
+        return path
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    url = NE_URL + ("raster/NE1_LR_LC.zip" if name == RASTER else "cultural/" + name)
+    print("downloading", url)
+    part = path + ".part"
+    urllib.request.urlretrieve(url, part)
+    if name == RASTER:
+        with zipfile.ZipFile(part) as z:
+            z.extractall(os.path.dirname(path))
+        os.remove(part)
+    else:
+        os.replace(part, path)
+    return path
+
+
+CRS ="+proj=robin +lon_0=0 +datum=WGS84"
 W_IN, DPI = 36, 200  # 7200 px wide
 STATE_COUNTRIES = {
     "United States of America",
@@ -283,7 +311,6 @@ N_COLORS, MAX_GAP, MIN_DEG = 5, 600_000, 3
 # --- --earth mode: per-region vegetation from the Natural Earth I land-cover raster (NE1_LR_LC, 16200x8100, public domain) ---
 # Each polygon (mainland, Alaska, French Guiana, Kaliningrad, islands...) is coloured independently by the mean (G - R) of
 # the raster's land pixels inside it (desert tan ~ -12, rainforest green ~ +20), and by its fraction of icy (bluish-white) pixels.
-RASTER = "data/ne1/NE1_LR_LC.tif"
 GR_DESERT, GR_LUSH = -12.0, 20.0
 MIN_PIX = 6  # polygons with fewer raster pixels borrow from a window around their centroid, then from their country
 SAND, GREEN, ICE = (0.85, 0.09, 78), (0.84, 0.095, 135), "#eef3f4"  # OKLCH (L, C, hue deg)
@@ -291,8 +318,9 @@ SAND, GREEN, ICE = (0.85, 0.09, 78), (0.84, 0.095, 135), "#eef3f4"  # OKLCH (L, 
 
 def earth_values(countries):
     """[[(mean G-R, icy fraction) per polygon] per country], in the polygon order of `prep(countries)`. Cached in earth.json."""
-    cache = os.path.join(os.path.dirname(os.path.abspath(__file__)), "earth.json")
-    key = {"raster": os.path.getsize(RASTER), "countries": os.path.getsize("data/ne_10m_admin_0_countries.zip"), "rule": "v1", "min_pix": MIN_PIX}
+    cache = os.path.join(CACHE, "earth.json")
+    raster = fetch(RASTER)
+    key = {"raster": os.path.getsize(raster), "countries": os.path.getsize(fetch(COUNTRIES)), "rule": "v1", "min_pix": MIN_PIX}
     if os.path.exists(cache):
         d = json.load(open(cache))
         if d["key"] == key:
@@ -300,7 +328,7 @@ def earth_values(countries):
     from PIL import Image, ImageDraw
 
     Image.MAX_IMAGE_PIXELS = None
-    im = np.asarray(Image.open(RASTER).convert("RGB"))
+    im = np.asarray(Image.open(raster).convert("RGB"))
     H, W = im.shape[:2]
 
     def stats(px):
@@ -556,14 +584,14 @@ def main():
     EARTH = "--earth" in sys.argv
     PALETTE = None  # set below via make_palette()
 
-    countries = gpd.read_file("data/ne_10m_admin_0_countries.zip")
+    countries = gpd.read_file(fetch(COUNTRIES))
     countries = countries.reset_index(drop=True)
     _major = [labeled(r) for _, r in countries.iterrows()]
     # The graph colouring (which countries share a colour class) is cached in coloring.json, so palette tweaks never
     # reshuffle it and runs skip the border/distance work. It is rebuilt when the inputs change or with --recolor.
 
-    _CACHE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "coloring.json")
-    _key = {"n_colors": N_COLORS, "max_gap": MAX_GAP, "min_deg": MIN_DEG, "rule": "top10-exempt-count-balance/v2", "files": {f: os.path.getsize(f) for f in ("data/ne_10m_admin_0_countries.zip",)}}
+    _CACHE = os.path.join(CACHE, "coloring.json")
+    _key = {"n_colors": N_COLORS, "max_gap": MAX_GAP, "min_deg": MIN_DEG, "rule": "top10-exempt-count-balance/v2", "files": {COUNTRIES: os.path.getsize(fetch(COUNTRIES))}}
     _names = list(countries.NAME_EN)
     _cached = None
     if "--recolor" not in sys.argv and os.path.exists(_CACHE):
@@ -603,7 +631,7 @@ def main():
         from pyproj import Transformer
 
         if not os.path.exists(OUT):
-            sys.exit("--pick shows the rendered map: run make_map.py first to create %s" % OUT)
+            sys.exit("--pick shows the rendered map: run make_map first to create %s" % OUT)
         im = Image.open(OUT).convert("RGBA").reduce(4)
         existing = load_pins(path) if os.path.exists(path) else []
         new = []
@@ -679,7 +707,7 @@ def main():
             return max(regs, key=lambda r: r[0].area)[1]
         return min(regs, key=lambda r: r[0].distance(pt))[1]
 
-    states = gpd.read_file("data/ne_10m_admin_1_states_provinces_lines.zip")
+    states = gpd.read_file(fetch(STATES))
     states = states[states.ADM0_NAME.isin(STATE_COUNTRIES)]
 
     countries_p, states_p = prep(countries), prep(states)
