@@ -36,8 +36,8 @@ STATE_COUNTRIES = {
     "Indonesia",
 }
 
-NOT_LABELED = {"Jersey", "Guernsey", "Isle of Man", "Åland", "Macau", "Hong Kong", "Sint Maarten", "Aruba", "Curaçao", "Northern Cyprus", "Turkish Republic of Northern Cyprus", "Somaliland"}
-LABELED_EXTRA = {"Palestine", "Kosovo", "Western Sahara", "Israel", "Puerto Rico", "Falkland Islands", "Faroe Islands"}
+NOT_LABELED = {"Northern Cyprus", "Turkish Republic of Northern Cyprus", "Somaliland"}
+LABELED_EXTRA = {"Palestine", "Kosovo", "Western Sahara", "Israel"}
 LABELED_TYPES = ("Sovereign country", "Country", "Sovereignty")
 NOT_DEPENDENCY_TYPES = ("Lease", "Indeterminate")
 
@@ -65,7 +65,10 @@ def fetch(name: str) -> Path:
 
 
 def is_labeled(row: pd.Series) -> bool:
-    """Whether a country feature gets a name label (and counts as a 'real' country for across-water colouring)."""
+    """Whether a country feature gets a name label (and counts as a 'real' country for across-water colouring).
+    Dependencies are labelled only with --regions (labels/regions.py)."""
+    if is_dependency(row):
+        return False
     return row.NAME_EN in LABELED_EXTRA or (row.TYPE in LABELED_TYPES and row.NAME_EN not in NOT_LABELED)
 
 

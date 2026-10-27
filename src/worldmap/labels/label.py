@@ -48,10 +48,6 @@ OUT_SHORT_HEIGHTS = 6
 WRAP_WIDTH_RATIO = 0.9
 WRAP_MIN_HEIGHTS = 2.5
 
-# Separately labelled exclaves: (country, label, a lon/lat point inside it).
-EXCLAVES = [("France", "French Guiana", (-53, 4)), ("Russia", "Kaliningrad (Russia)", (21, 54.7))]
-
-
 @dataclass
 class Label:
     name: str
@@ -73,13 +69,12 @@ def measure(label: Label, renderer: RendererBase) -> None:
 
 
 def make_labels(countries_projected: gpd.GeoDataFrame, frame: MapFrame, ax: Axes, renderer: RendererBase, fill_of: Callable[[int, Point | None], Fill]) -> list[Label]:
-    """One label per labelled country (plus the EXCLAVES), largest first.
+    """One label per labelled country, largest first.
 
     The anchor is the centre of the biggest polygon's largest inscribed circle. Island-heavy countries use their
     convex hull's centroid and a hull-based size instead."""
     ppu = frame.px_per_unit
     tolerance = frame.width / INSCRIBED_CIRCLE_DIVISOR
-    exclave_pts = {country: (name, Point(frame.to_map.transform(*lonlat))) for country, name, lonlat in EXCLAVES}
     labels, island_names = [], []
     for i, row in countries_projected.iterrows():
         if not is_labeled(row):
@@ -101,11 +96,6 @@ def make_labels(countries_projected: gpd.GeoDataFrame, frame: MapFrame, ax: Axes
             pieces.append((row.NAME_EN, hull.centroid.coords[0], unary_union(significant), max(significant_area, hull.area)))
         else:
             pieces.append((row.NAME_EN, maximum_inscribed_circle(largest, tolerance=tolerance).coords[0], largest, largest.area))
-        if row.NAME_EN in exclave_pts:
-            exclave_name, pt = exclave_pts[row.NAME_EN]
-            for p in polys:
-                if p.contains(pt):
-                    pieces.append((exclave_name, maximum_inscribed_circle(p, tolerance=tolerance).coords[0], p, p.area))
         for name, (x, y), geom, area in pieces:
             name = RENAME.get(name, name)
             size = float(np.clip(FONT_SCALE * np.sqrt(area) * ppu / DPI * POINTS_PER_INCH / 10, MIN_PT, MAX_PT))

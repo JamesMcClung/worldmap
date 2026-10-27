@@ -10,3 +10,11 @@ def test_dependencies_and_parents() -> None:
     assert names["Falkland Islands"] == "United Kingdom" and names["Aruba"] == "Netherlands"
     assert not {"Baikonur", "Guantanamo Bay Naval Base", "Palestine", "Siachen Glacier"} & names.keys()
     assert all(is_labeled(c.loc[p]) for p in parents.values())
+
+
+def test_dependencies_not_labeled() -> None:
+    c = load_countries()
+    labeled = {r.NAME_EN for _, r in c.iterrows() if is_labeled(r)}
+    assert not {"Greenland", "Faroe Islands", "Puerto Rico", "Falkland Islands"} & labeled
+    assert {"Palestine", "Kosovo", "Western Sahara", "Israel", "Denmark"} <= labeled
+    assert not {"Northern Cyprus", "Somaliland", "Baikonur"} & labeled
