@@ -12,6 +12,7 @@ import geopandas as gpd
 import numpy as np
 from matplotlib.colors import to_rgb
 from shapely import STRtree, affinity
+from shapely.ops import unary_union
 
 from worldmap.colorspace import RGB, fit_gamut, srgb_to_oklch
 from worldmap.data import CACHE, COUNTRIES, fetch
@@ -27,7 +28,7 @@ UNWEIGHTED_LARGEST = 10  # the biggest countries don't count towards colour bala
 WORLD_WIDTH_M = 2 * np.pi * 6378137.0  # width of EPSG:6933 in metres (shift for wrap-around at the antimeridian)
 SIMPLIFY_M = 10_000  # outline simplification for the distance queries
 TOP_UP_SEARCH_M = 5_000_000  # how far to look for top-up neighbours
-COLORING_RULE = "top10-exempt-count-balance/v2"  # bump when the colouring logic changes, to invalidate the cache
+COLORING_RULE = "top10-exempt-count-balance/v3-dependencies-merged"  # bump when the colouring logic changes, to invalidate the cache
 SPOT_CHECK_PAIRS = [("South Korea", "Japan"), ("Russia", "United States of America"), ("Malaysia", "Philippines"), ("Italy", "Greece"), ("France", "United Kingdom"), ("United Kingdom", "Norway"), ("India", "Sri Lanka")]
 
 
@@ -224,11 +225,36 @@ class Coloring:
     class_pairs: set[Edge]  # colour classes that touch somewhere
 
 
-def load_or_compute_coloring(countries: gpd.GeoDataFrame, major: list[bool], recolor: bool) -> Coloring:
+def merge_into_parents(gdf: gpd.GeoDataFrame, major: list[bool], parent_of: dict[int, int]) -> tuple[gpd.GeoDataFrame, list[bool], list[int]]:
+    """Dissolve each dependency into its parent: one row per non-dependency (in their original order), the merged
+    rows' `major` flags (the parent's), and each original row's position in the merged frame."""
+    labels = list(gdf.index)
+    position = {label: p for p, label in enumerate(labels)}
+    roots = [label for label in labels if label not in parent_of]
+    node = {label: k for k, label in enumerate(roots)}
+    node_of = [node[parent_of.get(label, label)] for label in labels]
+    members: list[list[int]] = [[] for _ in roots]
+    for p, k in enumerate(node_of):
+        members[k].append(p)
+    geoms = [gdf.geometry.iloc[ps[0]] if len(ps) == 1 else unary_union([gdf.geometry.iloc[p] for p in ps]) for ps in members]
+    merged = gpd.GeoDataFrame(geometry=geoms, crs=gdf.crs)
+    return merged, [major[position[label]] for label in roots], node_of
+
+
+def cache_key(countries: gpd.GeoDataFrame, major: list[bool], parent_of: dict[int, int]) -> dict:
+    """Everything the colouring depends on, so a change to any of it rebuilds coloring.json."""
+    names = list(countries.NAME_EN)
+    return {"n_colors": N_COLORS, "max_gap": MAX_GAP, "min_deg": MIN_DEG, "rule": COLORING_RULE, "files": {COUNTRIES: os.path.getsize(fetch(COUNTRIES))},
+            "major": [name for name, m in zip(names, major) if m],
+            "parents": sorted([countries.NAME_EN[d], countries.NAME_EN[p]] for d, p in parent_of.items())}
+
+
+def load_or_compute_coloring(countries: gpd.GeoDataFrame, major: list[bool], recolor: bool, parent_of: dict[int, int]) -> Coloring:
     """The graph colouring, cached in coloring.json so palette tweaks never reshuffle it and runs skip the
-    border/distance work. Rebuilt when the inputs change or when `recolor` is set."""
+    border/distance work. Rebuilt when the inputs change or when `recolor` is set. Dependencies (`parent_of`) are
+    coloured as part of their parent."""
     cache = CACHE / "coloring.json"
-    key = {"n_colors": N_COLORS, "max_gap": MAX_GAP, "min_deg": MIN_DEG, "rule": COLORING_RULE, "files": {COUNTRIES: os.path.getsize(fetch(COUNTRIES))}}
+    key = cache_key(countries, major, parent_of)
     names = list(countries.NAME_EN)
     if not recolor and cache.exists():
         try:
@@ -238,12 +264,14 @@ def load_or_compute_coloring(countries: gpd.GeoDataFrame, major: list[bool], rec
                 return Coloring(cached["k"], cached["col"], {(a, b) for a, b in cached["pairs"]})
         except (ValueError, KeyError):
             pass
-    edges = add_proximity_edges(countries, adjacency(countries), major, N_COLORS, max_gap=MAX_GAP, min_deg=MIN_DEG)
+    merged, merged_major, node_of = merge_into_parents(countries, major, parent_of)
+    edges = add_proximity_edges(merged, adjacency(merged), merged_major, N_COLORS, max_gap=MAX_GAP, min_deg=MIN_DEG)
     # Balance colour usage by country count, but don't count the largest countries, so their colours aren't penalised.
-    areas = countries.to_crs(EQUAL_AREA_CRS).geometry.area
+    areas = merged.to_crs(EQUAL_AREA_CRS).geometry.area
     weights = [0.0 if rank < UNWEIGHTED_LARGEST else 1.0 for rank in areas.rank(ascending=False, method="first")]
-    k, color_class = color_graph(len(countries), edges, weights, kmin=N_COLORS)
-    class_pairs = {(min(color_class[i], color_class[j]), max(color_class[i], color_class[j])) for i, j in edges}
+    k, node_class = color_graph(len(merged), edges, weights, kmin=N_COLORS)
+    class_pairs = {(min(node_class[i], node_class[j]), max(node_class[i], node_class[j])) for i, j in edges}
+    color_class = [node_class[node] for node in node_of]
     cache.write_text(json.dumps({"key": key, "names": names, "k": k, "col": color_class, "pairs": sorted(class_pairs)}))
     print("colouring: computed and saved to coloring.json")
     return Coloring(k, color_class, class_pairs)

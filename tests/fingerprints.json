@@ -14,7 +14,7 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "e69b9d8b40c0b39c70830addf016618b1490b05158fae8a349f499c80bb13bf4"
+    "sha256": "f18eeba8da159fb50cf38facd923bc2caba2ff7c17da7173d69bb7cafc26bfc8"
   },
   "earth": {
     "env": {
@@ -49,6 +49,6 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "c37947e57233be63d70f77be71d46863b98e096585796d5a99425535c8508498"
+    "sha256": "8c3ef6c1929c6607f24286bf122fcdff8f733746f6c99d7de688940e2b575e1d"
   }
 }

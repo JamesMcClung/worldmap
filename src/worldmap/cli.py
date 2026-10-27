@@ -14,7 +14,7 @@ from shapely.geometry import Point
 
 from worldmap.coloring import Coloring, load_or_compute_coloring, make_palette, spot_check
 from worldmap.colorspace import RGB
-from worldmap.data import is_labeled, load_countries, load_lakes, load_states, project
+from worldmap.data import is_labeled, load_countries, load_lakes, load_states, parent_index, project
 from worldmap.earth import Fill, build_regions, fill_at
 from worldmap.frame import DPI, make_frame
 from worldmap.labels.label import decide_out_and_wrap, make_labels
@@ -72,7 +72,7 @@ def main(argv: list[str] | None = None) -> None:
 
     countries = load_countries()
     major = [is_labeled(row) for _, row in countries.iterrows()]
-    fills = graph_fills(countries, load_or_compute_coloring(countries, major, args.recolor))
+    fills = graph_fills(countries, load_or_compute_coloring(countries, major, args.recolor, parent_index(countries)))
     states, lakes = load_states(), load_lakes()
     countries_p, states_p, lakes_p = project(countries), project(states), project(lakes)
     regions = build_regions(countries_p, countries) if args.earth else None
