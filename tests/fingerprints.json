@@ -1,0 +1,44 @@
+{
+  "default": {
+    "env": {
+      "freetype": "2.14.3",
+      "geopandas": "1.2.0",
+      "geos": "3.14.1",
+      "matplotlib": "3.11.2",
+      "numpy": "2.5.4",
+      "pillow": "12.3.0",
+      "pyproj": "3.8.0",
+      "python": "3.14.3",
+      "shapely": "2.2.0"
+    },
+    "sha256": "e69b9d8b40c0b39c70830addf016618b1490b05158fae8a349f499c80bb13bf4"
+  },
+  "earth": {
+    "env": {
+      "freetype": "2.14.3",
+      "geopandas": "1.2.0",
+      "geos": "3.14.1",
+      "matplotlib": "3.11.2",
+      "numpy": "2.5.4",
+      "pillow": "12.3.0",
+      "pyproj": "3.8.0",
+      "python": "3.14.3",
+      "shapely": "2.2.0"
+    },
+    "sha256": "daef0e54929822d7146fc451bc7b45f88a33195bd1aefa48b0757cd1f97fbeb8"
+  },
+  "pins": {
+    "env": {
+      "freetype": "2.14.3",
+      "geopandas": "1.2.0",
+      "geos": "3.14.1",
+      "matplotlib": "3.11.2",
+      "numpy": "2.5.4",
+      "pillow": "12.3.0",
+      "pyproj": "3.8.0",
+      "python": "3.14.3",
+      "shapely": "2.2.0"
+    },
+    "sha256": "c37947e57233be63d70f77be71d46863b98e096585796d5a99425535c8508498"
+  }
+}
