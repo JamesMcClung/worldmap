@@ -31,6 +31,7 @@ make_map --pins pins.txt      # draw the pins; writes worldmap_pins.png
 | `--earth` | Colour each region by what it looks like from space instead of distinct political colours. The first run downloads a ~75 MB raster. |
 | `--pins FILE` | Draw pins from `FILE`, one `lon,lat` per line (`#` starts a comment). |
 | `--pin-size IN` | Pin diameter in inches on the 36 in poster (default 0.24). |
+| `--resolution DPI` | Output dots per inch on the 36 in poster (default 200, i.e. 7200 px wide). The layout is the same at any resolution; e.g. `--resolution 50` makes an 1800 px preview. |
 | `--pick FILE` | Open the already-rendered map in a window. Left-click adds a pin, right-click or `u` undoes it, and closing the window appends the new pins to `FILE`. |
 | `--recolor` | Recompute the country colouring instead of using the cached one. |
 
@@ -38,12 +39,12 @@ A run takes about 10 s once the data is downloaded. Output goes to the current d
 
 ## Examples
 
-The images in [`examples/`](examples) are scaled down to 1800 px wide; the real output is 7200 px.
+The images in [`examples/`](examples) are rendered at `--resolution 50` (1800 px wide); the default is 200 dpi (7200 px).
 
 Political colours (the default):
 
 ```
-make_map examples/political.png
+make_map examples/political.png --resolution 50
 ```
 
 ![Political world map](examples/political.png)
@@ -51,7 +52,7 @@ make_map examples/political.png
 Natural colours with `--earth`:
 
 ```
-make_map examples/earth.png --earth
+make_map examples/earth.png --earth --resolution 50
 ```
 
 ![World map in natural colours](examples/earth.png)
@@ -59,7 +60,7 @@ make_map examples/earth.png --earth
 Pins from [`examples/pins.txt`](examples/pins.txt), a list of 23 large cities:
 
 ```
-make_map examples/pins.png --pins examples/pins.txt
+make_map examples/pins.png --pins examples/pins.txt --resolution 50
 ```
 
 ![World map with pins on large cities](examples/pins.png)
