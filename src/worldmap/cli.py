@@ -86,7 +86,7 @@ def main(argv: list[str] | None = None) -> None:
 
     # Labels are measured in rendered pixels, so draw once first.
     fig.canvas.draw()
-    renderer = fig.canvas.get_renderer()
+    renderer = fig.canvas.get_renderer()  # type: ignore[attr-defined]  # Agg canvas
     labels = make_labels(countries_p, frame, ax, renderer, fill_of)
     decide_out_and_wrap(labels, renderer)
     placement = place_labels(labels, frame)
