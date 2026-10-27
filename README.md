@@ -33,7 +33,6 @@ make_map --pins pins.txt      # draw the pins; writes worldmap_pins.png
 | `--pin-size IN` | Pin diameter in inches on the 36 in poster (default 0.24). |
 | `--pick FILE` | Open the already-rendered map in a window. Left-click adds a pin, right-click or `u` undoes it, and closing the window appends the new pins to `FILE`. |
 | `--recolor` | Recompute the country colouring instead of using the cached one. |
-| `--ocean` | Experimental label placement that lets labels spill into open water (slow). |
 
 A run takes about 10 s once the data is downloaded. Output goes to the current directory.
 
