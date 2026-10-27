@@ -80,5 +80,7 @@ def child_regions(countries: gpd.GeoDataFrame, countries_projected: gpd.GeoDataF
             lon, lat = frame.to_lonlat.transform(*p.representative_point().coords[0])
             if any(lon0 <= lon <= lon1 and lat0 <= lat <= lat1 for lon0, lat0, lon1, lat1 in boxes):
                 picked.append(p)
+        if not picked:
+            raise ValueError(f"hand-picked region {name!r} selected no polygons of {parent_name!r}: check its HAND_PICKED boxes")
         regions.append(ChildRegion(name, label_name(parent), parent, picked))
     return regions

@@ -5,12 +5,13 @@ import matplotlib
 import pytest
 from shapely.geometry import Point
 
-from worldmap.data import CACHE, RASTER, is_labeled, load_countries, project
+from worldmap.data import CACHE, RASTER, is_labeled, load_countries, load_lakes, project
 from worldmap.earth import Fill, build_regions, fill_at
 from worldmap.frame import MapFrame, make_frame
 from worldmap.labels.label import RENAME, Label, make_labels
+import worldmap.labels.regions as regions_module
 from worldmap.labels.regions import HAND_PICKED, ChildRegion, child_regions
-from worldmap.render import new_figure
+from worldmap.render import new_figure, subtract_lakes
 
 
 @pytest.fixture(scope="module")
@@ -20,7 +21,8 @@ def countries() -> gpd.GeoDataFrame:
 
 @pytest.fixture(scope="module")
 def countries_projected(countries: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
-    return project(countries)
+    """As cli.main passes it: projected, with the big lakes cut out."""
+    return subtract_lakes(project(countries), project(load_lakes()))
 
 
 @pytest.fixture(scope="module")
@@ -113,3 +115,9 @@ def test_scattered_child_labels_sized_by_land(countries: gpd.GeoDataFrame, count
         assert label.text.get_text() == name, name  # not capitalised, so under UPPERCASE_ABOVE_PT
         anchor = Point(label.anchor_x / frame.px_per_unit + frame.xmin, label.anchor_y / frame.px_per_unit + frame.ymin)
         assert max(region[name].polys, key=lambda p: p.area).contains(anchor), name
+
+
+def test_hand_picked_without_polygons_is_named(countries: gpd.GeoDataFrame, countries_projected: gpd.GeoDataFrame, frame: MapFrame, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(regions_module, "HAND_PICKED", [("Atlantis", "Portugal", [(-40.0, 0.0, -39.0, 1.0)])])
+    with pytest.raises(ValueError, match="Atlantis"):
+        child_regions(countries, countries_projected, frame)
