@@ -19,7 +19,7 @@ relative to `make_map.py` (`CACHE`), so the package must be installed editable (
 
 ## How make_map.py is organised (top to bottom)
 
-Module level holds constants and pure helpers; `main()` parses `sys.argv` and runs the whole pipeline, with the helpers
+Module level holds constants and pure helpers; `main()` parses the command line (`parse_args()`, argparse, so `-h` lists every flag) and runs the whole pipeline, with the helpers
 that need its state (`fill_of`, `draw_pins`, `pick_pins`, `cost_batch`, `candidates`, `optimize`...) nested inside it.
 Importing the module has no side effects.
 
@@ -75,7 +75,6 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
 - `make_map [out.png] --pins pins.txt [--pin-size 0.24]` draws golden shaded spheres (`pin_sprite`: shaded by a reflected environment: cream sky, dark band above a domed horizon, gold ground, window strips at the sides; styled after `pin-example.png`
   environment for a chrome-like look, broad specular glare with a hot core, baked drop shadow) at zorder 10, above labels. Pins are drawn northernmost first so southern ones overlap them.
   Diameter is in inches on the 36 in poster. Default output with `--pins` is `worldmap_pins.png`, so the bare map isn't overwritten.
-- Flags that take a value are stripped from `sys.argv` by `flag_value()` before the positional `out.png` is parsed.
 - `--pick` skips `matplotlib.use("Agg")` to get the interactive backend. Pins on the antimeridian are clipped by the canvas edge.
 
 ## Label placement notes
