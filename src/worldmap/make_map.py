@@ -24,6 +24,7 @@ from worldmap.data import is_labeled, load_countries, load_lakes, load_states, p
 from worldmap.coloring import OCEAN, load_or_compute_coloring, make_palette, spot_check
 from worldmap.colorspace import darken
 from worldmap.earth import build_regions, fill_at
+from worldmap.labels.geometry import nearest_point_on_rect, rect, segment_hits_rects, segments_cross, two_line
 from worldmap.frame import DPI, POSTER_WIDTH_IN, make_frame
 from worldmap.pins import draw_pins, load_pins, pick_pins, pin_sprite
 
@@ -80,52 +81,7 @@ class Label:
     pass
 
 
-def rect(x, y, w, h):
-    return shapely.box(x - w / 2, y - h / 2, x + w / 2, y + h / 2)
-
-
-def two_line(text):
-    words = text.split(" ")
-    if len(words) < 2:
-        return None
-    k = min(range(1, len(words)), key=lambda j: abs(len(" ".join(words[:j])) - len(" ".join(words[j:]))))
-    return " ".join(words[:k]) + "\n" + " ".join(words[k:])
-
-
 TARGET = 1.3
-
-
-def nearest_pt(px_, py_, x, y, w, h):
-    return np.clip(px_, x - w / 2, x + w / 2), np.clip(py_, y - h / 2, y + h / 2)
-
-
-def seg_hits_rects(p0, p1, R):
-    """p0,p1: (...,2) broadcastable against R (...,4) [x0,y0,x1,y1]; True where the segment crosses the rect."""
-    d = p1 - p0
-    tmin = np.zeros(np.broadcast(d[..., 0], R[..., 0]).shape)
-    tmax = np.ones_like(tmin)
-    ok = np.ones(tmin.shape, bool)
-    for k in (0, 1):
-        dk = d[..., k] * np.ones_like(tmin)
-        lo, hi = R[..., k], R[..., k + 2]
-        p = p0[..., k] * np.ones_like(tmin)
-        par = np.abs(dk) < 1e-9
-        with np.errstate(divide="ignore", invalid="ignore"):
-            t1, t2 = (lo - p) / dk, (hi - p) / dk
-        tn, tx = np.minimum(t1, t2), np.maximum(t1, t2)
-        ok &= np.where(par, (p >= lo) & (p <= hi), True)
-        tmin = np.where(par, tmin, np.maximum(tmin, tn))
-        tmax = np.where(par, tmax, np.minimum(tmax, tx))
-    return ok & (tmax >= tmin)
-
-
-def seg_cross(a0, a1, b0, b1):
-    """Proper segment-segment intersection, broadcasting over leading dims."""
-
-    def cr(o, p, q):
-        return (p[..., 0] - o[..., 0]) * (q[..., 1] - o[..., 1]) - (p[..., 1] - o[..., 1]) * (q[..., 0] - o[..., 0])
-
-    return (cr(a0, a1, b0) * cr(a0, a1, b1) < 0) & (cr(b0, b1, a0) * cr(b0, b1, a1) < 0)
 
 
 STEPS = [(a * 0.25, b) for a in (-2, -1, 0, 1, 2) for b in (-1, 0, 1) if (a, b) != (0, 0)]
@@ -289,7 +245,7 @@ def main(argv=None):
     OUTLINE_PX = to_px(Polygon(frame.outline), simplify=0.5)
     shapely.prepare(OUTLINE_PX)
     def leader_ends():
-        nx, ny = nearest_pt(AX, AY, X, Y, W_, H_)
+        nx, ny = nearest_point_on_rect(AX, AY, X, Y, W_, H_)
         return nx, ny
 
     def cost_batch(i, CX, CY):
@@ -313,22 +269,22 @@ def main(argv=None):
             ddy = np.clip(np.abs(CY[:, None] - day[None]) - h / 2, 0, None)
             dd = np.hypot(ddx, ddy)
             cost += 15 * (np.clip(dr[None] - dd, 0, None) / dr[None]).sum(1)
-            nx_, ny_ = nearest_pt(dax, day, ox_[omode], oy_[omode], ow[omode], oh[omode])
+            nx_, ny_ = nearest_point_on_rect(dax, day, ox_[omode], oy_[omode], ow[omode], oh[omode])
             p0 = np.stack([dax, day], -1)[None]
             p1 = np.stack([nx_, ny_], -1)[None]
-            cost += 20 * seg_hits_rects(p0, p1, R[:, None, :]).sum(1)
+            cost += 20 * segment_hits_rects(p0, p1, R[:, None, :]).sum(1)
         if OUT_[i]:
             q0 = np.array([AX[i], AY[i]])[None, None, :]
-            nx, ny = nearest_pt(AX[i], AY[i], CX, CY, w, h)
+            nx, ny = nearest_point_on_rect(AX[i], AY[i], CX, CY, w, h)
             q1 = np.stack([nx, ny], -1)[:, None, :]
             d = np.hypot(nx - AX[i], ny - AY[i])
             cost += 1.0 * ((d - TARGET * h) / h) ** 2 + 10 * np.clip(0.9 * h - d, 0, None) / h
             # own leader vs other label boxes (unless that box covers our anchor: unavoidable)
             keep = ~((O[:, 0] <= AX[i]) & (AX[i] <= O[:, 2]) & (O[:, 1] <= AY[i]) & (AY[i] <= O[:, 3]))
-            cost += 20 * seg_hits_rects(q0, q1, O[None, keep, :]).sum(1)
+            cost += 20 * segment_hits_rects(q0, q1, O[None, keep, :]).sum(1)
             # own leader vs other leaders
             if omode.any():
-                cost += 6 * seg_cross(q0[:, None, :, :] if False else np.broadcast_to(q0, (c, 1, 2)), q1, np.stack([dax, day], -1)[None], np.stack([nx_, ny_], -1)[None]).sum(1)
+                cost += 6 * segments_cross(q0[:, None, :, :] if False else np.broadcast_to(q0, (c, 1, 2)), q1, np.stack([dax, day], -1)[None], np.stack([nx_, ny_], -1)[None]).sum(1)
         else:
             boxes = shapely.box(R[:, 0], R[:, 1], R[:, 2], R[:, 3])
             inside = shapely.area(shapely.intersection(boxes, labels[i].geom)) / (w * h)
