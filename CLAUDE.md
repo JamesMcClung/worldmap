@@ -7,9 +7,11 @@ large countries, non-overlapping country labels). Output default: `worldmap.png`
 
 ```
 python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'   # deps in pyproject.toml; [dev] adds pytest, mypy
-.venv/bin/make_map [out.png] [--recolor] [--earth] [--pins FILE] [--pin-size IN] [--pick FILE]
+.venv/bin/make_map [out.png] [--recolor] [--earth] [--pins FILE] [--pin-size IN] [--resolution DPI] [--pick FILE]
 ```
 
+`--resolution` only changes the `savefig` dpi (and the pin sprite's pixel size): layout is always measured at
+`frame.DPI` = 200, so a low-res render is the poster scaled down. `examples/` is built at `--resolution 50`.
 A run takes ~7-12 s. Output goes to the current directory. After changing the entry point in `pyproject.toml`, re-run `pip install -e .`.
 
 Natural Earth data (public domain) is downloaded by `data.fetch(name)` on first use into `.cache/` at the repo root, located
