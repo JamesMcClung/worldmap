@@ -25,7 +25,8 @@ from shapely.geometry.polygon import orient
 from shapely.ops import unary_union
 
 from worldmap.data import CACHE, COUNTRIES, CRS, RASTER, fetch, is_labeled, load_countries, load_lakes, load_states, project
-from worldmap.colorspace import darken, fit_gamut, srgb_to_oklch
+from worldmap.coloring import OCEAN, load_or_compute_coloring, make_palette, spot_check
+from worldmap.colorspace import darken, fit_gamut
 
 
 def parse_args(argv=None):
@@ -43,187 +44,9 @@ def parse_args(argv=None):
 
 
 W_IN, DPI = 36, 200  # 7200 px wide
-OCEAN, BORDER, STATE = "#e3f0f7", "#3a3a3a", "#7d7d7d"
+BORDER, STATE = "#3a3a3a", "#7d7d7d"
 
 
-def adjacency(gdf):
-    """Edges between features that share a border (more than a single point)."""
-    from shapely import STRtree
-
-    geoms = list(gdf.geometry)
-    tree = STRtree(geoms)
-    edges = set()
-    for i, g in enumerate(geoms):
-        for j in tree.query(g, predicate="intersects"):
-            if j > i and g.intersection(geoms[j]).length > 0:
-                edges.add((i, int(j)))
-    return edges
-
-
-def add_proximity_edges(gdf, edges, major, k, max_gap=600_000, min_deg=3):
-    """Link countries separated by water so they don't share a colour, without exceeding k colours.
-    Candidate links (real countries within `max_gap` metres of each other) are tried largest-country-first and
-    kept only if the graph stays k-colourable; then each feature is topped up to `min_deg` real-country
-    neighbours via its nearest ones under the same feasibility rule."""
-    import time
-
-    from shapely import STRtree
-
-    t0 = time.time()
-    WORLD = 2 * np.pi * 6378137.0  # width of EPSG:6933 in metres (wrap-around for the antimeridian)
-    g6933 = gdf.to_crs("EPSG:6933").geometry
-    sim = [g.simplify(10_000) for g in g6933]
-    area = np.array([g.area for g in g6933])
-    n = len(sim)
-    tree = STRtree(sim)
-    have = set(edges)
-    # Keep one valid k-colouring and extend the graph edge by edge, repairing the colouring locally when needed.
-    _, col = color_graph(n, have, [1.0] * n, kmin=k, kmax=k)
-    nbr = [set() for _ in range(n)]
-    for i, j in have:
-        nbr[i].add(j)
-        nbr[j].add(i)
-
-    def try_add(e):
-        u, v = e
-        if col[u] != col[v]:
-            ok = True
-        else:  # same colour: recolour one endpoint if some other colour is free
-            ok = False
-            for x in sorted((u, v), key=lambda q: len(nbr[q])):
-                free = [c for c in range(k) if c != col[x] and all(col[y] != c for y in nbr[x])]
-                if free:
-                    col[x] = free[0]
-                    ok = True
-                    break
-        if ok:
-            have.add(e)
-            nbr[u].add(v)
-            nbr[v].add(u)
-        return ok
-
-    def near(i, maxd):
-        out = {}
-        for dx in (0, WORLD, -WORLD):
-            g = affinity.translate(sim[i], dx) if dx else sim[i]
-            for j in tree.query(g, predicate="dwithin", distance=maxd):
-                j = int(j)
-                if j != i and major[j]:
-                    out[j] = min(out.get(j, np.inf), g.distance(sim[j]))
-        return out
-
-    cands = {}
-    for i in range(n):
-        if major[i]:
-            for j, d in near(i, max_gap).items():
-                e = (min(i, j), max(i, j))
-                if e not in have:
-                    cands[e] = d
-    added = 0
-    for e in sorted(cands, key=lambda e: -min(area[e[0]], area[e[1]])):  # biggest countries first
-        if try_add(e):
-            added += 1
-    deg = [0] * n
-    for i, j in have:
-        deg[i] += int(major[j])
-        deg[j] += int(major[i])
-    topped = 0
-    for i in sorted(range(n), key=lambda q: deg[q]):
-        if deg[i] >= min_deg:
-            continue
-        d = near(i, 5_000_000)
-        for j in sorted(d, key=d.get):
-            if deg[i] >= min_deg:
-                break
-            e = (min(i, j), max(i, j))
-            if e in have or not try_add(e):
-                continue
-            deg[i] += 1
-            deg[j] += int(major[i])
-            topped += 1
-    print("proximity edges: %d across water (<= %d km) + %d top-ups to >=%d neighbours (%.1fs)" % (added, max_gap // 1000, topped, min_deg, time.time() - t0))
-    return have
-
-
-def color_graph(n, edges, weights, kmin=1, kmax=8, limit=2_000_000):
-    """Fewest-colour proper colouring (exact DSATUR backtracking); prefers the least-used colour by area."""
-    nbr = [set() for _ in range(n)]
-    for i, j in edges:
-        nbr[i].add(j)
-        nbr[j].add(i)
-    for k in range(kmin, kmax + 1):
-        col = [-1] * n
-        used = [0.0] * k
-        steps = [0]
-
-        def pick():
-            best, key = None, None
-            for v in range(n):
-                if col[v] >= 0:
-                    continue
-                sat = len({col[u] for u in nbr[v] if col[u] >= 0})
-                kk = (sat, len(nbr[v]))
-                if key is None or kk > key:
-                    best, key = v, kk
-            return best
-
-        def solve(left):
-            if left == 0:
-                return True
-            steps[0] += 1
-            if steps[0] > limit:
-                return False
-            v = pick()
-            taken = {col[u] for u in nbr[v] if col[u] >= 0}
-            for c in sorted((c for c in range(k) if c not in taken), key=lambda c: used[c]):
-                col[v] = c
-                used[c] += weights[v]
-                if solve(left - 1):
-                    return True
-                col[v] = -1
-                used[c] -= weights[v]
-            return False
-
-        if solve(n):
-            return k, col
-    raise RuntimeError("no colouring found")
-
-
-RED_HUE, GREEN_HUE = 29.0, 142.0  # OKLCH hues of sRGB red and green
-
-
-def lightness_for_hue(h, l_red, l_green):
-    """Lightness ramps (raised cosine) from darkest at red to lightest at green, so a red/green colour-blind viewer
-    can tell those hues apart by brightness. Other hues interpolate along the two arcs between them."""
-    t = (h - RED_HUE) % 360
-    arc = (GREEN_HUE - RED_HUE) % 360
-    if t <= arc:  # red -> green, rising
-        u = t / arc
-        return l_red + (l_green - l_red) * (1 - np.cos(np.pi * u)) / 2
-    u = (t - arc) / (360 - arc)  # green -> red the long way round, falling
-    return l_green - (l_green - l_red) * (1 - np.cos(np.pi * u)) / 2
-
-
-def make_palette(k, pairs, C=0.115, l_red=0.64, l_green=0.77):
-    """k country hues: the ocean's hue is one of k+1 equispaced hues (pinned); countries get the other k.
-    Each hue gets its own lightness (dark red .. light green). The hues are assigned to colour classes so that
-    classes that end up adjacent are as far apart as possible in OKLab (hue *and* brightness)."""
-    from itertools import permutations
-
-    ocean_h = srgb_to_oklch(to_rgb(OCEAN))[2]
-    hues = [(ocean_h + (i + 1) * 360 / (k + 1)) % 360 for i in range(k)]
-    rgbs, labs = [], []
-    for h in hues:
-        L = lightness_for_hue(h, l_red, l_green)
-        rgb, cc = fit_gamut(L, C, h)  # most chroma the sRGB gamut allows, up to C
-        rgbs.append(rgb)
-        labs.append((L, cc * np.cos(np.radians(h)), cc * np.sin(np.radians(h))))
-    D = np.linalg.norm(np.array(labs)[:, None] - np.array(labs)[None], axis=-1)
-    best = max(permutations(range(k)), key=lambda p: (min(D[p[a], p[b]] for a, b in pairs), sum(D[p[a], p[b]] for a, b in pairs)))
-    print("ocean hue %.0f; country hues/L:" % ocean_h, [(round(hues[best[c]]), round(labs[best[c]][0], 2)) for c in range(k)], "min adjacent OKLab distance %.3f" % min(D[best[a], best[b]] for a, b in pairs))
-    return [rgbs[best[c]] for c in range(k)]
-
-N_COLORS, MAX_GAP, MIN_DEG = 5, 600_000, 3
 
 
 # --- --earth mode: per-region vegetation from the Natural Earth I land-cover raster (NE1_LR_LC, 16200x8100, public domain) ---
@@ -462,36 +285,10 @@ def main(argv=None):
     OUT = args.out or ("worldmap_pins.png" if PINS else "worldmap.png")
     # --earth: colour countries by how they look from space (sandy desert -> light green vegetation) instead of graph colours.
     EARTH = args.earth
-    PALETTE = None  # set below via make_palette()
 
     countries = load_countries()
-    _major = [is_labeled(r) for _, r in countries.iterrows()]
-    # The graph colouring (which countries share a colour class) is cached in coloring.json, so palette tweaks never
-    # reshuffle it and runs skip the border/distance work. It is rebuilt when the inputs change or with --recolor.
-
-    _CACHE = os.path.join(CACHE, "coloring.json")
-    _key = {"n_colors": N_COLORS, "max_gap": MAX_GAP, "min_deg": MIN_DEG, "rule": "top10-exempt-count-balance/v2", "files": {COUNTRIES: os.path.getsize(fetch(COUNTRIES))}}
-    _names = list(countries.NAME_EN)
-    _cached = None
-    if not args.recolor and os.path.exists(_CACHE):
-        try:
-            _d = json.load(open(_CACHE))
-            if _d["key"] == _key and _d["names"] == _names:
-                _cached = _d
-        except (ValueError, KeyError):
-            pass
-    if _cached:
-        _k, _col, _cls_pairs = _cached["k"], _cached["col"], {tuple(p) for p in _cached["pairs"]}
-        print("colouring: loaded from coloring.json")
-    else:
-        _edges = add_proximity_edges(countries, adjacency(countries), _major, N_COLORS, max_gap=MAX_GAP, min_deg=MIN_DEG)
-        # Balance colour usage by country count, but don't count the 10 largest, so their colours aren't penalised.
-        _areas = countries.to_crs("EPSG:6933").geometry.area
-        _weights = [0.0 if r < 10 else 1.0 for r in _areas.rank(ascending=False, method="first")]
-        _k, _col = color_graph(len(countries), _edges, _weights, kmin=N_COLORS)
-        _cls_pairs = {(min(_col[i], _col[j]), max(_col[i], _col[j])) for i, j in _edges}
-        json.dump({"key": _key, "names": _names, "k": _k, "col": _col, "pairs": sorted(_cls_pairs)}, open(_CACHE, "w"))
-        print("colouring: computed and saved to coloring.json")
+    major = [is_labeled(r) for _, r in countries.iterrows()]
+    coloring = load_or_compute_coloring(countries, major, args.recolor)
 
     def draw_pins(ax, pins, sprite):
         """Draw pins given as (lon, lat), northern ones first so southern ones overlap them. Returns the image artists."""
@@ -567,15 +364,12 @@ def main(argv=None):
         print("left-click: add pin; right-click or u: undo; close the window to save to", path)
         plt.show()
 
-    PALETTE = make_palette(_k, _cls_pairs)
-    COLOR_OF = dict(zip(countries.index, _col))
+    PALETTE = make_palette(coloring.k, coloring.class_pairs)
+    COLOR_OF = dict(zip(countries.index, coloring.color_class))
     # Baikonur Cosmodrome: Kazakh territory leased to Russia -> Russia's fill, striped with Kazakhstan's colour.
     _idx = dict(zip(countries.NAME_EN, countries.index))
     COLOR_OF[_idx["Baikonur"]] = COLOR_OF[_idx["Russia"]]
-    _by_name = {n: COLOR_OF[i] for i, n in zip(countries.index, countries.NAME_EN)}
-    _pairs = [("South Korea", "Japan"), ("Russia", "United States of America"), ("Malaysia", "Philippines"), ("Italy", "Greece"), ("France", "United Kingdom"), ("United Kingdom", "Norway"), ("India", "Sri Lanka")]
-    print("same-colour pairs among spot checks:", [p for p in _pairs if _by_name[p[0]] == _by_name[p[1]]])
-    _name_of = dict(zip(countries.index, countries.NAME_EN))
+    print("same-colour pairs among spot checks:", spot_check(countries, [COLOR_OF[i] for i in countries.index]))
 
     def fill_of(i, pt=None):
         """Country fill; in --earth mode, the fill of the country's polygon containing (or nearest) `pt`, else its largest."""
