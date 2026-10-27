@@ -31,8 +31,6 @@ def parse_args(argv=None):
     p = argparse.ArgumentParser(prog="make_map", description=__doc__.split("\n")[0])
     p.add_argument("out", nargs="?", help="output PNG (default worldmap.png, or worldmap_pins.png with --pins)")
     p.add_argument("--recolor", action="store_true", help="rebuild the cached graph colouring")
-    p.add_argument("--ocean", action="store_true",
-                   help="experimental, slower: open water counts as the country and labels grow to fill it")
     p.add_argument("--earth", action="store_true",
                    help="colour by land cover as seen from space (sandy desert -> light green) instead of graph colours")
     p.add_argument("--pins", metavar="FILE", help="draw the pins listed in FILE (one lon,lat per line)")
@@ -514,38 +512,12 @@ def rect(x, y, w, h):
     return shapely.box(x - w / 2, y - h / 2, x + w / 2, y + h / 2)
 
 
-GROW_STEP, GROW_MAX = 1.12, 1.8
-
-
-def fits(L, f, land):
-    """Is there a spot where the label scaled by f sits mostly on its country + ocean (not on other land)?"""
-    w, h = L.w * f, L.h * f
-    gx0, gy0, gx1, gy1 = L.own.bounds
-    us = np.linspace(gx0 - 0.5 * w, gx1 + 0.5 * w, 11)
-    vs = np.linspace(gy0 - 0.8 * h, gy1 + 0.8 * h, 8)
-    cx = np.append(np.repeat(us, len(vs)), L.ax)
-    cy = np.append(np.tile(vs, len(us)), L.ay)
-    boxes = shapely.box(cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2)
-    a_own = shapely.area(shapely.intersection(boxes, L.own))
-    other = np.clip(shapely.area(shapely.intersection(boxes, land)) - a_own, 0, None) / (w * h)
-    cover = shapely.area(shapely.intersection(boxes, L.geom)) / max(L.geom.area, 1e-9)
-    need = min(0.6 * w * h, 0.5 * L.own.area)
-    return bool(((other <= 0.03) & (cover < 0.6) & (a_own >= need)).any())
-
-
 def two_line(text):
     words = text.split(" ")
     if len(words) < 2:
         return None
     k = min(range(1, len(words)), key=lambda j: abs(len(" ".join(words[:j])) - len(" ".join(words[j:]))))
     return " ".join(words[:k]) + "\n" + " ".join(words[k:])
-
-
-def max_growth(L, pt0, land):
-    f = 1.0
-    while f * GROW_STEP <= GROW_MAX and pt0 * f * GROW_STEP <= MAX_PT and fits(L, f * GROW_STEP, land):
-        f *= GROW_STEP
-    return f
 
 
 TARGET = 1.3
@@ -588,8 +560,8 @@ STEPS = [(a * 0.25, b) for a in (-2, -1, 0, 1, 2) for b in (-1, 0, 1) if (a, b) 
 ANG = np.radians(np.arange(0, 360, 15))
 
 
-def main():
-    args = parse_args()
+def main(argv=None):
+    args = parse_args(argv)
     PINS, PICK = args.pins, args.pick  # pin-list files: --pins draws them, --pick adds to one by clicking
     PIN_IN = args.pin_size  # pin diameter in inches on the 36-inch-wide poster
 
@@ -597,8 +569,6 @@ def main():
         matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    # --ocean: experimental ocean-aware label placement (open water counts as the country; labels grow). Slower.
-    OCEAN_AWARE = args.ocean
     OUT = args.out or ("worldmap_pins.png" if PINS else "worldmap.png")
     # --earth: colour countries by how they look from space (sandy desert -> light green vegetation) instead of graph colours.
     EARTH = args.earth
@@ -821,7 +791,7 @@ def main():
             pieces.append((row.NAME_EN, hull.centroid.coords[0], unary_union(sig), hull, max(sum(p.area for p in sig), hull.area)))
         else:
             c = maximum_inscribed_circle(big, tolerance=(maxx - minx) / 5000).coords[0]
-            pieces.append((row.NAME_EN, c, big, big, hull.area if OCEAN_AWARE and len(sig) >= 2 and hull.area <= 1.6 * big.area else big.area))
+            pieces.append((row.NAME_EN, c, big, big, big.area))
         extra = []
         if row.NAME_EN == "France":
             extra = [("French Guiana", p) for p in polys if p.contains(Point(gx, gy))]
@@ -842,74 +812,29 @@ def main():
             L.ax, L.ay = (c[0] - minx) * PPU, (c[1] - miny) * PPU
             L.x, L.y = L.ax, L.ay
             L.geom, L.home = to_px(geom), to_px(home)
-            L.own = to_px(row.geometry)  # the whole country (all its islands/exclaves)
             labels.append(L)
     labels.sort(key=lambda l: -l.area)
     N = len(labels)
     print("island-heavy (hull-centred):", island_names)
 
     # Mode: 'in' = sits on its country; 'out' = would hide its country, so it moves aside with a leader line.
-    # Open ocean counts as part of the country, so a label only has to avoid *other* countries' land.
-    LAND_PX = to_px(unary_union(list(countries_p.geometry))) if OCEAN_AWARE else None
-
-    def set_size(L, pt):
-        L.txt.set_fontsize(pt)
-        ext = L.txt.get_window_extent(rend)
-        L.w, L.h = ext.width * 1.06, ext.height * 1.15
-
     def covers(L):
         return rect(L.x, L.y, L.w, L.h).intersection(L.geom).area / L.geom.area if L.geom.area > 0 else 1.0
 
     for L in labels:
         gb = L.geom.bounds
-        pt0 = L.txt.get_fontsize()
-        # label hides most of its country: shrink it (down to 60% of its size) before resorting to a leader line
-        pt = pt0
-        while OCEAN_AWARE and covers(L) >= 0.6 and pt * 0.92 >= max(MIN_PT, 0.6 * pt0):
-            pt *= 0.92
-            set_size(L, pt)
         L.out = covers(L) >= 0.6 or (L.w > 1.6 * (gb[2] - gb[0]) and (gb[3] - gb[1]) < 6 * L.h)
-        if L.out and pt != pt0:
-            set_size(L, pt0)
-
-    def local_land(L, pad):
-        gx0, gy0, gx1, gy1 = L.own.bounds
-        return LAND_PX.intersection(shapely.box(gx0 - pad, gy0 - pad, gx1 + pad, gy1 + pad))
-
-    for L in (labels if OCEAN_AWARE else []):
-        pt0 = L.txt.get_fontsize()
-        if L.out or pt0 >= 0.8 * MAX_PT:
-            continue
-        one = L.txt.get_text()
-        layouts = [one] + ([two_line(one)] if two_line(one) else [])
-        best = (-1.0, one)
-        for text in layouts:  # try one-line and two-line; keep whichever lets the label grow most
-            L.txt.set_multialignment("center")
-            L.txt.set_linespacing(1.0)
-            L.txt.set_text(text)
-            set_size(L, pt0)
-            land = local_land(L, 3 * max(L.w, L.h) * GROW_MAX)
-            f = max_growth(L, pt0, land)
-            if f > best[0] * 1.001:
-                best = (f, text)
-        L.txt.set_text(best[1])
-        set_size(L, pt0 * best[0])
     OUT_ = np.array([L.out for L in labels])
 
     # Wrap long names onto two lines when a label sitting on its country is wider than the country.
     for L in labels:
         gb = L.geom.bounds
-        if not L.out and " " in L.txt.get_text() and L.w > (1.3 if OCEAN_AWARE else 0.9) * (gb[2] - gb[0]) and (gb[3] - gb[1]) > 2.5 * L.h:
-            words = L.txt.get_text().split(" ")
-            k = min(range(1, len(words)), key=lambda j: abs(len(" ".join(words[:j])) - len(" ".join(words[j:]))))
+        if not L.out and " " in L.txt.get_text() and L.w > 0.9 * (gb[2] - gb[0]) and (gb[3] - gb[1]) > 2.5 * L.h:
             L.txt.set_multialignment("center")
             L.txt.set_linespacing(1.0)
-            L.txt.set_text(" ".join(words[:k]) + "\n" + " ".join(words[k:]))
+            L.txt.set_text(two_line(L.txt.get_text()))
             ext = L.txt.get_window_extent(rend)
             L.w, L.h = ext.width * 1.06, ext.height * 1.15
-
-    for L in (labels if OCEAN_AWARE else []):
-        L.land_local = local_land(L, 10 * max(L.w, L.h))
 
     W_ = np.array([L.w for L in labels])
     H_ = np.array([L.h for L in labels])
@@ -962,14 +887,8 @@ def main():
                 cost += 6 * seg_cross(q0[:, None, :, :] if False else np.broadcast_to(q0, (c, 1, 2)), q1, np.stack([dax, day], -1)[None], np.stack([nx_, ny_], -1)[None]).sum(1)
         else:
             boxes = shapely.box(R[:, 0], R[:, 1], R[:, 2], R[:, 3])
-            if OCEAN_AWARE:
-                a_own = shapely.area(shapely.intersection(boxes, labels[i].own))
-                other = np.clip(shapely.area(shapely.intersection(boxes, labels[i].land_local)) - a_own, 0, None) / (w * h)
-                need = max(min(0.55 * w * h, 0.5 * labels[i].own.area), 1e-6)
-                cost += 20 * other + 14 * (1 - np.clip(a_own / need, 0, 1)) + 0.3 * np.hypot(CX - AX[i], CY - AY[i]) / h
-            else:
-                inside = shapely.area(shapely.intersection(boxes, labels[i].geom)) / (w * h)
-                cost += 20 * (1 - inside) + 0.15 * np.hypot(CX - AX[i], CY - AY[i]) / h
+            inside = shapely.area(shapely.intersection(boxes, labels[i].geom)) / (w * h)
+            cost += 20 * (1 - inside) + 0.15 * np.hypot(CX - AX[i], CY - AY[i]) / h
         cost += 1000 * ~shapely.contains(OUTLINE_PX, shapely.box(R[:, 0], R[:, 1], R[:, 2], R[:, 3]))  # labels stay inside the globe
         return cost
 
@@ -990,8 +909,8 @@ def main():
             if grid:  # coarse scan of the whole country so a label can jump to where it fits
                 gx0, gy0, gx1, gy1 = labels[i].geom.bounds
                 nxg, nyg = 14, 9
-                us = np.linspace(gx0 - 0.25 * w, gx1 + 0.25 * w, nxg) if OCEAN_AWARE else np.linspace(gx0 + w / 2, max(gx1 - w / 2, gx0 + w / 2), nxg)
-                vs = np.linspace(gy0 - 0.5 * h, gy1 + 0.5 * h, nyg) if OCEAN_AWARE else np.linspace(gy0 + h / 2, max(gy1 - h / 2, gy0 + h / 2), nyg)
+                us = np.linspace(gx0 + w / 2, max(gx1 - w / 2, gx0 + w / 2), nxg)
+                vs = np.linspace(gy0 + h / 2, max(gy1 - h / 2, gy0 + h / 2), nyg)
                 for u in us:
                     for v in vs:
                         cx.append(u)
