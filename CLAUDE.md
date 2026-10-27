@@ -7,7 +7,7 @@ large countries, non-overlapping country labels). Output default: `worldmap.png`
 
 ```
 python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'   # deps in pyproject.toml; [dev] adds pytest, mypy
-.venv/bin/make_map [out.png] [--recolor] [--earth] [--pins FILE] [--pin-size IN] [--dpi DPI] [--pick FILE]
+.venv/bin/make_map [out.png] [--recolor] [--earth] [--regions] [--pins FILE] [--pin-size IN] [--dpi DPI] [--pick FILE]
 ```
 
 `--dpi` only changes the `savefig` dpi (and the pin sprite's pixel size): layout is always measured at
@@ -23,7 +23,7 @@ relative to `data.py` (`CACHE`), so the package must be installed editable (`-e`
 
 `.venv/bin/pytest` (~25 s). Unit tests cover the pure pieces (colour maths, `color_graph`, pin parsing and sprite, label geometry,
 CLI errors), and `test_import_has_no_pyplot` guards that importing any module doesn't pick a matplotlib backend (`--pick` needs to).
-`test_regression.py` renders the default, `--earth` and `--pins` maps in a subprocess and compares a SHA-256 of the decoded pixels
+`test_regression.py` renders the default, `--earth`, `--pins` and `--regions` maps in a subprocess and compares a SHA-256 of the decoded pixels
 with `tests/fingerprints.json`:
 - A commit that changes the output on purpose re-records with `UPDATE_REFERENCE=1 .venv/bin/pytest` and commits `fingerprints.json`
   in the same commit, saying in the body what changed visually. Refactors must leave the fingerprints unchanged.
@@ -42,19 +42,22 @@ Importing any module has no side effects; only `cli.main` (after choosing the ba
 | Module | Contents |
 |---|---|
 | `cli.py` | `parse_args`, `graph_fills` (palette + Baikonur), `main()`: the pipeline as a sequence of stage calls |
-| `data.py` | `fetch`, file names, `CRS`, `STATE_COUNTRIES`, lakes filter, `is_labeled`, `load_*`, `project` |
+| `data.py` | `fetch`, file names, `CRS`, `STATE_COUNTRIES`, lakes filter, `is_dependency`, `parent_index`, `is_labeled`, `load_*`, `project` |
 | `frame.py` | `MapFrame` (transformers, globe outline, extent, `px_per_unit`, `to_px`, `px_to_map`), `make_frame`, `DPI`, `POSTER_WIDTH_IN` |
 | `colorspace.py` | OKLab/OKLCH conversions, `fit_gamut`, `darken` |
-| `coloring.py` | `adjacency`, `add_proximity_edges`, `color_graph`, `make_palette`, `load_or_compute_coloring` (cache), `spot_check`, `OCEAN` |
+| `coloring.py` | `merge_into_parents`, `adjacency`, `add_proximity_edges`, `color_graph`, `make_palette`, `load_or_compute_coloring` (cache), `spot_check`, `OCEAN` |
 | `earth.py` | `--earth`: `earth_values` (raster sampling, cache), `earth_fill`, `build_regions`, `fill_at` |
 | `pins.py` | `load_pins`, `PinStyle` (every sprite shading constant), `pin_sprite`, `draw_pins`, `pick_pins` |
 | `labels/label.py` | `Label` dataclass, `make_labels` (anchors, sizes, exclaves), `decide_out_and_wrap` |
+| `labels/regions.py` | `--regions`: `ChildRegion`, `HAND_PICKED` (parent + lon/lat boxes), `child_regions` |
 | `labels/placement.py` | `CostWeights`, `Placement` (per-label arrays), `cost_batch`, `candidates`, `place_labels`, `leader_ends` |
 | `labels/geometry.py` | `rect`, `nearest_point_on_rect`, `segment_hits_rects`, `segments_cross`, `two_line` |
 | `render.py` | `new_figure`, `draw_countries`, `draw_states`, `draw_lakes`, `subtract_lakes`, `draw_labels`, line widths and z-orders |
 
 Pipeline (`cli.main`):
-1. **Colouring** of all country features: border adjacency (`adjacency`), plus across-water links
+1. **Colouring** of all country features. Dependencies (`is_dependency`: `SOVEREIGNT != ADMIN`, not a lease or
+   "Indeterminate"; 46 of them, e.g. Greenland, Puerto Rico, Hong Kong) are first dissolved into their parent
+   (`merge_into_parents`), so they always share its colour. Then border adjacency (`adjacency`), plus across-water links
    (`add_proximity_edges`: major countries within `MAX_GAP` = 600 km, biggest first, kept only while the graph stays 5-colourable;
    then each feature topped up to >= 3 major-country neighbours), then exact DSATUR backtracking (`color_graph`).
    Usage is balanced by country *count*, with the largest countries given weight 0 so their colours aren't penalised
@@ -80,7 +83,8 @@ Pipeline (`cli.main`):
 ## Caching
 
 `coloring.json` (in `.cache/`) stores each country's colour class and which classes touch. It is rebuilt when the
-country file, country list, `N_COLORS`, `MAX_GAP`, `MIN_DEG` or `COLORING_RULE` change, or with `--recolor`.
+country file, country list, the major-country or dependency lists (`cache_key`), `N_COLORS`, `MAX_GAP`, `MIN_DEG` or
+`COLORING_RULE` change, or with `--recolor`.
 Palette tweaks never change which countries share a class. If you change the colouring *logic*, bump `COLORING_RULE`.
 The script prints a spot-check of same-coloured pairs (Korea/Japan, Malaysia/Philippines, Italy/Greece, France/UK,
 UK/Norway, India/Sri Lanka, Russia/US) on every run; it should be empty.
@@ -110,8 +114,12 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
 
 ## Label placement notes
 
-- Which features get labels: `is_labeled()` (sovereign countries and a few extras; small territories and Antarctica excluded).
-  Names shortened in `RENAME`. France's French Guiana and Russia's Kaliningrad get separate labels (`EXCLAVES`).
+- Which features get labels: `is_labeled()` (sovereign countries and a few extras; dependencies, small territories and Antarctica excluded).
+  Names shortened in `RENAME`.
+- `--regions` adds italic `<region> (<parent>)` labels (`labels/regions.py`): every dependency that doesn't touch its
+  parent (so not Hong Kong/Macau), plus `HAND_PICKED` parts of a parent's polygons (Alaska, Kaliningrad, Tasmania...),
+  selected by testing each polygon's representative point against lon/lat boxes. Child labels are anchored on and sized
+  by their largest polygon (a hull-based size makes spread-out archipelagos huge).
 - Anchor = centre of the largest inscribed circle of the biggest polygon; island-heavy countries (several significant
   polygons, largest < 65% of total, plus `FORCE_ISLAND`) use the convex-hull centroid and a hull-based size.
 - Font size scales with sqrt(area), clamped to 6-30 pt. A label covering >= 60% of its country (or much wider than a
