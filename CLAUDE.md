@@ -30,6 +30,9 @@ Importing the module has no side effects.
    Usage is balanced by country *count*, with the 10 largest countries given weight 0 so their colours aren't penalised.
 3. **Drawing**: full Robinson globe outline (poles included; the canvas is its bounding box plus a small pad; Antarctica is drawn in
    hardcoded white with no label), outline stroked, figure background transparent, country fills, state lines for `STATE_COUNTRIES`, Baikonur special case.
+   The country polygons cover lakes, so every lake in `ne_10m_lakes.zip` (a `physical/` NE file) of >= `LAKE_MIN_KM2`,
+   minus the usually-dry `DRY_LAKES`, is painted back in `OCEAN` at zorder 2.5 (above the state lines that cross them;
+   `holed_patches` keeps islands). The lakes are then subtracted from `countries_p`, so label placement treats them as water.
 4. **Labels**: anchor points, font size, in/out mode, wrapping, then a cost-minimising placement
    (coordinate descent over candidate positions) with leader lines for labels that would hide their country.
 
