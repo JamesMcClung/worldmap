@@ -1,6 +1,7 @@
 .venv/
-data/
+.cache/
 __pycache__/
+*.egg-info/
 
 *.json
 *.png
