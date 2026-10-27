@@ -1,3 +1,3 @@
-from worldmap.make_map import main
+from worldmap.cli import main
 
 main()

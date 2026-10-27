@@ -28,4 +28,4 @@ dev = ["pytest>=8", "mypy>=1.10"]
 testpaths = ["tests"]
 
 [project.scripts]
-make_map = "worldmap.make_map:main"
+make_map = "worldmap.cli:main"

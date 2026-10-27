@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from worldmap.make_map import main
+from worldmap.cli import main
 from worldmap.pins import PinStyle, load_pins, pin_sprite
 
 
