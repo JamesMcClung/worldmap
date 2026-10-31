@@ -20,8 +20,12 @@ extra labels. It does not have to be 100% clear: small islands may be too small 
   Senkakus, Rockall, British Indian Ocean Territory, Tromelin, Bajo Nuevo, Serranilla, Sapodilla Cayes, Scarborough
   Shoal... Dashed borders still apply.
 - **Stripe colours** are the political fills of those countries (`graph_fills`), so they match the countries around them.
-  *My call:* if the two countries of a 2-country dispute share a colour class (today only Wake Island: US and Marshall
-  Islands), it is filled plain grey too, since its stripes would be invisible.
+- **The two countries of every 2-country dispute always get different colours.** The graph colouring only separates
+  neighbours, so today the US and the Marshall Islands (Wake Island) share a colour class. Add an edge between the two
+  countries of each 2-country dispute to the colouring graph (alongside `adjacency` and the proximity edges), and bump
+  `COLORING_RULE`. The edges are added whether or not `--disputed` is given, so colours never depend on the flag; this
+  may shift some colours on the default map (user agreed), with the spot-check still empty. Re-record the
+  fingerprints in that commit.
 - **Stripes are drawn under the border lines.** Today Baikonur's hatching is drawn over its border. Fix that in the
   default map too (this changes the default, earth and other fingerprints: re-record them in that commit).
 - **Dashed borders:** a border segment between a disputed area and any country involved in it (the one running it
@@ -46,7 +50,7 @@ extra labels. It does not have to be 100% clear: small islands may be too small 
 - Not a statement of who is right. Use Natural Earth's notes as they are; the hand-written table (below) only fills in
   entries Natural Earth leaves blank.
 - No labels for disputed areas that don't claim independence: the colours and dashes do that job.
-- No change to the graph colouring or `coloring.json`: the flag must not change which colour a country gets.
+- The flag must not change which colour a country gets (the dispute edges above are always in the graph).
 - Anti-goal: stripes that cover border lines, or stripes of visibly unequal width.
 
 ## Data
@@ -111,9 +115,10 @@ Order, bottom to top: country fills → stripes → state lines → lakes → bo
 - Stripe angle, width (fixed in poster inches so every area matches), and dash pattern are the builder's choice;
   show crops for review. Areas narrower than one stripe set may show only some colours; acceptable.
 - Disputed polygons sit on top of the country polygons (Kashmir lies inside India's and Pakistan's polygons, Crimea
-  inside Russia's). Stripe the disputed polygon as it is, with lakes still painted over it. *My call:* no clipping to
-  the countries' land, because some disputed islands (Sapodilla Cayes, Doumeira) have no country polygon under them
-  and would vanish. (Natural Earth names the Spratlys row "Wake Island"; match on `ADMIN`/`SOVEREIGNT`, not `NAME_EN`.)
+  inside Russia's). Stripe each disputed polygon's own outline (all of them are land: coastlines or land between
+  borders, never sea), with lakes still painted over it. *My call:* don't trim them to the countries file's land, because
+  a few small islands (Sapodilla Cayes, Doumeira, islets of the Senkakus and Chafarinas; under 10 km² in all) exist only
+  in the disputed-areas file and would vanish. (Natural Earth names the Spratlys row "Wake Island"; match on `ADMIN`/`SOVEREIGNT`, not `NAME_EN`.)
 - Label placement treats a striped area like the country under it. Label text colour for Taiwan and friends: their own
   darkened fill, as today.
 
