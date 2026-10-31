@@ -39,8 +39,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(prog="make_map", description=(__doc__ or "").split("\n")[0])
     p.add_argument("out", nargs="?", help=f"output PNG (default {DEFAULT_OUT}, or {DEFAULT_PINS_OUT} with --pins)")
     p.add_argument("--recolor", action="store_true", help="rebuild the cached graph colouring")
-    p.add_argument("--earth", action="store_true",
-                   help="colour by land cover as seen from space (sandy desert -> light green) instead of graph colours")
+    p.add_argument("--color", choices=["colorblind", "earth"], default="colorblind",
+                   help="how countries are filled: colorblind = distinct colours that red/green colour-blind viewers "
+                        "can tell apart (default); earth = land cover as seen from space (sandy desert -> light green)")
     p.add_argument("--regions", action="store_true",
                    help="label dependencies and outlying regions (Alaska, Greenland, Kaliningrad...) with their parent country")
     p.add_argument("--pins", metavar="FILE", help="draw the pins listed in FILE (one lon,lat per line)")
@@ -78,10 +79,10 @@ def main(argv: list[str] | None = None) -> None:
     fills = graph_fills(countries, load_or_compute_coloring(countries, major, args.recolor, parent_index(countries)))
     states, lakes = load_states(), load_lakes()
     countries_p, states_p, lakes_p = project(countries), project(states), project(lakes)
-    regions = build_regions(countries_p, countries) if args.earth else None
+    regions = build_regions(countries_p, countries) if args.color == "earth" else None
 
     def fill_of(i: int, pt: Point | None = None) -> Fill:
-        """Country i's fill; in --earth mode, that of its polygon containing (or nearest) `pt`, else its largest."""
+        """Country i's fill; with --color earth, that of its polygon containing (or nearest) `pt`, else its largest."""
         return fills[i] if regions is None else fill_at(regions, i, pt)
 
     frame = make_frame()

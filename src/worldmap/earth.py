@@ -1,4 +1,4 @@
-"""--earth mode: per-region vegetation colours from the Natural Earth I land-cover raster (NE1_LR_LC, 16200x8100,
+"""--color earth: per-region vegetation colours from the Natural Earth I land-cover raster (NE1_LR_LC, 16200x8100,
 public domain).
 
 Each polygon (mainland, Alaska, French Guiana, Kaliningrad, islands...) is coloured independently by the mean (G - R)
