@@ -4,7 +4,7 @@ from shapely.geometry import Polygon, box
 
 from worldmap.colorbars import BAR_GAP_IN, bar_region, draw_colorbar
 from worldmap.frame import DPI, make_frame
-from worldmap.topographic import LAND_RAMP
+from worldmap.topographic import LAND, LAND_CONTOURS, SEA, SEA_CONTOURS, Contours, Scale
 
 
 @pytest.mark.parametrize("corner", ["br", "tr", "bl"])
@@ -22,13 +22,34 @@ def test_bar_region_corners() -> None:
     assert bar_region(f, "tr").centroid.y > 0 and bar_region(f, "bl").centroid.x < 0
 
 
-def test_labels_have_halo_and_plus() -> None:
+def bar_texts_and_lines(corner: str, scale: Scale, title: str, contours: Contours) -> tuple[list[str], list]:
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+    from matplotlib.collections import LineCollection
 
     fig, ax = plt.subplots()
-    draw_colorbar(ax, make_frame(), "br", LAND_RAMP, 6000, "Height")
+    draw_colorbar(ax, make_frame(), corner, scale, title, contours)  # type: ignore[arg-type]
     texts = [t.get_text() for t in ax.texts]
-    plt.close(fig)
-    assert texts[0] == "sea level" and "6,000 m+" in texts and "Height" in texts
     assert all(t.get_path_effects() for t in ax.texts)
+    lines = [c for c in ax.collections if isinstance(c, LineCollection)]
+    plt.close(fig)
+    return texts, lines
+
+
+def test_land_bar_labels_are_signed() -> None:
+    texts, _ = bar_texts_and_lines("br", LAND, "Height", LAND_CONTOURS)
+    assert texts[0] == "≤ −500 m" and texts[1] == "sea level" and "1,000 m" in texts
+    assert "≥ 6,000 m" in texts and "Height" in texts
+
+
+def test_sea_bar_labels_are_signed() -> None:
+    texts, _ = bar_texts_and_lines("tr", SEA, "Depth", SEA_CONTOURS)
+    assert texts[0] == "≥ 500 m" and texts[1] == "sea level" and "−1,000 m" in texts and "≤ −8,000 m" in texts
+
+
+def test_bars_show_contour_lines_and_sea_level() -> None:
+    _, lines = bar_texts_and_lines("br", LAND, "Height", LAND_CONTOURS)
+    segments = [seg for c in lines for seg in c.get_segments()]
+    ys = sorted({round(float(seg[0][1])) for seg in segments if abs(seg[0][1] - seg[-1][1]) < 1e-6})
+    assert len(ys) == 6  # sea level, then 1,000 ... 5,000 m (6,000 m is the tip)
+    assert all(abs(seg[0][1] - seg[-1][1]) < 1e-6 for seg in segments)  # horizontal

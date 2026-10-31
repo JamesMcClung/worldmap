@@ -102,6 +102,7 @@
       "glaciers": "1644604",
       "ice_shelves": "163651",
       "lakes": "2349685",
+      "land": "3269070",
       "matplotlib": "3.11.2",
       "numpy": "2.5.4",
       "pillow": "12.3.0",
@@ -111,7 +112,7 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "999362252df2e95a26ebe60f1f9530c485d613ca69728ffba3fe0188b6fb489c"
+    "sha256": "ff1a0266320450ceb35fe50c3a9bdb194b23dacbf53d32933853d9212c877b0a"
   },
   "topographic_ocean": {
     "env": {
@@ -125,6 +126,7 @@
       "glaciers": "1644604",
       "ice_shelves": "163651",
       "lakes": "2349685",
+      "land": "3269070",
       "matplotlib": "3.11.2",
       "numpy": "2.5.4",
       "pillow": "12.3.0",
@@ -134,6 +136,6 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "ca99e78716c383dde2d5a72f93500e5951ee8deaa67825ddb42c3509d01decf1"
+    "sha256": "a3e1e8053dbafaa11e82d1de01ea28c79b99a7ecf35f1d76d59b7d875a73816f"
   }
 }

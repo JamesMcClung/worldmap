@@ -79,5 +79,5 @@ def test_topographic_outside_is_transparent(tmp_path: Path) -> None:
 
 
 def test_environment_includes_topographic_data() -> None:
-    assert {"etopo", "glaciers", "ice_shelves", "rasterio", "gdal"} <= environment("topographic_ocean").keys()
+    assert {"etopo", "glaciers", "ice_shelves", "land", "rasterio", "gdal"} <= environment("topographic_ocean").keys()
     assert "etopo" not in environment("default")

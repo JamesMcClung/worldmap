@@ -3,9 +3,10 @@ import pytest
 from matplotlib.colors import to_rgb
 
 from worldmap.coloring import OCEAN
-from worldmap.data import load_ice, load_lakes, project
+from worldmap.data import load_ice, load_lakes, load_land, project
 from worldmap.frame import make_frame
-from worldmap.topographic import Grid, PosterGrid, colorize, draw_topography, elevation_grid, ice_mask, poster_grid, relief, sample, shade
+from worldmap.topographic import (LAND_BELOW_SEA, Grid, PosterGrid, coast_lines, colorize, draw_topography, elevation_grid,
+                                  polygon_mask, poster_grid, relief, sample, shade)
 
 
 @pytest.fixture(scope="module")
@@ -40,31 +41,51 @@ def test_netherlands_value_recorded(grid: Grid) -> None:
     assert -10 < v < 10
 
 
+def no(shape: tuple[int, ...]) -> np.ndarray:
+    return np.zeros(shape, bool)
+
+
 def test_sea_is_flat_ocean_without_ocean_flag() -> None:
-    rgb = colorize(np.array([[-5000.0, -1.0]]), np.zeros((1, 2), bool), ocean=False)
-    assert np.allclose(rgb, to_rgb(OCEAN), atol=1e-3)
+    rgb = colorize(np.array([[-5000.0, -1.0, 300.0]]), no((1, 3)), no((1, 3)), ocean=False)
+    assert np.allclose(rgb, to_rgb(OCEAN), atol=1e-3)  # water above 0 m (coastal averages) too
 
 
 def test_sea_darkens_with_depth() -> None:
-    rgb = colorize(np.array([[-1.0, -4000.0, -20000.0]]), np.zeros((1, 3), bool), ocean=True)
+    rgb = colorize(np.array([[-1.0, -4000.0, -20000.0]]), no((1, 3)), no((1, 3)), ocean=True)
     assert np.allclose(rgb[0, 0], to_rgb(OCEAN), atol=0.01) and rgb[0, 1].sum() > rgb[0, 2].sum()
-    assert np.allclose(rgb[0, 2], to_rgb("#2f5f8c"), atol=1e-3)  # below 8,000 m: the bottom colour
+    assert np.allclose(rgb[0, 2], to_rgb("#2f5f8c"), atol=1e-3)  # below -8,000 m: the bottom colour
 
 
-def test_land_ramp_ends() -> None:
-    rgb = colorize(np.array([[1.0, 9000.0]]), np.zeros((1, 2), bool), ocean=False)
-    assert np.allclose(rgb[0, 0], to_rgb("#5f9e5a"), atol=0.01) and np.allclose(rgb[0, 1], 1.0, atol=1e-3)
+def test_water_above_sea_level_is_lighter_than_ocean() -> None:
+    rgb = colorize(np.array([[0.0, 250.0, 900.0]]), no((1, 3)), no((1, 3)), ocean=True)
+    assert rgb[0, 0].sum() < rgb[0, 1].sum() < rgb[0, 2].sum()
+
+
+def test_land_scale_ends() -> None:
+    land = np.ones((1, 3), bool)
+    rgb = colorize(np.array([[1.0, 9000.0, -2000.0]]), land, no((1, 3)), ocean=False)
+    assert np.allclose(rgb[0, 0], to_rgb("#5f9e5a"), atol=0.02) and np.allclose(rgb[0, 1], 1.0, atol=1e-3)
+    assert np.allclose(rgb[0, 2], to_rgb(LAND_BELOW_SEA), atol=1e-3)  # below -500 m: the bottom colour
+
+
+def test_land_below_sea_level_is_land() -> None:
+    """The Dead Sea shore, Qattara, Death Valley: the land mask decides, not the sign of the height."""
+    land = np.ones((1, 2), bool)
+    rgb = colorize(np.array([[-400.0, -100.0]]), land, no((1, 2)), ocean=True)
+    sea = colorize(np.array([[-400.0, -100.0]]), no((1, 2)), no((1, 2)), ocean=True)
+    assert not np.allclose(rgb, sea, atol=0.05)
+    assert (rgb[..., 1] > rgb[..., 2]).all()  # green, not blue
 
 
 def test_ice_wins_over_sea_and_land() -> None:
-    rgb = colorize(np.array([[-300.0, 3000.0]]), np.ones((1, 2), bool), ocean=True)
+    rgb = colorize(np.array([[-300.0, 3000.0]]), np.array([[False, True]]), np.ones((1, 2), bool), ocean=True)
     assert (rgb > 0.75).all()  # white to pale blue, never sea blue or brown
 
 
 def test_flat_sea_unshaded_without_ocean() -> None:
     z = np.random.default_rng(0).normal(-3000, 500, (20, 20))
-    rgb = colorize(z, np.zeros(z.shape, bool), False)
-    assert np.array_equal(shade(rgb.copy(), z, 5000.0, z <= 0, False), rgb)
+    rgb = colorize(z, no(z.shape), no(z.shape), False)
+    assert np.array_equal(shade(rgb.copy(), z, 5000.0, np.ones(z.shape, bool), False), rgb)
 
 
 @pytest.fixture(scope="module")
@@ -84,7 +105,7 @@ def test_inside_mask(pg: PosterGrid) -> None:
 
 
 def test_ice_mask(pg: PosterGrid) -> None:
-    ice = ice_mask(project(load_ice()), make_frame(), pg)
+    ice = polygon_mask(project(load_ice()), make_frame(), pg)
     assert ice[px(pg, -40, 75)] and ice[px(pg, 0, -85)]  # Greenland, Antarctica
     assert ice[px(pg, -170, -80)]  # Ross Ice Shelf: ice over sea
     assert not ice[px(pg, 10, 25)] and not ice[px(pg, -30, 0)]  # Sahara, Atlantic
@@ -92,8 +113,58 @@ def test_ice_mask(pg: PosterGrid) -> None:
 
 def test_islands_in_ice_shelves_are_ice(pg: PosterGrid) -> None:
     """Natural Earth cuts the islands out of the ice shelves, but they are ice-covered too (Roosevelt, Berkner)."""
-    ice = ice_mask(project(load_ice()), make_frame(), pg)
+    ice = polygon_mask(project(load_ice()), make_frame(), pg)
     assert ice[px(pg, -162.22, -79.28)] and ice[px(pg, -60.55, -80.31)]
+
+
+def test_land_mask(pg: PosterGrid) -> None:
+    land = polygon_mask(project(load_land()), make_frame(), pg)
+    assert land[px(pg, 27.5, 29.8)] and land[px(pg, -116.85, 36.25)] and land[px(pg, 5.5, 52.5)]  # Qattara, Death Valley, polders
+    assert not land[px(pg, 51, 42)] and not land[px(pg, -30, 0)]  # Caspian, Atlantic
+
+
+def test_polygon_mask_covers_exactly_its_pixels(pg: PosterGrid) -> None:
+    """Pixel j's centre is at j + 0.5 pixel widths: a polygon over pixels 10..19 fills those, not 10..20."""
+    import geopandas as gpd
+    from shapely.geometry import box
+
+    f = make_frame()
+    pw, ph = f.width / len(pg.x), f.height / len(pg.y)
+    poly = box(f.xmin + 10 * pw, f.ymax - 20 * ph, f.xmin + 20 * pw, f.ymax - 10 * ph)
+    mask = polygon_mask(gpd.GeoDataFrame(geometry=[poly]), f, pg)
+    rows, cols = np.nonzero(mask)
+    assert (rows.min(), rows.max(), cols.min(), cols.max()) == (10, 19, 10, 19)
+
+
+@pytest.fixture(scope="module")
+def coast(pg: PosterGrid):
+    """The coastline at 50 dpi, as one geometry in map units."""
+    from shapely.geometry import MultiLineString
+
+    f = make_frame()
+    solid = (polygon_mask(project(load_land()), f, pg) | polygon_mask(project(load_ice()), f, pg)) & pg.inside
+    return MultiLineString([line for line in coast_lines(solid, pg) if len(line) > 1])
+
+
+def test_coastline_follows_land_and_ice(coast) -> None:
+    from shapely.geometry import Point
+
+    f = make_frame()
+    at = lambda lon, lat: Point(f.to_map.transform(lon, lat))
+    assert coast.distance(at(27.5, 29.8)) > 100_000  # Qattara is inland
+    assert coast.distance(at(-175, -81)) > 100_000  # mid Ross Ice Shelf: no grounding line drawn through the ice
+    assert coast.distance(at(-175, -78.2)) < 60_000  # the Ross Ice Shelf front is coast
+    assert coast.distance(at(12.25, 41.73)) < 25_000  # the Italian coast at Ostia (50 dpi: ~22 km pixels)
+
+
+def test_coast_lines_trace_the_mask_edge(pg: PosterGrid) -> None:
+    solid = np.zeros(pg.inside.shape, bool)
+    solid[100:120, 300:340] = True
+    (line,) = coast_lines(solid, pg)
+    cols = (line[:, 0] - pg.x[0]) / (pg.x[1] - pg.x[0])
+    rows = (pg.y[0] - line[:, 1]) / (pg.y[0] - pg.y[1])
+    assert abs(cols.min() - 299.5) < 0.6 and abs(cols.max() - 339.5) < 0.6  # half-way between in and out pixels
+    assert abs(rows.min() - 99.5) < 0.6 and abs(rows.max() - 119.5) < 0.6
 
 
 def test_relief_lights_north_west_slopes() -> None:
@@ -116,9 +187,9 @@ def peak_bytes(fn) -> int:
 def test_colorize_memory_stays_near_its_output() -> None:
     """At 200 dpi the grid is 7200 x 3693: full float64 RGBA copies per ramp cost GBs (review finding)."""
     z = np.random.default_rng(0).normal(0, 3000, (1000, 1000)).astype(np.float32)
-    ice = z > 4000
+    ice, land = z > 4000, z > 0
     out_bytes = z.size * 3 * 4  # float32 RGB
-    assert peak_bytes(lambda: colorize(z, ice, True)) < 2.5 * out_bytes
+    assert peak_bytes(lambda: colorize(z, land, ice, True)) < 2.5 * out_bytes
 
 
 def test_sample_memory_stays_near_its_output(grid: Grid) -> None:
@@ -129,7 +200,7 @@ def test_sample_memory_stays_near_its_output(grid: Grid) -> None:
 
 def test_shade_memory_stays_near_its_input() -> None:
     z = np.random.default_rng(0).normal(0, 3000, (1000, 1000)).astype(np.float32)
-    rgb = colorize(z, np.zeros(z.shape, bool), True)
+    rgb = colorize(z, z > 0, np.zeros(z.shape, bool), True)
     assert peak_bytes(lambda: shade(rgb, z, 5000.0, z <= 0, True)) < 2.5 * rgb.nbytes
 
 

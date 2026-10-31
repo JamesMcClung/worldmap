@@ -69,10 +69,11 @@ def topographic_environment() -> dict[str, str]:
     """The elevation and ice files and the raster library, which only --type topographic uses."""
     import rasterio
 
-    from worldmap.data import ETOPO, GLACIERS, ICE_SHELVES, fetch
+    from worldmap.data import ETOPO, GLACIERS, ICE_SHELVES, LAND_OUTLINE, fetch
 
     return {"etopo": str(os.path.getsize(fetch(ETOPO))), "glaciers": str(os.path.getsize(fetch(GLACIERS))),
-            "ice_shelves": str(os.path.getsize(fetch(ICE_SHELVES))), "rasterio": rasterio.__version__, "gdal": rasterio.__gdal_version__}
+            "ice_shelves": str(os.path.getsize(fetch(ICE_SHELVES))), "land": str(os.path.getsize(fetch(LAND_OUTLINE))),
+            "rasterio": rasterio.__version__, "gdal": rasterio.__gdal_version__}
 
 
 def check_fingerprint(mode: str, png: Path, store: Path = FINGERPRINTS) -> None:

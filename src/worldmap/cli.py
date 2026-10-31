@@ -26,7 +26,7 @@ from worldmap.labels.placement import place_labels
 from worldmap.labels.regions import child_regions
 from worldmap.pins import draw_pins, load_pins, pick_pins, pin_sprite
 from worldmap.render import draw_borders, draw_countries, draw_labels, draw_lakes, draw_states, draw_stripes, new_figure, subtract_lakes
-from worldmap.topographic import ICE_RAMP, ICE_TOP, LAND_RAMP, LAND_TOP, SEA_BOTTOM, SEA_RAMP, draw_topography
+from worldmap.topographic import ICE, ICE_CONTOURS, LAND, LAND_CONTOURS, SEA, SEA_CONTOURS, draw_topography
 
 
 DEFAULT_OUT, DEFAULT_PINS_OUT = "worldmap.png", "worldmap_pins.png"
@@ -164,10 +164,10 @@ def draw_topographic(args: argparse.Namespace, out: str, frame: MapFrame) -> Non
     start = time.perf_counter()
     fig, ax = new_figure(frame)
     draw_topography(ax, frame, args.dpi, args.ocean)
-    draw_colorbar(ax, frame, "br", LAND_RAMP, LAND_TOP, "Height")
+    draw_colorbar(ax, frame, "br", LAND, "Height", LAND_CONTOURS)
     if args.ocean:
-        draw_colorbar(ax, frame, "tr", SEA_RAMP, SEA_BOTTOM, "Depth")
-    draw_colorbar(ax, frame, "bl", ICE_RAMP, ICE_TOP, "Ice")
+        draw_colorbar(ax, frame, "tr", SEA, "Depth", SEA_CONTOURS)
+    draw_colorbar(ax, frame, "bl", ICE, "Ice", ICE_CONTOURS)
     ax.set_xlim(frame.xmin, frame.xmax)
     ax.set_ylim(frame.ymin, frame.ymax)
     add_pins(ax, frame, args)
