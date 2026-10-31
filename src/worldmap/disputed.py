@@ -1,12 +1,21 @@
 """--disputed: areas claimed by more than one country (Kashmir, Crimea, Taiwan...), from Natural Earth's
 disputed-areas file. Each area records every country involved: the one running it plus its claimants."""
 
+import math
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import NamedTuple
 
 import geopandas as gpd
+import shapely
+from shapely.geometry import Polygon
 from shapely.geometry.base import BaseGeometry
+
+from worldmap.earth import Fill
+
+DISPUTED_GREY = "#cfcfcf"  # areas with 3+ countries, and the second stripe of breakaway areas
+STRIPE_WIDTH_IN = 0.05  # each stripe's width across, in inches on the 36 in poster
 
 # Names used in NOTE_BRK -> countries-file NAME_EN.
 ALIASES = {"China": "People's Republic of China", "U.S.A.": "United States of America", "U.S.A": "United States of America",
@@ -100,3 +109,34 @@ def load_disputes(countries: gpd.GeoDataFrame, disputed: gpd.GeoDataFrame) -> li
 def dispute_edges(disputes: list[Dispute]) -> set[tuple[int, int]]:
     """Country pairs of every 2-country dispute, which the colouring keeps apart so their stripes differ."""
     return {(min(d.countries), max(d.countries)) for d in disputes if not d.breakaway and len(d.countries) == 2}
+
+
+def dispute_fills(d: Dispute, fill: Callable[[int], Fill]) -> list[Fill]:
+    """The stripe colours of `d`, given each country's fill: a breakaway alternates its parent's colour with grey;
+    3+ countries would be too many colours, so the area is plain grey."""
+    if d.breakaway:
+        return [fill(d.countries[0]), DISPUTED_GREY]
+    if len(d.countries) > 2:
+        return [DISPUTED_GREY]
+    return [fill(c) for c in d.countries]
+
+
+def stripe_parts(geom: BaseGeometry, n: int, width: float) -> list[BaseGeometry]:
+    """`geom` cut into `n` sets of 45-degree stripes `width` across: part i holds the stripes k with k % n == i,
+    stripe k being k*width <= (x + y)/sqrt(2) < (k+1)*width. Counted from the origin, so neighbouring areas line up."""
+    if n == 1:
+        return [geom]
+    x0, y0, x1, y1 = geom.bounds
+    corners = [(x0, y0), (x0, y1), (x1, y0), (x1, y1)]
+    us = [(x + y) / math.sqrt(2) for x, y in corners]
+    vs = [(y - x) / math.sqrt(2) for x, y in corners]
+    v0, v1 = min(vs) - width, max(vs) + width
+
+    def band(k: int) -> Polygon:
+        a, b = k * width, (k + 1) * width
+        return Polygon([((u - v) / math.sqrt(2), (u + v) / math.sqrt(2)) for u, v in [(a, v0), (b, v0), (b, v1), (a, v1)]])
+
+    bands: list[list[Polygon]] = [[] for _ in range(n)]
+    for k in range(math.floor(min(us) / width), math.floor(max(us) / width) + 1):
+        bands[k % n].append(band(k))
+    return [geom.intersection(shapely.union_all(b)) if b else Polygon() for b in bands]

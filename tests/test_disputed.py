@@ -1,9 +1,9 @@
 import geopandas as gpd
 import pytest
-from shapely.geometry import Point
+from shapely.geometry import Point, box
 
 from worldmap.data import load_countries, load_disputed
-from worldmap.disputed import Dispute, Note, dispute_edges, load_disputes, parse_note
+from worldmap.disputed import DISPUTED_GREY, Dispute, Note, dispute_edges, dispute_fills, load_disputes, parse_note, stripe_parts
 
 
 @pytest.fixture(scope="module")
@@ -71,3 +71,30 @@ def test_dispute_edges(disputes: list[Dispute], countries: gpd.GeoDataFrame) -> 
     assert ("Marshall Islands", "United States of America") in names and ("India", "Pakistan") in names
     assert not any("Georgia" in p for p in names)  # breakaways add no edge
     assert not any("Seychelles" in p for p in names)  # 3+ countries add none either
+
+
+def test_stripe_parts_cover_and_balance() -> None:
+    sq = box(0, 0, 100, 100)
+    parts = stripe_parts(sq, 3, 2.0)
+    assert len(parts) == 3
+    assert abs(sum(p.area for p in parts) - sq.area) < 1e-6
+    assert all(abs(p.area - sq.area / 3) < sq.area * 0.02 for p in parts)
+    assert parts[0].intersection(parts[1]).area < 1e-9
+
+
+def test_stripe_parts_line_up_across_shapes() -> None:
+    a, b = box(0, 0, 10, 10), box(10, 0, 20, 10)
+    joined = stripe_parts(a, 2, 1.0)[0].union(stripe_parts(b, 2, 1.0)[0])
+    assert joined.symmetric_difference(stripe_parts(a.union(b), 2, 1.0)[0]).area < 1e-9
+
+
+def test_stripe_parts_one_colour_is_the_whole_shape() -> None:
+    sq = box(0, 0, 5, 5)
+    assert stripe_parts(sq, 1, 1.0)[0].symmetric_difference(sq).area < 1e-9
+
+
+def test_dispute_fills() -> None:
+    fill = {0: "#ff0000", 1: "#00ff00", 2: "#0000ff"}.__getitem__
+    assert dispute_fills(Dispute("A", "A", [0, 1], False, None, Point(0, 0)), fill) == ["#ff0000", "#00ff00"]
+    assert dispute_fills(Dispute("A", "A", [0, 1, 2], False, None, Point(0, 0)), fill) == [DISPUTED_GREY]
+    assert dispute_fills(Dispute("A", "A", [2], True, "A", Point(0, 0)), fill) == ["#0000ff", DISPUTED_GREY]
