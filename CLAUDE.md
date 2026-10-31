@@ -120,6 +120,7 @@ Today: 72 two-country areas, 11 with 3+ countries, 6 breakaways (self-governing,
   (`BORDER_DASH`) where it meets a country involved (the one running it counts, so Kashmir's edge inside India is a new
   dashed line) or another disputed area sharing a country, within `SNAP_M`; every other ring of the country polygons stays solid.
 - Z-order: fills 1, stripes / Baikonur hatch 1.5, Baikonur's edge 1.6, borders 1.7, states 2, lakes 2.5 (borders must stay below the lakes).
+  With `--disputed`, state lines move to 1.65, under the borders, or they hide dashes that follow a state line (Kashmir/Himachal).
 - Labels (only with `countries` in `--label`): self-governing areas get upright labels via `make_labels(relabel=, extra=)`;
   `LABEL_TEXT` shortens official names (Northern Cyprus, Donetsk, Luhansk). Other disputed areas get none.
 - `--color earth`: no stripes, but dashed borders and labels. Natural Earth's data is used as it is (it predates 2022-23 changes).
