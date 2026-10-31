@@ -167,3 +167,18 @@ def test_disputed_labels(countries: gpd.GeoDataFrame, disputes_projected: list[D
 
 def test_disputed_labels_need_countries(countries: gpd.GeoDataFrame, disputes_projected: list[Dispute]) -> None:
     assert disputed_labels(countries, disputes_projected, False) == []
+
+
+def test_state_lines_below_dashed_borders() -> None:
+    """With --disputed, state lines are drawn under the borders, or they hide dashes that follow a state line
+    (Kashmir's edge with Himachal Pradesh)."""
+    from shapely.geometry import LineString
+
+    from worldmap.render import Z_BORDERS, Z_STRIPES, draw_states
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    fig, ax = plt.subplots()
+    draw_states(ax, gpd.GeoDataFrame(geometry=[LineString([(0, 0), (1, 1)])]), disputed=True)
+    (z,) = {c.get_zorder() for c in ax.collections}
+    plt.close(fig)
+    assert Z_STRIPES < z < Z_BORDERS

@@ -34,6 +34,7 @@ LEADER_DOT_SIZE = 1.3
 BORDER_DASH = (0, (2.5, 1.5))  # --disputed: borders between a disputed area and the countries involved
 # Drawing order, bottom to top (pins are at 10, labels at 6). Borders sit below the lakes so they don't cross them.
 Z_OCEAN, Z_COUNTRY, Z_BAIKONUR, Z_STRIPES, Z_BAIKONUR_EDGE, Z_BORDERS, Z_STATES, Z_LAKES, Z_GLOBE, Z_LEADERS = 0, 1, 1.5, 1.5, 1.6, 1.7, 2, 2.5, 3, 4
+Z_STATES_UNDER_BORDERS = 1.65  # --disputed: state lines above the stripes, below the (dashed) borders
 
 
 def patches(geom: BaseGeometry) -> Iterator[MplPolygon]:
@@ -111,8 +112,10 @@ def draw_borders(ax: Axes, solid: BaseGeometry, dashed: BaseGeometry) -> None:
     ax.add_collection(LineCollection(line_coords(dashed), colors=BORDER, linewidths=BORDER_WIDTH, linestyles=[BORDER_DASH], capstyle="butt", zorder=Z_BORDERS))
 
 
-def draw_states(ax: Axes, states_projected: gpd.GeoDataFrame) -> None:
-    states_projected.plot(ax=ax, color=STATE_LINE, linewidth=STATE_LINE_WIDTH, zorder=Z_STATES)
+def draw_states(ax: Axes, states_projected: gpd.GeoDataFrame, disputed: bool = False) -> None:
+    """State/province lines. With `disputed` they go under the borders, which would otherwise lose their dashes where
+    a disputed area's edge follows a state line (Kashmir and Himachal Pradesh)."""
+    states_projected.plot(ax=ax, color=STATE_LINE, linewidth=STATE_LINE_WIDTH, zorder=Z_STATES_UNDER_BORDERS if disputed else Z_STATES)
 
 
 def draw_lakes(ax: Axes, lakes_projected: gpd.GeoDataFrame) -> None:
