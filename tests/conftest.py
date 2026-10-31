@@ -61,7 +61,18 @@ def environment(mode: str = "default") -> dict[str, str]:
         "lakes": str(os.path.getsize(fetch(LAKES))),
         "disputed": str(os.path.getsize(fetch(DISPUTED))),  # the colouring keeps 2-country disputes apart
         **({"raster": str(os.path.getsize(fetch(RASTER)))} if mode == "earth" else {}),
+        **(topographic_environment() if mode.startswith("topographic") else {}),
     }
+
+
+def topographic_environment() -> dict[str, str]:
+    """The elevation and ice files and the raster library, which only --type topographic uses."""
+    import rasterio
+
+    from worldmap.data import ETOPO, GLACIERS, ICE_SHELVES, fetch
+
+    return {"etopo": str(os.path.getsize(fetch(ETOPO))), "glaciers": str(os.path.getsize(fetch(GLACIERS))),
+            "ice_shelves": str(os.path.getsize(fetch(ICE_SHELVES))), "rasterio": rasterio.__version__, "gdal": rasterio.__gdal_version__}
 
 
 def check_fingerprint(mode: str, png: Path, store: Path = FINGERPRINTS) -> None:

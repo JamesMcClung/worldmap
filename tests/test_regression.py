@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 
+import numpy as np
 import pytest
 from PIL import Image
 
@@ -61,3 +62,22 @@ def test_version_mismatch_skips(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     store.write_text(json.dumps({"tiny": {"sha256": fingerprint(png), "env": {**environment(), "matplotlib": "0.0"}}}))
     with pytest.raises(pytest.skip.Exception, match="matplotlib"):
         check_fingerprint("tiny", png, store=store)
+
+
+def test_render_topographic(tmp_path: Path) -> None:
+    check_fingerprint("topographic", render(tmp_path, "--type", "topographic"))
+
+
+def test_render_topographic_ocean(tmp_path: Path) -> None:
+    check_fingerprint("topographic_ocean", render(tmp_path, "--type", "topographic", "--ocean"))
+
+
+def test_topographic_outside_is_transparent(tmp_path: Path) -> None:
+    im = np.asarray(Image.open(render(tmp_path, "--type", "topographic", "--dpi", "50", "--pins", str(TESTS / "pins.txt"))))
+    h, w = im.shape[:2]
+    assert im[h // 2, 2, 3] == 0 and im[2, w // 10, 3] == 0  # left edge at the equator; top-left corner (no bar there)
+
+
+def test_environment_includes_topographic_data() -> None:
+    assert {"etopo", "glaciers", "ice_shelves", "rasterio", "gdal"} <= environment("topographic_ocean").keys()
+    assert "etopo" not in environment("default")
