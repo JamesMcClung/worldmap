@@ -12,6 +12,7 @@ license-files = ["LICENSE"]
 authors = [{ name = "James McClung" }]
 requires-python = ">=3.10"
 dependencies = [
+    "contourpy>=1.2",  # topographic contours (also a matplotlib dependency)
     "geopandas>=1.0",
     "matplotlib>=3.8",
     "numpy>=1.24",

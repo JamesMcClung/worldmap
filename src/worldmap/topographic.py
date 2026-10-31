@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import geopandas as gpd
 import numpy as np
 from matplotlib.axes import Axes
-from matplotlib.collections import PatchCollection
+from matplotlib.collections import LineCollection, PatchCollection
 from matplotlib.colors import LinearSegmentedColormap, to_rgb
 from matplotlib.patches import Polygon as MplPolygon
 from shapely.geometry import MultiPolygon
@@ -31,6 +31,7 @@ LAND_CONTOURS = (1000, "#5a4a3a", 0.6)
 ICE_CONTOURS = (1000, "#7a8fa3", 0.6)
 SEA_CONTOURS = (2000, "#1f4466", 0.5)
 CONTOUR_WIDTH = 0.3
+SAMPLE_BLOCK = 1 << 17  # points per block in sample() and colorize()
 VERT_EXAG = 6.0  # hill-shading exaggeration of heights (z and pixel size both in metres); tuned on crops
 
 
@@ -59,7 +60,17 @@ def elevation_grid() -> Grid:
 
 
 def sample(grid: Grid, lon: np.ndarray, lat: np.ndarray) -> np.ndarray:
-    """Heights at (lon, lat) in metres (float32), bilinear between cell centres; longitude wraps across +-180."""
+    """Heights at (lon, lat) in metres (float32), bilinear between cell centres; longitude wraps across +-180.
+    Works through the points in blocks, so the float64 temporaries stay small on a whole-poster grid."""
+    lon, lat = np.asarray(lon), np.asarray(lat)
+    flat_lon, flat_lat = lon.reshape(-1), lat.reshape(-1)
+    out = np.empty(flat_lon.shape, np.float32)
+    for i in range(0, out.size, SAMPLE_BLOCK):
+        out[i:i + SAMPLE_BLOCK] = sample_block(grid, flat_lon[i:i + SAMPLE_BLOCK], flat_lat[i:i + SAMPLE_BLOCK])
+    return out.reshape(lon.shape)
+
+
+def sample_block(grid: Grid, lon: np.ndarray, lat: np.ndarray) -> np.ndarray:
     rows, cols = grid.z.shape
     fx = (np.asarray(lon, np.float64) + 180) / grid.step - 0.5
     fy = np.clip((90 - np.asarray(lat, np.float64)) / grid.step - 0.5, 0, rows - 1)
@@ -72,33 +83,62 @@ def sample(grid: Grid, lon: np.ndarray, lat: np.ndarray) -> np.ndarray:
     return (top * (1 - ty) + bottom * ty).astype(np.float32)
 
 
+def ramp_colors(cmap: LinearSegmentedColormap, x: np.ndarray) -> np.ndarray:
+    """cmap(x)[..., :3] for x in [0, 1] as float32, indexing the colormap's own table the way matplotlib does, but
+    without its float64 RGBA copy of the whole input."""
+    lut = cmap(np.arange(cmap.N))[:, :3].astype(np.float32)
+    i = np.clip(x, 0, 1) * cmap.N
+    i[i == cmap.N] = cmap.N - 1
+    return lut[i.astype(np.int16)]
+
+
 def colorize(z: np.ndarray, ice: np.ndarray, ocean: bool) -> np.ndarray:
     """RGB (float32, z.shape + (3,)) by height: land (z > 0) on LAND_RAMP, `ice` on ICE_RAMP (ice wins over land and
     sea), sea on SEA_RAMP by depth with `ocean`, else flat OCEAN."""
-    land = LAND_RAMP(np.clip(z / LAND_TOP, 0, 1))[..., :3]
-    icy = ICE_RAMP(np.clip(z / ICE_TOP, 0, 1))[..., :3]
-    sea = SEA_RAMP(np.clip(-z / SEA_BOTTOM, 0, 1))[..., :3] if ocean else np.broadcast_to(to_rgb(OCEAN), land.shape)
-    rgb = np.where(ice[..., None], icy, np.where((z > 0)[..., None], land, sea))
-    return rgb.astype(np.float32)
+    rgb = np.empty(z.shape + (3,), np.float32)
+    flat_z, flat_ice, flat_rgb = z.reshape(-1), ice.reshape(-1), rgb.reshape(-1, 3)
+    for i in range(0, flat_z.size, SAMPLE_BLOCK):  # in blocks, to keep the temporaries small
+        zb, ib, out = flat_z[i:i + SAMPLE_BLOCK], flat_ice[i:i + SAMPLE_BLOCK], flat_rgb[i:i + SAMPLE_BLOCK]
+        land, sea = (zb > 0) & ~ib, ~(zb > 0) & ~ib
+        out[ib] = ramp_colors(ICE_RAMP, zb[ib] / ICE_TOP)
+        out[land] = ramp_colors(LAND_RAMP, zb[land] / LAND_TOP)
+        out[sea] = ramp_colors(SEA_RAMP, -zb[sea] / SEA_BOTTOM) if ocean else np.asarray(to_rgb(OCEAN), np.float32)
+    return rgb
 
 
 def relief(z: np.ndarray, pixel_m: float) -> np.ndarray:
     """How much brighter (> 0) or darker (< 0) each cell's slope is than flat ground, lit from LIGHT_AZIMUTH at
-    LIGHT_ALTITUDE (Lambert). Row 0 is north. Not rescaled to the extremes, so a region looks the same on any crop."""
+    LIGHT_ALTITUDE (Lambert). Row 0 is north. Not rescaled to the extremes, so a region looks the same on any crop.
+    Computed in place, float32: on the whole poster each temporary is ~100 MB."""
     dz_south, dz_east = np.gradient(z.astype(np.float32) * VERT_EXAG, pixel_m)
     az, alt = np.radians(LIGHT_AZIMUTH), np.radians(LIGHT_ALTITUDE)
     light = (np.sin(az) * np.cos(alt), np.cos(az) * np.cos(alt), np.sin(alt))  # east, north, up
     # The surface normal is (-dz/dx_east, -dz/dy_north, 1) = (-dz_east, dz_south, 1), normalised.
-    lit = (-dz_east * light[0] + dz_south * light[1] + light[2]) / np.sqrt(dz_east ** 2 + dz_south ** 2 + 1)
-    return (lit - light[2]).astype(np.float32)
+    norm = dz_east * dz_east
+    norm += dz_south * dz_south
+    norm += 1
+    np.sqrt(norm, out=norm)
+    lit = dz_east * -light[0]
+    del dz_east
+    dz_south *= light[1]
+    lit += dz_south
+    del dz_south
+    lit += light[2]
+    lit /= norm
+    lit -= light[2]
+    return lit.astype(np.float32, copy=False)
 
 
 def shade(rgb: np.ndarray, z: np.ndarray, pixel_m: float, sea: np.ndarray, ocean: bool) -> np.ndarray:
     """Hill shading: land and ice by LAND_SHADE, the sea floor by SEA_SHADE with `ocean` (a flat sea stays flat).
-    `pixel_m` is the grid spacing in metres."""
-    r = relief(z, pixel_m)[..., None]
-    shaded = np.where(sea[..., None], rgb * (1 + SEA_SHADE * r) if ocean else rgb, rgb * (1 + LAND_SHADE * r))
-    return np.clip(shaded, 0, 1).astype(np.float32)
+    `pixel_m` is the grid spacing in metres. Shades `rgb` in place (it's ~300 MB at 200 dpi) and returns it."""
+    r = relief(z, pixel_m)
+    factor = r * LAND_SHADE
+    factor += 1
+    factor[sea] = 1 + SEA_SHADE * r[sea] if ocean else 1
+    del r
+    rgb *= factor[..., None]
+    return np.clip(rgb, 0, 1, out=rgb)
 
 
 @dataclass
@@ -153,26 +193,43 @@ def ice_mask(ice_projected: gpd.GeoDataFrame, frame: MapFrame, pg: PosterGrid) -
     return np.asarray(mask, bool)
 
 
+def contour_lines(x: np.ndarray, y: np.ndarray, z: np.ma.MaskedArray, levels: np.ndarray) -> list[np.ndarray]:
+    """Contour lines of z at `levels`, as (n, 2) vertex arrays. Uses contourpy directly: matplotlib's ContourSet keeps
+    its generator, a float64 copy of the grid (~665 MB at 200 dpi), alive for as long as the figure."""
+    import contourpy
+
+    gen = contourpy.contour_generator(x, y, z, line_type=contourpy.LineType.Separate)
+    lines: list[np.ndarray] = []
+    for level in levels:
+        lines += gen.lines(level)  # type: ignore[arg-type]  # a list of arrays with LineType.Separate
+    return lines
+
+
 def draw_topography(ax: Axes, frame: MapFrame, dpi: float, ocean: bool) -> None:
     """Everything on the globe for --type topographic: the coloured, hill-shaded heights (sea depths with `ocean`),
     contours, the coastline and the lakes."""
     from worldmap.render import BORDER, BORDER_WIDTH, Z_BORDERS, Z_COUNTRY, Z_LAKES, holed_patches
 
     pg = poster_grid(frame, dpi)
-    z = np.where(pg.inside, sample(elevation_grid(), pg.lon, pg.lat), 0).astype(np.float32)
+    z = sample(elevation_grid(), pg.lon, pg.lat)
+    z[~pg.inside] = 0
+    pg.lon = pg.lat = np.empty((0, 0), np.float32)  # done with them; ~200 MB at 200 dpi
     ice = ice_mask(project(load_ice()), frame, pg) & pg.inside
     sea = (z <= 0) & ~ice
-    rgb = shade(colorize(z, ice, ocean), z, frame.width / len(pg.x), sea, ocean)
-    rgba = np.dstack([rgb, pg.inside.astype(np.float32)])
+    shaded = shade(colorize(z, ice, ocean), z, frame.width / len(pg.x), sea, ocean)
+    rgba = np.empty(z.shape + (4,), np.float32)  # allocated after shading, so the two peaks don't add up
+    rgba[..., :3] = shaded
+    del shaded
+    rgba[..., 3] = pg.inside
     extent = (frame.xmin, frame.xmax, frame.ymin, frame.ymax)
     image = ax.imshow(rgba, extent=extent, interpolation="nearest", zorder=Z_COUNTRY)
     globe = MplPolygon(frame.outline, closed=True, fc="none", ec="none", transform=ax.transData)
     image.set_clip_path(globe)
 
-    def contours(where: np.ndarray, levels: np.ndarray, color: str, alpha: float) -> None:
-        if levels.size:
-            ax.contour(pg.x, pg.y, np.ma.masked_where(~where, z), levels=levels, colors=color,
-                       linewidths=CONTOUR_WIDTH, alpha=alpha, zorder=Z_COUNTRY + 0.1)
+    def contours(where: np.ndarray, levels: np.ndarray, color: str, alpha: float, style: str = "solid") -> None:
+        lines = contour_lines(pg.x, pg.y, np.ma.masked_where(~where, z), levels)
+        ax.add_collection(LineCollection(lines, colors=color, linewidths=CONTOUR_WIDTH, alpha=alpha, linestyles=style,
+                                         zorder=Z_COUNTRY + 0.1))
 
     land = (z > 0) & ~ice & pg.inside
     step, color, alpha = LAND_CONTOURS
@@ -181,8 +238,8 @@ def draw_topography(ax: Axes, frame: MapFrame, dpi: float, ocean: bool) -> None:
     contours(ice, np.arange(step, z.max() + 1, step), color, alpha)
     if ocean:
         step, color, alpha = SEA_CONTOURS
-        contours(sea & pg.inside, -np.arange(step, -z.min() + 1, step)[::-1], color, alpha)
+        contours(sea & pg.inside, -np.arange(step, -z.min() + 1, step)[::-1], color, alpha, "dashed")  # as in mockup E
     coast = np.ma.masked_where(~pg.inside, np.where(ice, np.maximum(z, 1), z))
-    ax.contour(pg.x, pg.y, coast, levels=[0], colors=BORDER, linewidths=BORDER_WIDTH, zorder=Z_BORDERS)
+    ax.add_collection(LineCollection(contour_lines(pg.x, pg.y, coast, np.array([0.0])), colors=BORDER, linewidths=BORDER_WIDTH, zorder=Z_BORDERS))
     for g in project(load_lakes()).geometry:
         ax.add_collection(PatchCollection(list(holed_patches(g)), fc=OCEAN, ec=BORDER, lw=BORDER_WIDTH, zorder=Z_LAKES))

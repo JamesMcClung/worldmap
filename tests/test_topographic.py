@@ -3,9 +3,9 @@ import pytest
 from matplotlib.colors import to_rgb
 
 from worldmap.coloring import OCEAN
-from worldmap.data import load_ice, project
+from worldmap.data import load_ice, load_lakes, project
 from worldmap.frame import make_frame
-from worldmap.topographic import Grid, PosterGrid, colorize, elevation_grid, ice_mask, poster_grid, relief, sample, shade
+from worldmap.topographic import Grid, PosterGrid, colorize, draw_topography, elevation_grid, ice_mask, poster_grid, relief, sample, shade
 
 
 @pytest.fixture(scope="module")
@@ -64,7 +64,7 @@ def test_ice_wins_over_sea_and_land() -> None:
 def test_flat_sea_unshaded_without_ocean() -> None:
     z = np.random.default_rng(0).normal(-3000, 500, (20, 20))
     rgb = colorize(z, np.zeros(z.shape, bool), False)
-    assert np.array_equal(shade(rgb, z, 5000.0, z <= 0, False), rgb)
+    assert np.array_equal(shade(rgb.copy(), z, 5000.0, z <= 0, False), rgb)
 
 
 @pytest.fixture(scope="module")
@@ -101,3 +101,55 @@ def test_relief_lights_north_west_slopes() -> None:
     assert np.allclose(relief(z, 1000.0), 0, atol=1e-6)
     rising_south_east = np.add.outer(np.arange(5.0), np.arange(5.0)) * 300  # faces the north-west light
     assert (relief(rising_south_east, 1000.0) > 0).all() and (relief(-rising_south_east, 1000.0) < 0).all()
+
+
+def peak_bytes(fn) -> int:
+    import tracemalloc
+
+    tracemalloc.start()
+    fn()
+    peak = tracemalloc.get_traced_memory()[1]
+    tracemalloc.stop()
+    return peak
+
+
+def test_colorize_memory_stays_near_its_output() -> None:
+    """At 200 dpi the grid is 7200 x 3693: full float64 RGBA copies per ramp cost GBs (review finding)."""
+    z = np.random.default_rng(0).normal(0, 3000, (1000, 1000)).astype(np.float32)
+    ice = z > 4000
+    out_bytes = z.size * 3 * 4  # float32 RGB
+    assert peak_bytes(lambda: colorize(z, ice, True)) < 2.5 * out_bytes
+
+
+def test_sample_memory_stays_near_its_output(grid: Grid) -> None:
+    lon = np.random.default_rng(1).uniform(-180, 180, (1000, 1000)).astype(np.float32)
+    lat = np.random.default_rng(2).uniform(-90, 90, (1000, 1000)).astype(np.float32)
+    assert peak_bytes(lambda: sample(grid, lon, lat)) < 8 * lon.nbytes
+
+
+def test_shade_memory_stays_near_its_input() -> None:
+    z = np.random.default_rng(0).normal(0, 3000, (1000, 1000)).astype(np.float32)
+    rgb = colorize(z, np.zeros(z.shape, bool), True)
+    assert peak_bytes(lambda: shade(rgb, z, 5000.0, z <= 0, True)) < 2.5 * rgb.nbytes
+
+
+def test_draw_topography_holds_little_memory() -> None:
+    """matplotlib's ContourSet keeps a float64 copy of the grid alive per call (~665 MB each at 200 dpi)."""
+    import tracemalloc
+
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    from worldmap.render import new_figure
+
+    frame = make_frame()
+    elevation_grid(), load_ice(), load_lakes()  # warm the caches outside the measurement
+    fig, ax = new_figure(frame)
+    tracemalloc.start()
+    draw_topography(ax, frame, 50, True)
+    held = tracemalloc.get_traced_memory()[0]
+    tracemalloc.stop()
+    plt.close(fig)
+    pixels = 1800 * 923
+    assert held < 40 * pixels  # the RGBA image is 16 bytes a pixel; the rest is lines and patches
