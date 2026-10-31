@@ -7,7 +7,7 @@ large countries, non-overlapping country labels). Output default: `worldmap.png`
 
 ```
 python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'   # deps in pyproject.toml; [dev] adds pytest, mypy
-.venv/bin/make_map [out.png] [--recolor] [--color colorblind|earth] [--label LIST] [--pins FILE] [--pin-size IN] [--dpi DPI] [--pick FILE]
+.venv/bin/make_map [out.png] [--recolor] [--color colorblind|earth] [--label LIST] [--disputed] [--pins FILE] [--pin-size IN] [--dpi DPI] [--pick FILE]
 ```
 
 `--dpi` only changes the `savefig` dpi (and the pin sprite's pixel size): layout is always measured at
@@ -23,7 +23,7 @@ relative to `data.py` (`CACHE`), so the package must be installed editable (`-e`
 
 `.venv/bin/pytest` (~25 s). Unit tests cover the pure pieces (colour maths, `color_graph`, pin parsing and sprite, label geometry,
 CLI errors), and `test_import_has_no_pyplot` guards that importing any module doesn't pick a matplotlib backend (`--pick` needs to).
-`test_regression.py` renders the default, `--color earth`, `--pins` and `--label countries,territories` maps in a subprocess and compares a SHA-256 of the decoded pixels
+`test_regression.py` renders the default, `--color earth`, `--pins`, `--label countries,territories` and `--disputed` maps in a subprocess and compares a SHA-256 of the decoded pixels
 with `tests/fingerprints.json`:
 - A commit that changes the output on purpose re-records with `UPDATE_REFERENCE=1 .venv/bin/pytest` and commits `fingerprints.json`
   in the same commit, saying in the body what changed visually. Refactors must leave the fingerprints unchanged.
@@ -46,13 +46,14 @@ Importing any module has no side effects; only `cli.main` (after choosing the ba
 | `frame.py` | `MapFrame` (transformers, globe outline, extent, `px_per_unit`, `to_px`, `px_to_map`), `make_frame`, `DPI`, `POSTER_WIDTH_IN` |
 | `colorspace.py` | OKLab/OKLCH conversions, `fit_gamut`, `darken` |
 | `coloring.py` | `merge_into_parents`, `adjacency`, `add_proximity_edges`, `color_graph`, `make_palette`, `load_or_compute_coloring` (cache), `spot_check`, `OCEAN` |
+| `disputed.py` | `--disputed`: `parse_note`, `ALIASES`, `HAND_CLAIMS`, `LABEL_TEXT`, `Dispute`, `load_disputes`, `dispute_edges`, `dispute_fills`, `stripe_parts`, `border_lines`, `disputed_label_args` |
 | `earth.py` | `--color earth`: `earth_values` (raster sampling, cache), `earth_fill`, `build_regions`, `fill_at` |
 | `pins.py` | `load_pins`, `PinStyle` (every sprite shading constant), `pin_sprite`, `draw_pins`, `pick_pins` |
 | `labels/label.py` | `Label` dataclass, `make_labels` (anchors, sizes, exclaves), `decide_out_and_wrap` |
 | `labels/regions.py` | `--label territories`: `ChildRegion`, `HAND_PICKED` (parent + lon/lat boxes), `child_regions` |
 | `labels/placement.py` | `CostWeights`, `Placement` (per-label arrays), `cost_batch`, `candidates`, `place_labels`, `leader_ends` |
 | `labels/geometry.py` | `rect`, `nearest_point_on_rect`, `segment_hits_rects`, `segments_cross`, `two_line` |
-| `render.py` | `new_figure`, `draw_countries`, `draw_states`, `draw_lakes`, `subtract_lakes`, `draw_labels`, line widths and z-orders |
+| `render.py` | `new_figure`, `draw_countries`, `draw_stripes`, `draw_borders`, `draw_states`, `draw_lakes`, `subtract_lakes`, `draw_labels`, line widths and z-orders |
 
 Pipeline (`cli.main`):
 1. **Colouring** of all country features. Dependencies (`is_dependency`: `SOVEREIGNT != ADMIN`, not a lease or
@@ -77,13 +78,14 @@ Pipeline (`cli.main`):
   can separate them. Tune via `PALETTE_CHROMA`, `L_RED`, `L_GREEN` in `coloring.py`. Label text/lines/dots are the fill's own
   OKLab hue, darkened (`darken()`, L=0.26).
 - Hues are assigned to colour classes to maximise the OKLab distance between classes that touch.
-- Baikonur (Kazakh land leased to Russia) is hardcoded to Russia's fill with Kazakhstan-colour hatching.
+- Baikonur (Kazakh land leased to Russia) is hardcoded to Russia's fill with Kazakhstan-colour hatching, its border drawn
+  above the hatching. With `--disputed` it is striped like the other disputed areas instead.
 - Verified approximately with a Machado deuteranopia/protanopia simulation, not with a real colour-blind viewer.
 
 ## Caching
 
 `coloring.json` (in `.cache/`) stores each country's colour class and which classes touch. It is rebuilt when the
-country file, country list, the major-country or dependency lists (`cache_key`), `N_COLORS`, `MAX_GAP`, `MIN_DEG` or
+country file, country list, the major-country, dependency or dispute-edge lists (`cache_key`), `N_COLORS`, `MAX_GAP`, `MIN_DEG` or
 `COLORING_RULE` change, or with `--recolor`.
 Palette tweaks never change which countries share a class. If you change the colouring *logic*, bump `COLORING_RULE`.
 The script prints a spot-check of same-coloured pairs (Korea/Japan, Malaysia/Philippines, Italy/Greece, France/UK,
@@ -101,6 +103,26 @@ ramp and blends toward ice. Every disjoint polygon is coloured independently (Al
 polygons with < `MIN_PIX` pixels sample a 7x7 window at their centroid, then fall back to the whole country. Labels take the colour
 of the polygon they sit on (`fill_at(regions, i, pt)`; `Regions` maps country -> [(projected polygon, fill)]). Results are cached in `earth.json`
 (keyed on file sizes + `EARTH_RULE`; bump it if the sampling logic changes). The graph colouring still runs but is unused; Baikonur's hatching is off.
+
+## `--disputed`
+
+Natural Earth's `ne_10m_admin_0_disputed_areas.zip` (`data.DISPUTED`, 99 features, same release as the countries file) is read
+on every run, because the colouring uses it too. `load_disputes` turns each feature's `NOTE_BRK` ("Admin. by India; Claimed
+by Pakistan", "Self admin.; Claimed by Georgia", "Leased to Russia by Kazakhstan") into the countries involved, the one running
+it first; `ALIASES` maps the note's short names (`U.K.`, `China`...) to `NAME_EN`, `HAND_CLAIMS` covers entries without a note
+(Kosovo, Gaza...), and an unknown name is an error. Features without a claim (DMZ, Ceuta, Isla Aves "multiple") are skipped.
+Today: 72 two-country areas, 11 with 3+ countries, 6 breakaways (self-governing, no countries-file feature: Abkhazia, Donetsk...).
+- Colouring: `dispute_edges` adds an edge between the two countries of every 2-country dispute, with or without the flag,
+  so their stripes always differ (only the US / Marshall Islands, Wake Island, needed it).
+- Stripes (`stripe_parts`): 45-degree '/' bands `STRIPE_WIDTH_IN` wide, counted from the map origin. 3+ countries: plain
+  `DISPUTED_GREY`; breakaways: the parent's colour and grey. Disputed polygons are drawn untrimmed (a few islets exist only in this file).
+- Borders: with `--disputed`, fills have no edges and `draw_borders` draws `border_lines`: a disputed outline is dashed
+  (`BORDER_DASH`) where it meets a country involved (the one running it counts, so Kashmir's edge inside India is a new
+  dashed line) or another disputed area sharing a country, within `SNAP_M`; every other ring of the country polygons stays solid.
+- Z-order: fills 1, stripes / Baikonur hatch 1.5, Baikonur's edge 1.6, borders 1.7, states 2, lakes 2.5 (borders must stay below the lakes).
+- Labels (only with `countries` in `--label`): self-governing areas get upright labels via `make_labels(relabel=, extra=)`;
+  `LABEL_TEXT` shortens official names (Northern Cyprus, Donetsk, Luhansk). Other disputed areas get none.
+- `--color earth`: no stripes, but dashed borders and labels. Natural Earth's data is used as it is (it predates 2022-23 changes).
 
 ## Pins (`--pick`, `--pins`)
 
