@@ -5,11 +5,21 @@ import os
 from dataclasses import dataclass
 
 import numpy as np
+from matplotlib.colors import LightSource, LinearSegmentedColormap, to_rgb
 
+from worldmap.coloring import OCEAN
 from worldmap.data import CACHE, ETOPO, fetch
 
 GRID_STEP_DEG = 0.05  # 3 arc-minutes: about one poster pixel at 200 dpi
 ELEVATION_RULE = "etopo2022-60s-mean-3min/v1"  # bump when the reduction changes, to rebuild the cached grid
+
+LAND_TOP, ICE_TOP, SEA_BOTTOM = 6000, 4000, 8000  # metres at the top (bottom) of each colour scale; beyond: its end colour
+LAND_RAMP = LinearSegmentedColormap.from_list("land", [(0, "#5f9e5a"), (0.08, "#a8c97f"), (0.2, "#e8dc95"), (0.4, "#c9a26b"),
+                                                        (0.65, "#9a6b4a"), (0.85, "#d8cfc8"), (1, "#ffffff")])
+ICE_RAMP = LinearSegmentedColormap.from_list("ice", ["#ffffff", "#cfe3f2"])
+SEA_RAMP = LinearSegmentedColormap.from_list("sea", [OCEAN, "#2f5f8c"])
+LIGHT = LightSource(azdeg=315, altdeg=45)  # lit from the north-west
+VERT_EXAG = 0.05  # hill-shading exaggeration of heights (z and pixel size both in metres); tuned on crops
 
 
 @dataclass
@@ -48,3 +58,21 @@ def sample(grid: Grid, lon: np.ndarray, lat: np.ndarray) -> np.ndarray:
     top = z[y0, x0] * (1 - tx) + z[y0, x1] * tx
     bottom = z[y0 + 1, x0] * (1 - tx) + z[y0 + 1, x1] * tx
     return (top * (1 - ty) + bottom * ty).astype(np.float32)
+
+
+def colorize(z: np.ndarray, ice: np.ndarray, ocean: bool) -> np.ndarray:
+    """RGB (float32, z.shape + (3,)) by height: land (z > 0) on LAND_RAMP, `ice` on ICE_RAMP (ice wins over land and
+    sea), sea on SEA_RAMP by depth with `ocean`, else flat OCEAN."""
+    land = LAND_RAMP(np.clip(z / LAND_TOP, 0, 1))[..., :3]
+    icy = ICE_RAMP(np.clip(z / ICE_TOP, 0, 1))[..., :3]
+    sea = SEA_RAMP(np.clip(-z / SEA_BOTTOM, 0, 1))[..., :3] if ocean else np.broadcast_to(to_rgb(OCEAN), land.shape)
+    rgb = np.where(ice[..., None], icy, np.where((z > 0)[..., None], land, sea))
+    return rgb.astype(np.float32)
+
+
+def shade(rgb: np.ndarray, z: np.ndarray, pixel_m: float, sea: np.ndarray, ocean: bool) -> np.ndarray:
+    """Hill shading lit from the north-west: land and ice strongly, the sea floor lightly with `ocean` (a flat sea
+    stays flat). `pixel_m` is the grid spacing in metres."""
+    hs = LIGHT.hillshade(z, vert_exag=VERT_EXAG, dx=pixel_m, dy=pixel_m).astype(np.float32)[..., None]
+    shaded = np.where(sea[..., None], rgb * (0.85 + 0.2 * hs) if ocean else rgb, rgb * (0.65 + 0.45 * hs))
+    return np.clip(shaded, 0, 1).astype(np.float32)

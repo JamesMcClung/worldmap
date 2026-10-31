@@ -1,7 +1,9 @@
 import numpy as np
 import pytest
+from matplotlib.colors import to_rgb
 
-from worldmap.topographic import Grid, elevation_grid, sample
+from worldmap.coloring import OCEAN
+from worldmap.topographic import Grid, colorize, elevation_grid, sample, shade
 
 
 @pytest.fixture(scope="module")
@@ -34,3 +36,30 @@ def test_netherlands_value_recorded(grid: Grid) -> None:
     """What the data says about the Dutch polders (Flevoland): near sea level, so they may read as sea."""
     v = sample(grid, np.array([5.5]), np.array([52.5]))[0]
     assert -10 < v < 10
+
+
+def test_sea_is_flat_ocean_without_ocean_flag() -> None:
+    rgb = colorize(np.array([[-5000.0, -1.0]]), np.zeros((1, 2), bool), ocean=False)
+    assert np.allclose(rgb, to_rgb(OCEAN), atol=1e-3)
+
+
+def test_sea_darkens_with_depth() -> None:
+    rgb = colorize(np.array([[-1.0, -4000.0, -20000.0]]), np.zeros((1, 3), bool), ocean=True)
+    assert np.allclose(rgb[0, 0], to_rgb(OCEAN), atol=0.01) and rgb[0, 1].sum() > rgb[0, 2].sum()
+    assert np.allclose(rgb[0, 2], to_rgb("#2f5f8c"), atol=1e-3)  # below 8,000 m: the bottom colour
+
+
+def test_land_ramp_ends() -> None:
+    rgb = colorize(np.array([[1.0, 9000.0]]), np.zeros((1, 2), bool), ocean=False)
+    assert np.allclose(rgb[0, 0], to_rgb("#5f9e5a"), atol=0.01) and np.allclose(rgb[0, 1], 1.0, atol=1e-3)
+
+
+def test_ice_wins_over_sea_and_land() -> None:
+    rgb = colorize(np.array([[-300.0, 3000.0]]), np.ones((1, 2), bool), ocean=True)
+    assert (rgb > 0.75).all()  # white to pale blue, never sea blue or brown
+
+
+def test_flat_sea_unshaded_without_ocean() -> None:
+    z = np.random.default_rng(0).normal(-3000, 500, (20, 20))
+    rgb = colorize(z, np.zeros(z.shape, bool), False)
+    assert np.array_equal(shade(rgb, z, 5000.0, z <= 0, False), rgb)
