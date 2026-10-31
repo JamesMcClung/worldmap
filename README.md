@@ -48,10 +48,10 @@ The images in [`examples/`](examples) are rendered at `--dpi 50` (1800 px wide);
 Colour-blind-friendly colours (the default):
 
 ```
-make_map examples/political.png --dpi 50
+make_map examples/colorblind.png --dpi 50
 ```
 
-![Political world map](examples/political.png)
+![World map in colour-blind-friendly colours](examples/colorblind.png)
 
 Natural colours with `--color earth`:
 
