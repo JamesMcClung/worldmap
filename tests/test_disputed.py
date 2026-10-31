@@ -1,9 +1,11 @@
 import geopandas as gpd
 import pytest
+from pyproj import Transformer
+from shapely.geometry.base import BaseGeometry
 from shapely.geometry import Point, box
 
-from worldmap.data import load_countries, load_disputed
-from worldmap.disputed import DISPUTED_GREY, Dispute, Note, dispute_edges, dispute_fills, load_disputes, parse_note, stripe_parts
+from worldmap.data import CRS, load_countries, load_disputed, parent_index, project
+from worldmap.disputed import DISPUTED_GREY, Dispute, Note, border_lines, dispute_edges, dispute_fills, load_disputes, parse_note, stripe_parts
 
 
 @pytest.fixture(scope="module")
@@ -98,3 +100,39 @@ def test_dispute_fills() -> None:
     assert dispute_fills(Dispute("A", "A", [0, 1], False, None, Point(0, 0)), fill) == ["#ff0000", "#00ff00"]
     assert dispute_fills(Dispute("A", "A", [0, 1, 2], False, None, Point(0, 0)), fill) == [DISPUTED_GREY]
     assert dispute_fills(Dispute("A", "A", [2], True, "A", Point(0, 0)), fill) == ["#0000ff", DISPUTED_GREY]
+
+
+@pytest.fixture(scope="module")
+def disputes_projected(countries: gpd.GeoDataFrame) -> list[Dispute]:
+    return load_disputes(countries, project(load_disputed()))
+
+
+@pytest.fixture(scope="module")
+def lines(countries: gpd.GeoDataFrame, disputes_projected: list[Dispute]) -> tuple[BaseGeometry, BaseGeometry]:
+    return border_lines(project(countries), disputes_projected, parent_index(countries))
+
+
+def at(lon: float, lat: float) -> Point:
+    return Point(Transformer.from_crs("EPSG:4326", CRS, always_xy=True).transform(lon, lat))
+
+
+def test_kashmir_line_of_control_is_dashed(lines: tuple[BaseGeometry, BaseGeometry]) -> None:
+    solid, dashed = lines
+    p = at(73.98, 34.233)  # middle of the India/Pakistan line of control
+    assert dashed.distance(p) < 1_000 and solid.distance(p) > 1_000
+
+
+def test_kashmir_meets_rest_of_india_dashed(lines: tuple[BaseGeometry, BaseGeometry]) -> None:
+    p = at(77.28, 32.886)  # Kashmir's edge inside India: a new line, not a country border
+    assert lines[1].distance(p) < 1_000
+
+
+def test_uninvolved_border_stays_solid(lines: tuple[BaseGeometry, BaseGeometry]) -> None:
+    solid, dashed = lines
+    p = at(92.04, 24.369)  # India/Bangladesh border
+    assert solid.distance(p) < 1_000 and dashed.distance(p) > 50_000
+
+
+def test_taiwan_coast_is_not_dashed(lines: tuple[BaseGeometry, BaseGeometry], disputes_projected: list[Dispute]) -> None:
+    taiwan = next(d for d in disputes_projected if d.name == "Taiwan")
+    assert lines[1].intersection(taiwan.geometry.buffer(1_000)).length == 0

@@ -15,6 +15,7 @@ from shapely.geometry.base import BaseGeometry
 from worldmap.earth import Fill
 
 DISPUTED_GREY = "#cfcfcf"  # areas with 3+ countries, and the second stripe of breakaway areas
+SNAP_M = 500  # metres: a disputed outline this close to an involved country counts as their shared border
 STRIPE_WIDTH_IN = 0.05  # each stripe's width across, in inches on the 36 in poster
 
 # Names used in NOTE_BRK -> countries-file NAME_EN.
@@ -140,3 +141,22 @@ def stripe_parts(geom: BaseGeometry, n: int, width: float) -> list[BaseGeometry]
     for k in range(math.floor(min(us) / width), math.floor(max(us) / width) + 1):
         bands[k % n].append(band(k))
     return [geom.intersection(shapely.union_all(b)) if b else Polygon() for b in bands]
+
+
+def border_lines(countries_projected: gpd.GeoDataFrame, disputes: list[Dispute], parent_of: dict[int, int]) -> tuple[BaseGeometry, BaseGeometry]:
+    """(solid, dashed) border lines, in map units. A disputed area's outline is dashed where it meets a country
+    involved in it (its dependencies included), or another disputed area sharing a country; everything else on its
+    outline, and every other country border, stays solid."""
+    geoms = countries_projected.geometry
+    dashed_parts = []
+    for d in disputes:
+        involved = set(d.countries)
+        window = shapely.box(*d.geometry.buffer(2 * SNAP_M).bounds)  # only what's next to it matters
+        near = [g for i, g in geoms.items() if i in involved or parent_of.get(i) in involved]
+        near += [e.geometry for e in disputes if e is not d and involved & set(e.countries)]
+        other = shapely.union_all([g.intersection(window) for g in near if g.intersects(window)]).difference(d.geometry)
+        dashed_parts.append(d.geometry.boundary.intersection(other.buffer(SNAP_M)))
+    dashed = shapely.union_all(dashed_parts)
+    solid = shapely.MultiLineString([ring for g in geoms for ring in shapely.get_parts(shapely.boundary(g))
+                                     for ring in shapely.get_parts(ring)]).difference(dashed.buffer(SNAP_M))
+    return solid, dashed
