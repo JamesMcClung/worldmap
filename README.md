@@ -32,7 +32,7 @@ make_map --pins pins.txt      # draw the pins; writes worldmap_pins.png
 
 | Option | Effect |
 | --- | --- |
-| `--type TYPE` | `political` (default): countries, borders and labels. `topographic`: heights with hill shading and contours, ice sheets and glaciers on their own scale, colour bars in the corners, and no borders or labels (`--color`, `--label`, `--disputed` and `--recolor` are ignored). The first run downloads ~470 MB of elevation data (ETOPO 2022). |
+| `--type TYPE` | `political` (default): countries, borders and labels. `topographic`: heights with hill shading and contours (land below sea level, like the Dead Sea shore, stays land), ice sheets and glaciers on their own scale, colour bars in the corners, and no borders or labels (`--color`, `--label`, `--disputed` and `--recolor` are ignored). The first run downloads ~470 MB of elevation data (ETOPO 2022). |
 | `--ocean` | With `--type topographic`, colour the sea by depth, with depth contours and a depth colour bar. Ignored with `--type political`. |
 | `--color NAME` | How countries are filled. `colorblind` (default): distinct colours that red/green colour-blind viewers can tell apart. `earth`: each region coloured by what it looks like from space; the first run downloads a ~75 MB raster. |
 | `--label LIST` | What to label: a comma-separated list, or `none`. `countries` (default): sovereign countries. `territories`: dependencies (Greenland, Bermuda, Guam...) and outlying parts of countries (Alaska, Tasmania, Kaliningrad...), in italics with the parent country in parentheses. The list replaces the default, so `--label territories` labels territories only. |

@@ -48,7 +48,7 @@ Importing any module has no side effects; only `cli.main` (after choosing the ba
 | `colorspace.py` | OKLab/OKLCH conversions, `fit_gamut`, `darken` |
 | `coloring.py` | `merge_into_parents`, `adjacency`, `add_proximity_edges`, `color_graph`, `make_palette`, `load_or_compute_coloring` (cache), `spot_check`, `OCEAN` |
 | `disputed.py` | `--disputed`: `parse_note`, `ALIASES`, `HAND_CLAIMS`, `LABEL_TEXT`, `Dispute`, `load_disputes`, `dispute_edges`, `dispute_fills`, `stripe_parts`, `border_lines`, `disputed_label_args` |
-| `topographic.py` | `--type topographic`: `elevation_grid` (ETOPO -> cached 3' grid), `sample`, ramps and tops, `colorize`, `relief`, `shade`, `poster_grid`, `ice_mask`, `draw_topography` |
+| `topographic.py` | `--type topographic`: `elevation_grid` (ETOPO -> cached 3' grid), `sample`, `Scale` (`LAND`, `SEA`, `ICE`), `Contours`, `colorize`, `relief`, `shade`, `poster_grid`, `polygon_mask`, `coast_lines`, `draw_topography` |
 | `colorbars.py` | `--type topographic`: `bar_region`, `draw_colorbar` (right-triangle bars in the canvas corners) |
 | `earth.py` | `--color earth`: `earth_values` (raster sampling, cache), `earth_fill`, `build_regions`, `fill_at` |
 | `pins.py` | `load_pins`, `PinStyle` (every sprite shading constant), `pin_sprite`, `draw_pins`, `pick_pins` |
@@ -135,18 +135,25 @@ or labels run. `--color`, `--label`, `--disputed`, `--recolor` are ignored; `--o
 - Data: ETOPO 2022 60" ice-surface GeoTIFF (`data.ETOPO`, Deflate + float predictor, read with rasterio, the only
   user of it), reduced to `GRID_STEP_DEG` = 3' block means as int16 and cached in `etopo_3min.npy` (keyed on the file size
   and `ELEVATION_RULE`; bump it if the reduction changes). Ice: Natural Earth `glaciated_areas` + `antarctic_ice_shelves_polys`
-  (`load_ice`; the shelves' holes are dropped, the islands in them are ice-covered). Lakes: the political `load_lakes()`.
+  (`load_ice`; the shelves' holes are dropped, the islands in them are ice-covered). Land vs water: Natural Earth
+  `ne_10m_land` (`load_land`), not the sign of the height. Lakes: the political `load_lakes()`.
 - Raster (`draw_topography`): `poster_grid` inverse-projects every pixel centre at `min(dpi, DPI)` (one pixel per
-  cell; `inside` = re-projects to itself), `sample` is bilinear and wraps at +-180. Land is `z > 0`, ice wins over land
-  and sea (ice shelves). Colours: `LAND_RAMP` to `LAND_TOP`, `ICE_RAMP` to `ICE_TOP`, `SEA_RAMP` to `SEA_BOTTOM` with
-  `--ocean` else flat `OCEAN`. Shading is `relief()`, a Lambert term relative to flat ground (not matplotlib's
+  cell; `inside` = re-projects to itself), `sample` is bilinear and wraps at +-180. Masks (`polygon_mask`) are
+  rasterised with rasterio by pixel centre. Ice wins over land and water (ice shelves). Colours are signed `Scale`s
+  (`start` at the colour bar's canvas edge, `end` at its tip): `LAND` -500..6000 m (land below sea level is darker
+  green), `SEA` +500..-8000 m with `--ocean` (water above 0 m is ETOPO's averaging along coasts) else flat `OCEAN`,
+  `ICE` 0..4000 m. Shading is `relief()`, a Lambert term relative to flat ground (not matplotlib's
   `LightSource.hillshade`, which rescales to the steepest slope on the globe and flattened the Alps), scaled by
   `VERT_EXAG`, `LAND_SHADE`, `SEA_SHADE`.
 - Layers: raster at `Z_COUNTRY` clipped to the outline, contours just above (`LAND_CONTOURS`, `ICE_CONTOURS`,
-  `SEA_CONTOURS`), coastline (the 0 m contour, ice raised to 1 m) at `Z_BORDERS`, lakes at `Z_LAKES`, colour bars at `Z_GLOBE`.
+  `SEA_CONTOURS`, dashed), coastline at `Z_BORDERS`, lakes at `Z_LAKES`, colour bars at `Z_GLOBE`. The coastline
+  (`coast_lines`) is the 0.5 contour of the smoothed land-or-ice mask, not Natural Earth's outlines: those disagree
+  around Antarctica and left stray dashes.
+- Memory: a 200 dpi run peaks around 3.5 GB. Work in blocks or in place on the whole-poster arrays; don't use
+  `ax.contour` (its ContourSet keeps a float64 copy of the grid per call, ~665 MB each), use `contour_lines` (contourpy).
 - Colour bars (`colorbars.py`): height bottom-right, depth top-right (`--ocean` only), ice bottom-left. Each is its
-  corner quadrant minus the globe grown by `BAR_GAP_IN`, minus `BAR_MARGIN_IN`; labels in the gap with a white halo.
-- Known limitation: land below sea level (the Caspian depression, Qattara, the Dutch polders) is coloured as sea.
+  corner quadrant minus the globe grown by `BAR_GAP_IN`, minus `BAR_MARGIN_IN`; signed labels in the gap with a white
+  halo (ends marked `≥`/`≤`), the map's contour lines across the bar, and sea level in the coastline's style.
 
 ## Pins (`--pick`, `--pins`)
 
