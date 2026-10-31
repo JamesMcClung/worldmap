@@ -9,12 +9,12 @@ from typing import NamedTuple
 
 import geopandas as gpd
 import shapely
-from shapely.geometry import Polygon
+from shapely.geometry import Point, Polygon
 from shapely.geometry.base import BaseGeometry
 
 from worldmap.earth import Fill
 
-DISPUTED_GREY = "#cfcfcf"  # areas with 3+ countries, and the second stripe of breakaway areas
+DISPUTED_GREY = (207 / 255, 207 / 255, 207 / 255)  # #cfcfcf; areas with 3+ countries, and the second stripe of breakaway areas
 SNAP_M = 500  # metres: a disputed outline this close to an involved country counts as their shared border
 STRIPE_WIDTH_IN = 0.035  # each stripe's width across, in inches on the 36 in poster
 
@@ -161,3 +161,16 @@ def border_lines(countries_projected: gpd.GeoDataFrame, disputes: list[Dispute],
     solid = shapely.MultiLineString([ring for g in geoms for ring in shapely.get_parts(shapely.boundary(g))
                                      for ring in shapely.get_parts(ring)]).difference(dashed.buffer(SNAP_M))
     return solid, dashed
+
+
+def disputed_label_args(disputes: list[Dispute], breakaway_fill: Callable[[int, Point], Fill]) -> tuple[dict[int, str], list[tuple[str, Polygon, Fill]]]:
+    """make_labels' `relabel` and `extra` for self-governing areas: countries-file features labelled with their
+    label text (Taiwan, Somaliland, Northern Cyprus...), and a label on the largest polygon of each breakaway area,
+    coloured by `breakaway_fill(parent, point)`."""
+    relabel = {d.countries[0]: d.label for d in disputes if d.label and not d.breakaway}
+    extra = []
+    for d in disputes:
+        if d.label and d.breakaway:
+            largest = max(shapely.get_parts(d.geometry), key=lambda g: g.area)
+            extra.append((d.label, largest, breakaway_fill(d.countries[0], largest.representative_point())))
+    return relabel, extra

@@ -15,7 +15,7 @@ from shapely.geometry import Point
 from worldmap.coloring import Coloring, load_or_compute_coloring, make_palette, spot_check
 from worldmap.colorspace import RGB
 from worldmap.data import is_labeled, load_countries, load_disputed, load_lakes, load_states, parent_index, project
-from worldmap.disputed import STRIPE_WIDTH_IN, border_lines, dispute_edges, load_disputes
+from worldmap.disputed import DISPUTED_GREY, STRIPE_WIDTH_IN, border_lines, dispute_edges, disputed_label_args, load_disputes
 from worldmap.earth import Fill, build_regions, fill_at
 from worldmap.frame import DPI, make_frame
 from worldmap.labels.label import decide_out_and_wrap, make_labels
@@ -125,7 +125,8 @@ def main(argv: list[str] | None = None) -> None:
     fig.canvas.draw()
     renderer = fig.canvas.get_renderer()  # type: ignore[attr-defined]  # Agg canvas
     children = child_regions(countries, countries_p, frame) if "territories" in args.label else []
-    labels = make_labels(countries_p, frame, ax, renderer, fill_of, children, "countries" in args.label)
+    relabel, extra = disputed_label_args(disputes, lambda i, pt: fill_of(i, pt) if regions else DISPUTED_GREY) if args.disputed else ({}, [])
+    labels = make_labels(countries_p, frame, ax, renderer, fill_of, children, "countries" in args.label, relabel, extra)
     decide_out_and_wrap(labels, renderer)
     placement = place_labels(labels, frame)
     draw_labels(ax, labels, placement, frame)

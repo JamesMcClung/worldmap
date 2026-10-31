@@ -100,13 +100,17 @@ def new_label(ax: Axes, renderer: RendererBase, frame: MapFrame, name: str, anch
     return label
 
 
-def make_labels(countries_projected: gpd.GeoDataFrame, frame: MapFrame, ax: Axes, renderer: RendererBase, fill_of: Callable[[int, Point | None], Fill], children: Sequence["ChildRegion"] = (), countries: bool = True) -> list[Label]:
+def make_labels(countries_projected: gpd.GeoDataFrame, frame: MapFrame, ax: Axes, renderer: RendererBase, fill_of: Callable[[int, Point | None], Fill], children: Sequence["ChildRegion"] = (), countries: bool = True,
+                relabel: dict[int, str] | None = None, extra: Sequence[tuple[str, Polygon, Fill]] = ()) -> list[Label]:
     """One label per labelled country (if `countries`), plus an italic one per child region (--label territories),
-    largest first (see anchor_piece for where each goes)."""
+    largest first (see anchor_piece for where each goes). With `countries`, --disputed adds the self-governing areas:
+    `relabel` labels these rows with this text even if they aren't is_labeled (Somaliland), and `extra` adds
+    (text, polygon, fill) labels for breakaway areas with no row of their own."""
+    relabel = relabel or {}
     tolerance = frame.width / INSCRIBED_CIRCLE_DIVISOR
     labels, island_names = [], []
     for i, row in countries_projected.iterrows():
-        if not countries or not is_labeled(row):
+        if not countries or not (is_labeled(row) or i in relabel):
             continue
         polys = [p for p in (row.geometry.geoms if isinstance(row.geometry, MultiPolygon) else [row.geometry]) if not p.is_empty]
         if not polys:
@@ -115,7 +119,11 @@ def make_labels(countries_projected: gpd.GeoDataFrame, frame: MapFrame, ax: Axes
         if island:
             island_names.append(row.NAME_EN)
         color = darken(fill_of(i, geom.representative_point() if geom.geom_type == "Polygon" else None))
-        labels.append(new_label(ax, renderer, frame, RENAME.get(row.NAME_EN, row.NAME_EN), anchor, geom, area, color))
+        name = relabel.get(i) or RENAME.get(row.NAME_EN, row.NAME_EN)
+        labels.append(new_label(ax, renderer, frame, name, anchor, geom, area, color))
+    for text, poly, fill in extra if countries else ():
+        anchor = maximum_inscribed_circle(poly, tolerance=tolerance).coords[0]
+        labels.append(new_label(ax, renderer, frame, text, anchor, poly, poly.area, darken(fill)))
     for child in children:
         # Anchored on and sized by the region's largest polygon: a hull would blow up archipelagos spread over an
         # ocean (French Polynesia, Saint Helena with Ascension and Tristan da Cunha).

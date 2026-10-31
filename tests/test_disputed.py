@@ -1,11 +1,15 @@
 import geopandas as gpd
+import matplotlib
 import pytest
 from pyproj import Transformer
 from shapely.geometry.base import BaseGeometry
 from shapely.geometry import Point, box
 
 from worldmap.data import CRS, load_countries, load_disputed, parent_index, project
-from worldmap.disputed import DISPUTED_GREY, Dispute, Note, border_lines, dispute_edges, dispute_fills, load_disputes, parse_note, stripe_parts
+from worldmap.frame import make_frame
+from worldmap.labels.label import make_labels
+from worldmap.render import new_figure
+from worldmap.disputed import DISPUTED_GREY, Dispute, Note, border_lines, dispute_edges, dispute_fills, disputed_label_args, load_disputes, parse_note, stripe_parts
 
 
 @pytest.fixture(scope="module")
@@ -136,3 +140,30 @@ def test_uninvolved_border_stays_solid(lines: tuple[BaseGeometry, BaseGeometry])
 def test_taiwan_coast_is_not_dashed(lines: tuple[BaseGeometry, BaseGeometry], disputes_projected: list[Dispute]) -> None:
     taiwan = next(d for d in disputes_projected if d.name == "Taiwan")
     assert lines[1].intersection(taiwan.geometry.buffer(1_000)).length == 0
+
+
+def disputed_labels(countries: gpd.GeoDataFrame, disputes: list[Dispute], with_countries: bool) -> list[str]:
+    """Label texts make_labels gives with the --disputed extras, as cli.main builds them (political colours)."""
+    matplotlib.use("Agg")
+    frame = make_frame()
+    fig, ax = new_figure(frame)
+    fig.canvas.draw()
+    relabel, extra = disputed_label_args(disputes, lambda i, pt: (0.5, 0.5, 0.5))
+    labels = make_labels(project(countries), frame, ax, fig.canvas.get_renderer(), lambda i, pt: (0.5, 0.5, 0.5),  # type: ignore[attr-defined]
+                         countries=with_countries, relabel=relabel, extra=extra)
+    import matplotlib.pyplot as plt
+    plt.close(fig)
+    return [(label.name, label.text.get_fontstyle()) for label in labels]
+
+
+def test_disputed_labels(countries: gpd.GeoDataFrame, disputes_projected: list[Dispute]) -> None:
+    labels = dict(disputed_labels(countries, disputes_projected, True))
+    assert {"Somaliland", "Northern Cyprus", "Abkhazia", "South Ossetia", "Transnistria", "Nagorno-Karabakh",
+            "Donetsk", "Luhansk", "Taiwan", "Western Sahara", "Kosovo"} <= labels.keys()
+    assert "Kashmir" not in labels and "Crimean Peninsula" not in labels and "Turkish Republic of Northern Cyprus" not in labels
+    assert labels["Abkhazia"] == labels["Donetsk"] == "normal"
+    assert len([n for n in labels if n == "Taiwan"]) == 1
+
+
+def test_disputed_labels_need_countries(countries: gpd.GeoDataFrame, disputes_projected: list[Dispute]) -> None:
+    assert disputed_labels(countries, disputes_projected, False) == []
