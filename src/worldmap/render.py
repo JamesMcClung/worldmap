@@ -30,7 +30,7 @@ BAIKONUR_HATCH_WIDTH = 1.6
 LEADER_WIDTH = 0.7
 LEADER_DOT_SIZE = 1.3
 # Drawing order, bottom to top (pins are at 10, labels at 6).
-Z_OCEAN, Z_COUNTRY, Z_BAIKONUR, Z_STATES, Z_LAKES, Z_GLOBE, Z_LEADERS = 0, 1, 1.5, 2, 2.5, 3, 4
+Z_OCEAN, Z_COUNTRY, Z_BAIKONUR, Z_BAIKONUR_EDGE, Z_STATES, Z_LAKES, Z_GLOBE, Z_LEADERS = 0, 1, 1.5, 1.6, 2, 2.5, 3, 4
 
 
 def patches(geom: BaseGeometry) -> Iterator[MplPolygon]:
@@ -76,12 +76,15 @@ def draw_countries(ax: Axes, countries_projected: gpd.GeoDataFrame, fill_of: Cal
         elif regions is not None:
             for poly, fill in regions[i]:
                 ax.add_collection(PatchCollection(list(patches(poly)), fc=fill, ec=BORDER, lw=BORDER_WIDTH, zorder=Z_COUNTRY))
-        else:
-            ax.add_collection(PatchCollection(list(patches(row.geometry)), fc=fill_of(i, None), ec=BORDER, lw=BORDER_WIDTH, zorder=Z_COUNTRY))
-        if row.NAME_EN == "Baikonur" and regions is None:
+        elif row.NAME_EN == "Baikonur":
+            # Hatched in Kazakhstan's colour, with its border drawn above the hatching.
+            ax.add_collection(PatchCollection(list(patches(row.geometry)), fc=fill_of(i, None), ec="none", zorder=Z_COUNTRY))
             matplotlib.rcParams["hatch.linewidth"] = BAIKONUR_HATCH_WIDTH
             stripe = fill_of(kazakhstan, None)
             ax.add_collection(PatchCollection(list(patches(row.geometry)), fc="none", ec=stripe, lw=0, hatch="////", zorder=Z_BAIKONUR))
+            ax.add_collection(PatchCollection(list(patches(row.geometry)), fc="none", ec=BORDER, lw=BORDER_WIDTH, zorder=Z_BAIKONUR_EDGE))
+        else:
+            ax.add_collection(PatchCollection(list(patches(row.geometry)), fc=fill_of(i, None), ec=BORDER, lw=BORDER_WIDTH, zorder=Z_COUNTRY))
 
 
 def draw_states(ax: Axes, states_projected: gpd.GeoDataFrame) -> None:
