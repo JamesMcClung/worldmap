@@ -2,6 +2,7 @@
   "default": {
     "env": {
       "countries": "4930492",
+      "disputed": "215221",
       "freetype": "2.14.3",
       "geopandas": "1.2.0",
       "geos": "3.14.1",
@@ -14,11 +15,12 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "9586a425b5df81c524c77ed5a49ff6843c072168a5a6aca00abd02fdf181538c"
+    "sha256": "464ff4be15c3ef8582bc2975550dc05f7d5a9a7ab0922b50a63916a509fec6bc"
   },
   "earth": {
     "env": {
       "countries": "4930492",
+      "disputed": "215221",
       "freetype": "2.14.3",
       "geopandas": "1.2.0",
       "geos": "3.14.1",
@@ -37,6 +39,7 @@
   "pins": {
     "env": {
       "countries": "4930492",
+      "disputed": "215221",
       "freetype": "2.14.3",
       "geopandas": "1.2.0",
       "geos": "3.14.1",
@@ -49,11 +52,12 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "bd79978eba22e75ee192dac70ede6f5de9473b2a64699a2583eeddb0f2ce8907"
+    "sha256": "b14ba81fa3a57899be5370a5bc763c2351bdbf7847c2962ad06661a83fd1d15c"
   },
   "regions": {
     "env": {
       "countries": "4930492",
+      "disputed": "215221",
       "freetype": "2.14.3",
       "geopandas": "1.2.0",
       "geos": "3.14.1",
@@ -66,6 +70,6 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "f7cb9e3f96867e9724a14bc87553d63f8e18c85c1544a3cdb11080732fa8dfad"
+    "sha256": "e868ca1582a9089f85bc621ea39c123bbead60c48ded70cdc2f73513c044c6e8"
   }
 }

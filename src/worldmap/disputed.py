@@ -95,3 +95,8 @@ def load_disputes(countries: gpd.GeoDataFrame, disputed: gpd.GeoDataFrame) -> li
         rows = list(dict.fromkeys(row_of(n, r.NAME_EN) for n in names))
         out.append(Dispute(r.NAME_EN, r.ADMIN, rows, breakaway, label, r.geometry))
     return out
+
+
+def dispute_edges(disputes: list[Dispute]) -> set[tuple[int, int]]:
+    """Country pairs of every 2-country dispute, which the colouring keeps apart so their stripes differ."""
+    return {(min(d.countries), max(d.countries)) for d in disputes if not d.breakaway and len(d.countries) == 2}

@@ -3,7 +3,7 @@ import pytest
 from shapely.geometry import Point
 
 from worldmap.data import load_countries, load_disputed
-from worldmap.disputed import Dispute, Note, load_disputes, parse_note
+from worldmap.disputed import Dispute, Note, dispute_edges, load_disputes, parse_note
 
 
 @pytest.fixture(scope="module")
@@ -64,3 +64,10 @@ def test_unknown_claimant_is_an_error(countries: gpd.GeoDataFrame) -> None:
     bad = gpd.GeoDataFrame({"NAME_EN": ["X"], "ADMIN": ["India"], "NOTE_BRK": ["Admin. by India; Claimed by Atlantis"]}, geometry=[Point(0, 0)])
     with pytest.raises(ValueError, match="Atlantis"):
         load_disputes(countries, bad)
+
+
+def test_dispute_edges(disputes: list[Dispute], countries: gpd.GeoDataFrame) -> None:
+    names = {tuple(sorted((countries.NAME_EN[a], countries.NAME_EN[b]))) for a, b in dispute_edges(disputes)}
+    assert ("Marshall Islands", "United States of America") in names and ("India", "Pakistan") in names
+    assert not any("Georgia" in p for p in names)  # breakaways add no edge
+    assert not any("Seychelles" in p for p in names)  # 3+ countries add none either
