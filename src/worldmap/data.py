@@ -36,9 +36,10 @@ STATE_COUNTRIES = {
     "Indonesia",
 }
 
-NOT_LABELED = {"Jersey", "Guernsey", "Isle of Man", "Åland", "Macau", "Hong Kong", "Sint Maarten", "Aruba", "Curaçao", "Northern Cyprus", "Turkish Republic of Northern Cyprus", "Somaliland"}
-LABELED_EXTRA = {"Palestine", "Kosovo", "Western Sahara", "Israel", "Puerto Rico", "Falkland Islands", "Faroe Islands"}
+NOT_LABELED = {"Northern Cyprus", "Turkish Republic of Northern Cyprus", "Somaliland"}
+LABELED_EXTRA = {"Palestine", "Kosovo", "Western Sahara", "Israel"}
 LABELED_TYPES = ("Sovereign country", "Country", "Sovereignty")
+NOT_DEPENDENCY_TYPES = ("Lease", "Indeterminate")
 
 
 def fetch(name: str) -> Path:
@@ -64,8 +65,29 @@ def fetch(name: str) -> Path:
 
 
 def is_labeled(row: pd.Series) -> bool:
-    """Whether a country feature gets a name label (and counts as a 'real' country for across-water colouring)."""
+    """Whether a country feature gets a name label (and counts as a 'real' country for across-water colouring).
+    Dependencies are labelled only with --regions (labels/regions.py)."""
+    if is_dependency(row):
+        return False
     return row.NAME_EN in LABELED_EXTRA or (row.TYPE in LABELED_TYPES and row.NAME_EN not in NOT_LABELED)
+
+
+def is_dependency(row: pd.Series) -> bool:
+    """A territory of another country (Greenland, Puerto Rico, Hong Kong...), coloured as part of its parent.
+    Leases (Baikonur) and indeterminate areas (Palestine, Siachen) are not dependencies."""
+    return row.SOVEREIGNT != row.ADMIN and row.TYPE not in NOT_DEPENDENCY_TYPES
+
+
+def parent_index(countries: gpd.GeoDataFrame) -> dict[int, int]:
+    """Each dependency's row index -> its parent's (the feature whose ADMIN is the dependency's SOVEREIGNT)."""
+    index_of = dict(zip(countries.ADMIN, countries.index))
+    parents = {}
+    for i, row in countries.iterrows():
+        if is_dependency(row):
+            if row.SOVEREIGNT not in index_of:
+                raise ValueError(f"no parent feature {row.SOVEREIGNT!r} for dependency {row.NAME_EN!r}")
+            parents[i] = index_of[row.SOVEREIGNT]
+    return parents
 
 
 def load_countries() -> gpd.GeoDataFrame:

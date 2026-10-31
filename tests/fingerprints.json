@@ -14,7 +14,7 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "e69b9d8b40c0b39c70830addf016618b1490b05158fae8a349f499c80bb13bf4"
+    "sha256": "be71dd991d7596b733267c0d3bacc792c60b668136c8f2fce28a0891a343f9ff"
   },
   "earth": {
     "env": {
@@ -32,7 +32,7 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "daef0e54929822d7146fc451bc7b45f88a33195bd1aefa48b0757cd1f97fbeb8"
+    "sha256": "d4ce5aa6b64ef6803baee628b4e0cd0b030f01f7476d85d47addf583a6f254c0"
   },
   "pins": {
     "env": {
@@ -49,6 +49,23 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "c37947e57233be63d70f77be71d46863b98e096585796d5a99425535c8508498"
+    "sha256": "c68161261afb5f6077b8f5e5ea336eb1347a83b359a8972098065ced05054186"
+  },
+  "regions": {
+    "env": {
+      "countries": "4930492",
+      "freetype": "2.14.3",
+      "geopandas": "1.2.0",
+      "geos": "3.14.1",
+      "lakes": "2349685",
+      "matplotlib": "3.11.2",
+      "numpy": "2.5.4",
+      "pillow": "12.3.0",
+      "pyproj": "3.8.0",
+      "python": "3.14.3",
+      "shapely": "2.2.0",
+      "states": "5993148"
+    },
+    "sha256": "e2d29d7407d915f0ba42815798969179cd4f784ba599acd77267262fcda7455f"
   }
 }

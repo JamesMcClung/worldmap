@@ -1,8 +1,9 @@
 """Country labels: which pieces get one, where it is anchored, its size, and whether it sits on its country ('in')
 or beside it with a leader line ('out'). All positions and geometry are in poster pixels."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import geopandas as gpd
 import matplotlib.patheffects as pe
@@ -11,7 +12,7 @@ from matplotlib.axes import Axes
 from matplotlib.backend_bases import RendererBase
 from matplotlib.text import Text
 from shapely import maximum_inscribed_circle
-from shapely.geometry import MultiPolygon, Point
+from shapely.geometry import MultiPolygon, Point, Polygon
 from shapely.geometry.base import BaseGeometry
 from shapely.ops import unary_union
 
@@ -21,11 +22,13 @@ from worldmap.earth import Fill
 from worldmap.frame import DPI, MapFrame
 from worldmap.labels.geometry import rect, two_line
 
+if TYPE_CHECKING:  # regions.py imports RENAME from here
+    from worldmap.labels.regions import ChildRegion
+
 RENAME = {"People's Republic of China": "China", "United States of America": "United States", "Democratic Republic of the Congo": "DR Congo", "Republic of the Congo": "Congo", "Central African Republic": "C.A.R.", "Bosnia and Herzegovina": "Bosnia & Herz.", "United Arab Emirates": "UAE", "Dominican Republic": "Dominican Rep."}
 MIN_PT, MAX_PT = 6, 30
 FONT_SCALE = 1.6  # font size (pt) = FONT_SCALE / 10 x sqrt(area), with the area measured in points^2
 POINTS_PER_INCH = 72
-UPPERCASE_ABOVE_PT = 14  # bigger labels are set in capitals
 LABEL_ZORDER = 6
 HALO = [pe.withStroke(linewidth=2.2, foreground=(1, 1, 1, 0.55))]
 BOX_PAD_X, BOX_PAD_Y = 1.06, 1.15  # label box = rendered text extent scaled by these
@@ -48,10 +51,6 @@ OUT_SHORT_HEIGHTS = 6
 WRAP_WIDTH_RATIO = 0.9
 WRAP_MIN_HEIGHTS = 2.5
 
-# Separately labelled exclaves: (country, label, a lon/lat point inside it).
-EXCLAVES = [("France", "French Guiana", (-53, 4)), ("Russia", "Kaliningrad (Russia)", (21, 54.7))]
-
-
 @dataclass
 class Label:
     name: str
@@ -72,14 +71,39 @@ def measure(label: Label, renderer: RendererBase) -> None:
     label.width, label.height = ext.width * BOX_PAD_X, ext.height * BOX_PAD_Y
 
 
-def make_labels(countries_projected: gpd.GeoDataFrame, frame: MapFrame, ax: Axes, renderer: RendererBase, fill_of: Callable[[int, Point | None], Fill]) -> list[Label]:
-    """One label per labelled country (plus the EXCLAVES), largest first.
+def anchor_piece(polys: list[Polygon], frame: MapFrame, tolerance: float, force_island: bool) -> tuple[tuple[float, float], BaseGeometry, float, bool]:
+    """Where a label for these polygons goes: (anchor, the geometry it labels, its area, island-heavy?).
 
-    The anchor is the centre of the biggest polygon's largest inscribed circle. Island-heavy countries use their
+    The anchor is the centre of the biggest polygon's largest inscribed circle. Island-heavy pieces use their
     convex hull's centroid and a hull-based size instead."""
+    largest = max(polys, key=lambda p: p.area)
+    significant = [p for p in polys if p.area >= SIGNIFICANT_SHARE * largest.area]
+    significant_area = sum(p.area for p in significant)
+    hull = unary_union(significant).convex_hull
+    hull_x0, _, hull_x1, _ = hull.bounds
+    island = len(significant) >= 2 and largest.area / significant_area < ISLAND_LARGEST_SHARE and (hull_x1 - hull_x0) < ISLAND_MAX_HULL_WIDTH * frame.width
+    if force_island and len(significant) >= 2:
+        island = True
+    if island:
+        return hull.centroid.coords[0], unary_union(significant), max(significant_area, hull.area), True
+    return maximum_inscribed_circle(largest, tolerance=tolerance).coords[0], largest, largest.area, False
+
+
+def new_label(ax: Axes, renderer: RendererBase, frame: MapFrame, name: str, anchor: tuple[float, float], geom: BaseGeometry, area: float, color: RGB, italic: bool = False) -> Label:
+    """A measured label for `name` at `anchor` (map units), sized by `area`. Child regions are set in italics."""
     ppu = frame.px_per_unit
+    x, y = anchor
+    size = float(np.clip(FONT_SCALE * np.sqrt(area) * ppu / DPI * POINTS_PER_INCH / 10, MIN_PT, MAX_PT))
+    text = ax.text(x, y, name, fontsize=size, ha="center", va="center", color=color, zorder=LABEL_ZORDER, path_effects=HALO, fontstyle="italic" if italic else "normal")
+    label = Label(name, area, color, text, 0.0, 0.0, (x - frame.xmin) * ppu, (y - frame.ymin) * ppu, frame.to_px(geom))
+    measure(label, renderer)
+    return label
+
+
+def make_labels(countries_projected: gpd.GeoDataFrame, frame: MapFrame, ax: Axes, renderer: RendererBase, fill_of: Callable[[int, Point | None], Fill], children: Sequence["ChildRegion"] = ()) -> list[Label]:
+    """One label per labelled country, plus an italic one per child region (--regions), largest first (see
+    anchor_piece for where each goes)."""
     tolerance = frame.width / INSCRIBED_CIRCLE_DIVISOR
-    exclave_pts = {country: (name, Point(frame.to_map.transform(*lonlat))) for country, name, lonlat in EXCLAVES}
     labels, island_names = [], []
     for i, row in countries_projected.iterrows():
         if not is_labeled(row):
@@ -87,33 +111,18 @@ def make_labels(countries_projected: gpd.GeoDataFrame, frame: MapFrame, ax: Axes
         polys = [p for p in (row.geometry.geoms if isinstance(row.geometry, MultiPolygon) else [row.geometry]) if not p.is_empty]
         if not polys:
             continue
-        largest = max(polys, key=lambda p: p.area)
-        significant = [p for p in polys if p.area >= SIGNIFICANT_SHARE * largest.area]
-        significant_area = sum(p.area for p in significant)
-        hull = unary_union(significant).convex_hull
-        hull_x0, _, hull_x1, _ = hull.bounds
-        island = len(significant) >= 2 and largest.area / significant_area < ISLAND_LARGEST_SHARE and (hull_x1 - hull_x0) < ISLAND_MAX_HULL_WIDTH * frame.width
-        if row.NAME_EN in FORCE_ISLAND and len(significant) >= 2:
-            island = True
-        pieces = []  # (name, anchor, geometry, area)
+        anchor, geom, area, island = anchor_piece(polys, frame, tolerance, row.NAME_EN in FORCE_ISLAND)
         if island:
             island_names.append(row.NAME_EN)
-            pieces.append((row.NAME_EN, hull.centroid.coords[0], unary_union(significant), max(significant_area, hull.area)))
-        else:
-            pieces.append((row.NAME_EN, maximum_inscribed_circle(largest, tolerance=tolerance).coords[0], largest, largest.area))
-        if row.NAME_EN in exclave_pts:
-            exclave_name, pt = exclave_pts[row.NAME_EN]
-            for p in polys:
-                if p.contains(pt):
-                    pieces.append((exclave_name, maximum_inscribed_circle(p, tolerance=tolerance).coords[0], p, p.area))
-        for name, (x, y), geom, area in pieces:
-            name = RENAME.get(name, name)
-            size = float(np.clip(FONT_SCALE * np.sqrt(area) * ppu / DPI * POINTS_PER_INCH / 10, MIN_PT, MAX_PT))
-            color = darken(fill_of(i, geom.representative_point() if geom.geom_type == "Polygon" else None))
-            text = ax.text(x, y, name.upper() if size > UPPERCASE_ABOVE_PT else name, fontsize=size, ha="center", va="center", color=color, zorder=LABEL_ZORDER, path_effects=HALO)
-            label = Label(name, area, color, text, 0.0, 0.0, (x - frame.xmin) * ppu, (y - frame.ymin) * ppu, frame.to_px(geom))
-            measure(label, renderer)
-            labels.append(label)
+        color = darken(fill_of(i, geom.representative_point() if geom.geom_type == "Polygon" else None))
+        labels.append(new_label(ax, renderer, frame, RENAME.get(row.NAME_EN, row.NAME_EN), anchor, geom, area, color))
+    for child in children:
+        # Anchored on and sized by the region's largest polygon: a hull would blow up archipelagos spread over an
+        # ocean (French Polynesia, Saint Helena with Ascension and Tristan da Cunha).
+        largest = max(child.polys, key=lambda p: p.area)
+        anchor = maximum_inscribed_circle(largest, tolerance=tolerance).coords[0]
+        color = darken(fill_of(child.feature, largest.representative_point()))
+        labels.append(new_label(ax, renderer, frame, child.text, anchor, largest, largest.area, color, italic=True))
     labels.sort(key=lambda label: -label.area)
     print("island-heavy (hull-centred):", island_names)
     return labels
