@@ -3,7 +3,9 @@ import pytest
 from matplotlib.colors import to_rgb
 
 from worldmap.coloring import OCEAN
-from worldmap.topographic import Grid, colorize, elevation_grid, sample, shade
+from worldmap.data import load_ice, project
+from worldmap.frame import make_frame
+from worldmap.topographic import Grid, PosterGrid, colorize, elevation_grid, ice_mask, poster_grid, relief, sample, shade
 
 
 @pytest.fixture(scope="module")
@@ -63,3 +65,39 @@ def test_flat_sea_unshaded_without_ocean() -> None:
     z = np.random.default_rng(0).normal(-3000, 500, (20, 20))
     rgb = colorize(z, np.zeros(z.shape, bool), False)
     assert np.array_equal(shade(rgb, z, 5000.0, z <= 0, False), rgb)
+
+
+@pytest.fixture(scope="module")
+def pg() -> PosterGrid:
+    return poster_grid(make_frame(), 50)
+
+
+def px(pg: PosterGrid, lon: float, lat: float) -> tuple[int, int]:
+    """Index of the poster pixel nearest (lon, lat)."""
+    x, y = make_frame().to_map.transform(lon, lat)
+    return int(np.abs(pg.y - y).argmin()), int(np.abs(pg.x - x).argmin())
+
+
+def test_inside_mask(pg: PosterGrid) -> None:
+    assert pg.inside[px(pg, 0, 0)] and pg.inside[px(pg, 0, 89)] and pg.inside[px(pg, 179.5, 0)]
+    assert not pg.inside[0, 0] and not pg.inside[-1, -1] and not pg.inside[0, -1]
+
+
+def test_ice_mask(pg: PosterGrid) -> None:
+    ice = ice_mask(project(load_ice()), make_frame(), pg)
+    assert ice[px(pg, -40, 75)] and ice[px(pg, 0, -85)]  # Greenland, Antarctica
+    assert ice[px(pg, -170, -80)]  # Ross Ice Shelf: ice over sea
+    assert not ice[px(pg, 10, 25)] and not ice[px(pg, -30, 0)]  # Sahara, Atlantic
+
+
+def test_islands_in_ice_shelves_are_ice(pg: PosterGrid) -> None:
+    """Natural Earth cuts the islands out of the ice shelves, but they are ice-covered too (Roosevelt, Berkner)."""
+    ice = ice_mask(project(load_ice()), make_frame(), pg)
+    assert ice[px(pg, -162.22, -79.28)] and ice[px(pg, -60.55, -80.31)]
+
+
+def test_relief_lights_north_west_slopes() -> None:
+    z = np.zeros((5, 5)); z[:, 3:] = 0  # flat
+    assert np.allclose(relief(z, 1000.0), 0, atol=1e-6)
+    rising_south_east = np.add.outer(np.arange(5.0), np.arange(5.0)) * 300  # faces the north-west light
+    assert (relief(rising_south_east, 1000.0) > 0).all() and (relief(-rising_south_east, 1000.0) < 0).all()

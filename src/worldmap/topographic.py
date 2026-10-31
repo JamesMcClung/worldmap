@@ -4,11 +4,17 @@ import json
 import os
 from dataclasses import dataclass
 
+import geopandas as gpd
 import numpy as np
-from matplotlib.colors import LightSource, LinearSegmentedColormap, to_rgb
+from matplotlib.axes import Axes
+from matplotlib.collections import PatchCollection
+from matplotlib.colors import LinearSegmentedColormap, to_rgb
+from matplotlib.patches import Polygon as MplPolygon
+from shapely.geometry import MultiPolygon
 
 from worldmap.coloring import OCEAN
-from worldmap.data import CACHE, ETOPO, fetch
+from worldmap.data import CACHE, ETOPO, fetch, load_ice, load_lakes, project
+from worldmap.frame import DPI, POSTER_WIDTH_IN, MapFrame
 
 GRID_STEP_DEG = 0.05  # 3 arc-minutes: about one poster pixel at 200 dpi
 ELEVATION_RULE = "etopo2022-60s-mean-3min/v1"  # bump when the reduction changes, to rebuild the cached grid
@@ -18,8 +24,14 @@ LAND_RAMP = LinearSegmentedColormap.from_list("land", [(0, "#5f9e5a"), (0.08, "#
                                                         (0.65, "#9a6b4a"), (0.85, "#d8cfc8"), (1, "#ffffff")])
 ICE_RAMP = LinearSegmentedColormap.from_list("ice", ["#ffffff", "#cfe3f2"])
 SEA_RAMP = LinearSegmentedColormap.from_list("sea", [OCEAN, "#2f5f8c"])
-LIGHT = LightSource(azdeg=315, altdeg=45)  # lit from the north-west
-VERT_EXAG = 0.05  # hill-shading exaggeration of heights (z and pixel size both in metres); tuned on crops
+LIGHT_AZIMUTH, LIGHT_ALTITUDE = 315, 45  # degrees: lit from the north-west
+LAND_SHADE, SEA_SHADE = 1.0, 0.4  # how strongly slopes lighten/darken land and ice, and the sea floor (--ocean)
+# Contours: (spacing in metres, colour, alpha); width CONTOUR_WIDTH points.
+LAND_CONTOURS = (1000, "#5a4a3a", 0.6)
+ICE_CONTOURS = (1000, "#7a8fa3", 0.6)
+SEA_CONTOURS = (2000, "#1f4466", 0.5)
+CONTOUR_WIDTH = 0.3
+VERT_EXAG = 6.0  # hill-shading exaggeration of heights (z and pixel size both in metres); tuned on crops
 
 
 @dataclass
@@ -70,9 +82,107 @@ def colorize(z: np.ndarray, ice: np.ndarray, ocean: bool) -> np.ndarray:
     return rgb.astype(np.float32)
 
 
+def relief(z: np.ndarray, pixel_m: float) -> np.ndarray:
+    """How much brighter (> 0) or darker (< 0) each cell's slope is than flat ground, lit from LIGHT_AZIMUTH at
+    LIGHT_ALTITUDE (Lambert). Row 0 is north. Not rescaled to the extremes, so a region looks the same on any crop."""
+    dz_south, dz_east = np.gradient(z.astype(np.float32) * VERT_EXAG, pixel_m)
+    az, alt = np.radians(LIGHT_AZIMUTH), np.radians(LIGHT_ALTITUDE)
+    light = (np.sin(az) * np.cos(alt), np.cos(az) * np.cos(alt), np.sin(alt))  # east, north, up
+    # The surface normal is (-dz/dx_east, -dz/dy_north, 1) = (-dz_east, dz_south, 1), normalised.
+    lit = (-dz_east * light[0] + dz_south * light[1] + light[2]) / np.sqrt(dz_east ** 2 + dz_south ** 2 + 1)
+    return (lit - light[2]).astype(np.float32)
+
+
 def shade(rgb: np.ndarray, z: np.ndarray, pixel_m: float, sea: np.ndarray, ocean: bool) -> np.ndarray:
-    """Hill shading lit from the north-west: land and ice strongly, the sea floor lightly with `ocean` (a flat sea
-    stays flat). `pixel_m` is the grid spacing in metres."""
-    hs = LIGHT.hillshade(z, vert_exag=VERT_EXAG, dx=pixel_m, dy=pixel_m).astype(np.float32)[..., None]
-    shaded = np.where(sea[..., None], rgb * (0.85 + 0.2 * hs) if ocean else rgb, rgb * (0.65 + 0.45 * hs))
+    """Hill shading: land and ice by LAND_SHADE, the sea floor by SEA_SHADE with `ocean` (a flat sea stays flat).
+    `pixel_m` is the grid spacing in metres."""
+    r = relief(z, pixel_m)[..., None]
+    shaded = np.where(sea[..., None], rgb * (1 + SEA_SHADE * r) if ocean else rgb, rgb * (1 + LAND_SHADE * r))
     return np.clip(shaded, 0, 1).astype(np.float32)
+
+
+@dataclass
+class PosterGrid:
+    x: np.ndarray  # pixel-centre map x, ascending (1-D)
+    y: np.ndarray  # pixel-centre map y, descending (1-D): row 0 is the top of the poster
+    lon: np.ndarray  # float32 (rows, cols)
+    lat: np.ndarray
+    inside: np.ndarray  # bool: the pixel is on the globe
+
+
+def poster_grid(frame: MapFrame, dpi: float) -> PosterGrid:
+    """One cell per output pixel at min(dpi, DPI) (the elevation grid has no finer detail), with each cell's lon/lat."""
+    cols = round(POSTER_WIDTH_IN * min(dpi, DPI))
+    rows = round(cols * frame.height / frame.width)
+    pw, ph = frame.width / cols, frame.height / rows
+    x = frame.xmin + (np.arange(cols) + 0.5) * pw
+    y = frame.ymax - (np.arange(rows) + 0.5) * ph
+    lon = np.empty((rows, cols), np.float32)
+    lat = np.empty((rows, cols), np.float32)
+    inside = np.empty((rows, cols), bool)
+    for r0 in range(0, rows, 256):  # in bands, to keep the float64 temporaries small
+        X, Y = np.meshgrid(x, y[r0:r0 + 256])
+        lo, la = frame.to_lonlat.transform(X, Y)
+        ok = np.isfinite(lo) & np.isfinite(la) & (np.abs(lo) <= 180) & (np.abs(la) <= 90)
+        lo, la = np.where(ok, lo, 0), np.where(ok, la, 0)
+        bx, by = frame.to_map.transform(lo, la)
+        inside[r0:r0 + 256] = ok & (np.abs(bx - X) < pw) & (np.abs(by - Y) < ph)
+        lon[r0:r0 + 256], lat[r0:r0 + 256] = lo, la
+    return PosterGrid(x, y, lon, lat, inside)
+
+
+def ice_mask(ice_projected: gpd.GeoDataFrame, frame: MapFrame, pg: PosterGrid) -> np.ndarray:
+    """Which poster pixels are ice (glaciers, ice sheets, ice shelves), holes cleared."""
+    from PIL import Image, ImageDraw
+
+    rows, cols = pg.inside.shape
+    sx, sy = cols / frame.width, rows / frame.height
+    mask = Image.new("L", (cols, rows), 0)
+    draw = ImageDraw.Draw(mask)
+
+    def to_px(coords) -> list[tuple[float, float]]:
+        return [((cx - frame.xmin) * sx, (frame.ymax - cy) * sy) for cx, cy in coords]
+
+    for geom in ice_projected.geometry:
+        for poly in geom.geoms if isinstance(geom, MultiPolygon) else [geom]:
+            if poly.is_empty or poly.geom_type != "Polygon":
+                continue
+            draw.polygon(to_px(poly.exterior.coords), fill=1)
+            for ring in poly.interiors:
+                draw.polygon(to_px(ring.coords), fill=0)
+    return np.asarray(mask, bool)
+
+
+def draw_topography(ax: Axes, frame: MapFrame, dpi: float, ocean: bool) -> None:
+    """Everything on the globe for --type topographic: the coloured, hill-shaded heights (sea depths with `ocean`),
+    contours, the coastline and the lakes."""
+    from worldmap.render import BORDER, BORDER_WIDTH, Z_BORDERS, Z_COUNTRY, Z_LAKES, holed_patches
+
+    pg = poster_grid(frame, dpi)
+    z = np.where(pg.inside, sample(elevation_grid(), pg.lon, pg.lat), 0).astype(np.float32)
+    ice = ice_mask(project(load_ice()), frame, pg) & pg.inside
+    sea = (z <= 0) & ~ice
+    rgb = shade(colorize(z, ice, ocean), z, frame.width / len(pg.x), sea, ocean)
+    rgba = np.dstack([rgb, pg.inside.astype(np.float32)])
+    extent = (frame.xmin, frame.xmax, frame.ymin, frame.ymax)
+    image = ax.imshow(rgba, extent=extent, interpolation="nearest", zorder=Z_COUNTRY)
+    globe = MplPolygon(frame.outline, closed=True, fc="none", ec="none", transform=ax.transData)
+    image.set_clip_path(globe)
+
+    def contours(where: np.ndarray, levels: np.ndarray, color: str, alpha: float) -> None:
+        if levels.size:
+            ax.contour(pg.x, pg.y, np.ma.masked_where(~where, z), levels=levels, colors=color,
+                       linewidths=CONTOUR_WIDTH, alpha=alpha, zorder=Z_COUNTRY + 0.1)
+
+    land = (z > 0) & ~ice & pg.inside
+    step, color, alpha = LAND_CONTOURS
+    contours(land, np.arange(step, z.max() + 1, step), color, alpha)
+    step, color, alpha = ICE_CONTOURS
+    contours(ice, np.arange(step, z.max() + 1, step), color, alpha)
+    if ocean:
+        step, color, alpha = SEA_CONTOURS
+        contours(sea & pg.inside, -np.arange(step, -z.min() + 1, step)[::-1], color, alpha)
+    coast = np.ma.masked_where(~pg.inside, np.where(ice, np.maximum(z, 1), z))
+    ax.contour(pg.x, pg.y, coast, levels=[0], colors=BORDER, linewidths=BORDER_WIDTH, zorder=Z_BORDERS)
+    for g in project(load_lakes()).geometry:
+        ax.add_collection(PatchCollection(list(holed_patches(g)), fc=OCEAN, ec=BORDER, lw=BORDER_WIDTH, zorder=Z_LAKES))

@@ -7,6 +7,7 @@ from pathlib import Path
 
 import geopandas as gpd
 import pandas as pd
+import shapely
 from shapely.geometry import box
 
 # Data files and caches live in the repo's .cache/ (found from this file, so it needs an editable install).
@@ -122,8 +123,11 @@ def load_lakes() -> gpd.GeoDataFrame:
 
 
 def load_ice() -> gpd.GeoDataFrame:
-    """Glaciers and ice sheets, plus Antarctica's floating ice shelves (--type topographic)."""
+    """Glaciers and ice sheets, plus Antarctica's floating ice shelves (--type topographic). The islands Natural Earth
+    cuts out of the shelves are ice-covered too, so the shelves lose their holes."""
     parts = [gpd.read_file(fetch(name))[["geometry"]] for name in (GLACIERS, ICE_SHELVES)]
+    shelves = shapely.polygons(shapely.get_exterior_ring(shapely.get_parts(parts[1].geometry)))
+    parts[1] = gpd.GeoDataFrame(geometry=shelves, crs=parts[1].crs)
     return gpd.GeoDataFrame(pd.concat(parts, ignore_index=True), geometry="geometry", crs=parts[0].crs)
 
 
