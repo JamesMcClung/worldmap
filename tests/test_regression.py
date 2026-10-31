@@ -25,6 +25,10 @@ def test_render_regions(tmp_path: Path) -> None:
     check_fingerprint("regions", render(tmp_path, "--label", "countries,territories"))
 
 
+def test_render_disputed(tmp_path: Path) -> None:
+    check_fingerprint("disputed", render(tmp_path, "--disputed"))
+
+
 def test_render_failure_shows_stderr(tmp_path: Path) -> None:
     with pytest.raises(pytest.fail.Exception, match="unrecognized arguments"):
         render(tmp_path, "--no-such-flag")

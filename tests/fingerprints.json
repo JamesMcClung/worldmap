@@ -17,6 +17,24 @@
     },
     "sha256": "464ff4be15c3ef8582bc2975550dc05f7d5a9a7ab0922b50a63916a509fec6bc"
   },
+  "disputed": {
+    "env": {
+      "countries": "4930492",
+      "disputed": "215221",
+      "freetype": "2.14.3",
+      "geopandas": "1.2.0",
+      "geos": "3.14.1",
+      "lakes": "2349685",
+      "matplotlib": "3.11.2",
+      "numpy": "2.5.4",
+      "pillow": "12.3.0",
+      "pyproj": "3.8.0",
+      "python": "3.14.3",
+      "shapely": "2.2.0",
+      "states": "5993148"
+    },
+    "sha256": "5fb0ea4b39acc5f9c120d6b987d8c8c368c6f15dd1ac0a8a15478a4eb6627ca8"
+  },
   "earth": {
     "env": {
       "countries": "4930492",

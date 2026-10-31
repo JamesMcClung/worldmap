@@ -16,7 +16,7 @@ from worldmap.earth import Fill
 
 DISPUTED_GREY = "#cfcfcf"  # areas with 3+ countries, and the second stripe of breakaway areas
 SNAP_M = 500  # metres: a disputed outline this close to an involved country counts as their shared border
-STRIPE_WIDTH_IN = 0.05  # each stripe's width across, in inches on the 36 in poster
+STRIPE_WIDTH_IN = 0.035  # each stripe's width across, in inches on the 36 in poster
 
 # Names used in NOTE_BRK -> countries-file NAME_EN.
 ALIASES = {"China": "People's Republic of China", "U.S.A.": "United States of America", "U.S.A": "United States of America",
@@ -123,19 +123,20 @@ def dispute_fills(d: Dispute, fill: Callable[[int], Fill]) -> list[Fill]:
 
 
 def stripe_parts(geom: BaseGeometry, n: int, width: float) -> list[BaseGeometry]:
-    """`geom` cut into `n` sets of 45-degree stripes `width` across: part i holds the stripes k with k % n == i,
-    stripe k being k*width <= (x + y)/sqrt(2) < (k+1)*width. Counted from the origin, so neighbouring areas line up."""
+    """`geom` cut into `n` sets of 45-degree stripes `width` across, running like '/' (as Baikonur's hatching): part i
+    holds the stripes k with k % n == i, stripe k being k*width <= (y - x)/sqrt(2) < (k+1)*width. Counted from the
+    origin, so neighbouring areas line up."""
     if n == 1:
         return [geom]
     x0, y0, x1, y1 = geom.bounds
     corners = [(x0, y0), (x0, y1), (x1, y0), (x1, y1)]
-    us = [(x + y) / math.sqrt(2) for x, y in corners]
-    vs = [(y - x) / math.sqrt(2) for x, y in corners]
+    us = [(y - x) / math.sqrt(2) for x, y in corners]  # across the stripes
+    vs = [(x + y) / math.sqrt(2) for x, y in corners]  # along them
     v0, v1 = min(vs) - width, max(vs) + width
 
     def band(k: int) -> Polygon:
         a, b = k * width, (k + 1) * width
-        return Polygon([((u - v) / math.sqrt(2), (u + v) / math.sqrt(2)) for u, v in [(a, v0), (b, v0), (b, v1), (a, v1)]])
+        return Polygon([((v - u) / math.sqrt(2), (u + v) / math.sqrt(2)) for u, v in [(a, v0), (b, v0), (b, v1), (a, v1)]])
 
     bands: list[list[Polygon]] = [[] for _ in range(n)]
     for k in range(math.floor(min(us) / width), math.floor(max(us) / width) + 1):

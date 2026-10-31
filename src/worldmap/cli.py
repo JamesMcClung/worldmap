@@ -15,14 +15,14 @@ from shapely.geometry import Point
 from worldmap.coloring import Coloring, load_or_compute_coloring, make_palette, spot_check
 from worldmap.colorspace import RGB
 from worldmap.data import is_labeled, load_countries, load_disputed, load_lakes, load_states, parent_index, project
-from worldmap.disputed import dispute_edges, load_disputes
+from worldmap.disputed import STRIPE_WIDTH_IN, border_lines, dispute_edges, load_disputes
 from worldmap.earth import Fill, build_regions, fill_at
 from worldmap.frame import DPI, make_frame
 from worldmap.labels.label import decide_out_and_wrap, make_labels
 from worldmap.labels.placement import place_labels
 from worldmap.labels.regions import child_regions
 from worldmap.pins import draw_pins, load_pins, pick_pins, pin_sprite
-from worldmap.render import draw_countries, draw_labels, draw_lakes, draw_states, new_figure, subtract_lakes
+from worldmap.render import draw_borders, draw_countries, draw_labels, draw_lakes, draw_states, draw_stripes, new_figure, subtract_lakes
 
 
 DEFAULT_OUT, DEFAULT_PINS_OUT = "worldmap.png", "worldmap_pins.png"
@@ -60,6 +60,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--label", metavar="LIST", type=label_kinds, default={"countries"},
                    help="what to label, comma-separated, or none: countries (default); territories = dependencies and "
                         "outlying regions (Alaska, Greenland, Kaliningrad...) with their parent country")
+    p.add_argument("--disputed", action="store_true",
+                   help="stripe disputed areas in the colours of the countries involved and dash their borders")
     p.add_argument("--pins", metavar="FILE", help="draw the pins listed in FILE (one lon,lat per line)")
     p.add_argument("--pin-size", metavar="INCHES", type=float, default=DEFAULT_PIN_SIZE_IN,
                    help="pin diameter in inches on the 36 in poster (default %(default)s)")
@@ -108,7 +110,11 @@ def main(argv: list[str] | None = None) -> None:
         return
 
     fig, ax = new_figure(frame)
-    draw_countries(ax, countries_p, fill_of, regions)
+    draw_countries(ax, countries_p, fill_of, regions, args.disputed)
+    if args.disputed:
+        if regions is None:  # natural colours don't stand for countries, so no stripes with --color earth
+            draw_stripes(ax, disputes, lambda i: fill_of(i, None), STRIPE_WIDTH_IN * DPI / frame.px_per_unit)
+        draw_borders(ax, *border_lines(countries_p, disputes, parent_index(countries)))
     draw_states(ax, states_p)
     draw_lakes(ax, lakes_p)
     countries_p = subtract_lakes(countries_p, lakes_p)
