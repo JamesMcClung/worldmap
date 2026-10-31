@@ -37,3 +37,14 @@ def test_color_flag() -> None:
         with pytest.raises(SystemExit) as e:
             parse_args(bad)
         assert e.value.code == 2
+
+
+def test_label_flag() -> None:
+    assert parse_args([]).label == {"countries"}
+    assert parse_args(["--label", "territories"]).label == {"territories"}
+    assert parse_args(["--label", "countries,territories"]).label == {"countries", "territories"}
+    assert parse_args(["--label", "none"]).label == set()
+    for bad in [["--label", "oceans"], ["--label", "none,countries"], ["--label", ""], ["--regions"]]:
+        with pytest.raises(SystemExit) as e:
+            parse_args(bad)
+        assert e.value.code == 2

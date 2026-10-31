@@ -22,7 +22,7 @@ def test_render_pins(tmp_path: Path) -> None:
 
 
 def test_render_regions(tmp_path: Path) -> None:
-    check_fingerprint("regions", render(tmp_path, "--regions"))
+    check_fingerprint("regions", render(tmp_path, "--label", "countries,territories"))
 
 
 def test_render_failure_shows_stderr(tmp_path: Path) -> None:

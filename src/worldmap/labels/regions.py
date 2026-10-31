@@ -1,4 +1,4 @@
-"""Child regions, labelled only with --regions: dependencies that don't touch their parent (Greenland, Bermuda...)
+"""Child regions, labelled only with --label territories: dependencies that don't touch their parent (Greenland, Bermuda...)
 and hand-picked outlying parts of a country's own polygons (Alaska, Tasmania, Kaliningrad...)."""
 
 from dataclasses import dataclass

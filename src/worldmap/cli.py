@@ -35,6 +35,20 @@ def positive_float(s: str) -> float:
     return v
 
 
+LABEL_KINDS = ("countries", "territories")
+
+
+def label_kinds(s: str) -> set[str]:
+    """A comma-separated list of LABEL_KINDS, or "none"."""
+    if s == "none":
+        return set()
+    kinds = s.split(",")
+    unknown = [k for k in kinds if k not in LABEL_KINDS]
+    if unknown:
+        raise argparse.ArgumentTypeError("unknown label kind %r: choose from %s, or none" % (unknown[0], ",".join(LABEL_KINDS)))
+    return set(kinds)
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(prog="make_map", description=(__doc__ or "").split("\n")[0])
     p.add_argument("out", nargs="?", help=f"output PNG (default {DEFAULT_OUT}, or {DEFAULT_PINS_OUT} with --pins)")
@@ -42,8 +56,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--color", choices=["colorblind", "earth"], default="colorblind",
                    help="how countries are filled: colorblind = distinct colours that red/green colour-blind viewers "
                         "can tell apart (default); earth = land cover as seen from space (sandy desert -> light green)")
-    p.add_argument("--regions", action="store_true",
-                   help="label dependencies and outlying regions (Alaska, Greenland, Kaliningrad...) with their parent country")
+    p.add_argument("--label", metavar="LIST", type=label_kinds, default={"countries"},
+                   help="what to label, comma-separated, or none: countries (default); territories = dependencies and "
+                        "outlying regions (Alaska, Greenland, Kaliningrad...) with their parent country")
     p.add_argument("--pins", metavar="FILE", help="draw the pins listed in FILE (one lon,lat per line)")
     p.add_argument("--pin-size", metavar="INCHES", type=float, default=DEFAULT_PIN_SIZE_IN,
                    help="pin diameter in inches on the 36 in poster (default %(default)s)")
@@ -101,8 +116,8 @@ def main(argv: list[str] | None = None) -> None:
     # Labels are measured in rendered pixels, so draw once first.
     fig.canvas.draw()
     renderer = fig.canvas.get_renderer()  # type: ignore[attr-defined]  # Agg canvas
-    children = child_regions(countries, countries_p, frame) if args.regions else []
-    labels = make_labels(countries_p, frame, ax, renderer, fill_of, children)
+    children = child_regions(countries, countries_p, frame) if "territories" in args.label else []
+    labels = make_labels(countries_p, frame, ax, renderer, fill_of, children, "countries" in args.label)
     decide_out_and_wrap(labels, renderer)
     placement = place_labels(labels, frame)
     draw_labels(ax, labels, placement, frame)
