@@ -8,7 +8,7 @@ from shapely.geometry import Point
 from worldmap.curves import arc_lengths, bend
 from worldmap.data import load_lakes, project
 from worldmap.frame import MapFrame, make_frame
-from worldmap.labels.water import OCEAN_PT, SEA_MAX_PT, WATER_MIN_INSIDE, WATER_MIN_PT, WATER_TEXT, classify, fit_curve, kinds_from_labels, load_water_bodies, make_water_labels
+from worldmap.labels.water import OCEAN_MIN_PT, OCEAN_PT, SEA_MAX_PT, WATER_MIN_INSIDE, WATER_MIN_PT, WATER_TEXT, classify, fit_curve, kinds_from_labels, load_water_bodies, make_water_labels
 
 
 @pytest.fixture(scope="module")
@@ -102,7 +102,7 @@ def test_water_label_layout(frame: MapFrame, lakes_projected: gpd.GeoDataFrame) 
     labels = make_water_labels(bodies, frame)
     med = next(l for l in labels if l.text == "Mediterranean Sea")
     atlantic = next(l for l in labels if l.text == "ATLANTIC OCEAN")
-    assert atlantic.size == OCEAN_PT and WATER_MIN_PT <= med.size <= SEA_MAX_PT
+    assert OCEAN_MIN_PT <= atlantic.size <= OCEAN_PT and WATER_MIN_PT <= med.size <= SEA_MAX_PT
     assert len(med.parts) == len("MediterraneanSea")
     assert med.inside_share(med.anchor_x, med.anchor_y) >= WATER_MIN_INSIDE
     width = med.parts[:, 2].max() - med.parts[:, 0].min()

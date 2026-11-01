@@ -27,10 +27,13 @@ SEA: Kind = "seas"
 CLASSES: dict[str, Kind] = {"ocean": "oceans", "strait": "straits", "channel": "straits"}
 CLASSES |= {c: SEA for c in ("sea", "gulf", "bay", "sound", "fjord", "lagoon", "inlet")}  # reefs, river mouths and the unnamed 'generic' areas are never labelled
 MAX_BEND_DEG = 40  # the most a label's curve may turn from one end to the other
-OCEAN_MAX_TILT_DEG = 20  # oceans run nearly level; seas may follow their shape up to vertical
+OCEAN_MAX_BEND_DEG = 10
+OCEAN_MAX_TILT_DEG = 0  # oceans run level (along a parallel); seas may follow their shape up to vertical
 SEA_MAX_TILT_DEG = 90
+OCEAN_REACH = 3  # an ocean's curve follows its water within this many radii of its largest inscribed circle
 CURVE_SAMPLES = 2000  # interior points sampled to find a body's long direction
-OCEAN_PT = 30  # oceans: fixed size, letter-spaced
+OCEAN_PT = 30  # oceans: letter-spaced, sized like seas but within these (the Arctic and Southern bands are narrow)
+OCEAN_MIN_PT = 18
 OCEAN_TRACKING_EM = 0.6  # extra space after each letter, in ems
 SEA_MAX_PT = 14  # seas, lakes, straits: sized to fill SEA_FILL of their curve, within these
 WATER_MIN_PT = 6.5
@@ -133,9 +136,9 @@ def rotate(points: np.ndarray, centre: np.ndarray, deg: float) -> np.ndarray:
     return centre + (points - centre) @ np.array([[c, s], [-s, c]])
 
 
-def fit_curve(geom: Polygon, max_tilt_deg: float, n: int = 64) -> np.ndarray:
+def fit_curve(geom: Polygon, max_tilt_deg: float, n: int = 64, max_bend_deg: float = MAX_BEND_DEG) -> np.ndarray:
     """A smooth (n, 2) polyline along `geom`'s long direction through its middle: a quadratic in the frame of the
-    principal axis, turning at most MAX_BEND_DEG, its chord at most max_tilt_deg from horizontal. It reads left to
+    principal axis, turning at most max_bend_deg, its chord at most max_tilt_deg from horizontal. It reads left to
     right, or bottom to top when within 1 degree of vertical, so text along it is never upside down."""
     pts = interior_points(geom)
     mean = pts.mean(axis=0)
@@ -147,11 +150,11 @@ def fit_curve(geom: Polygon, max_tilt_deg: float, n: int = 64) -> np.ndarray:
     s, t = (pts - mean) @ d, (pts - mean) @ normal
     s0, s1 = np.percentile(s, [5, 95])
     a, b, c = np.polyfit(s, t, 2)
-    if turn(a, b, s0, s1) > MAX_BEND_DEG:
-        lo, hi = 0.0, 1.0  # shrink the bend until it turns MAX_BEND_DEG
+    if turn(a, b, s0, s1) > max_bend_deg:
+        lo, hi = 0.0, 1.0  # shrink the bend until it turns max_bend_deg
         for _ in range(40):
             mid = (lo + hi) / 2
-            lo, hi = (mid, hi) if turn(a * mid, b, s0, s1) <= MAX_BEND_DEG else (lo, mid)
+            lo, hi = (mid, hi) if turn(a * mid, b, s0, s1) <= max_bend_deg else (lo, mid)
         a *= lo
     ss = np.linspace(s0, s1, n)
     curve = mean + ss[:, None] * d + (a * ss**2 + b * ss + c)[:, None] * normal
@@ -240,19 +243,31 @@ def lay_out(body: WaterBody, curve: np.ndarray, size: float, geom_px: BaseGeomet
     return WaterLabel(body.text, body.kind, body.rank, geom_px, float(anchor[0]), float(anchor[1]), size, glyphs, np.array(parts))
 
 
+def body_curve(body: WaterBody) -> np.ndarray:
+    """The curve a body's name follows (map units). An ocean's is level, gently bent along its water within
+    OCEAN_REACH radii of its largest inscribed circle, and centred on that circle: the middle of a whole ocean
+    may be land or a narrow passage."""
+    if body.kind != "oceans":
+        return fit_curve(body.geom, SEA_MAX_TILT_DEG)
+    circle = shapely.maximum_inscribed_circle(body.geom, np.sqrt(body.geom.area) / 1000)
+    centre, radius = np.asarray(circle.coords[0]), circle.length
+    area = largest(body.geom.intersection(shapely.Point(centre).buffer(OCEAN_REACH * radius)))
+    curve = fit_curve(area, OCEAN_MAX_TILT_DEG, max_bend_deg=OCEAN_MAX_BEND_DEG)
+    return curve + centre - curve[len(curve) // 2]
+
+
 def make_water_labels(bodies: list[WaterBody], frame: MapFrame) -> list[WaterLabel]:
     """A curved label per body, in the same order, leaving out those with under WATER_MIN_INSIDE of their glyph
     boxes over their body to start with (most small bays: no room for their name)."""
     ppu = frame.px_per_unit
     labels = []
     for body in bodies:
-        tilt = OCEAN_MAX_TILT_DEG if body.kind == "oceans" else SEA_MAX_TILT_DEG
-        curve = (fit_curve(body.geom, tilt) - np.array([frame.xmin, frame.ymin])) * ppu
+        curve = (body_curve(body) - np.array([frame.xmin, frame.ymin])) * ppu
+        width_1pt = text_width(body.text, font(body.kind, 1)) * PX_PER_PT
         if body.kind == "oceans":
-            size = float(OCEAN_PT)
-        else:
-            width_1pt = text_width(body.text, font(body.kind, 1)) * PX_PER_PT
-            size = float(np.clip(SEA_FILL * arc_lengths(curve)[-1] / width_1pt, WATER_MIN_PT, SEA_MAX_PT))
+            width_1pt += OCEAN_TRACKING_EM * (len(body.text) - 1) * PX_PER_PT
+        low, high = (OCEAN_MIN_PT, OCEAN_PT) if body.kind == "oceans" else (WATER_MIN_PT, SEA_MAX_PT)
+        size = float(np.clip(SEA_FILL * arc_lengths(curve)[-1] / width_1pt, low, high))
         label = lay_out(body, curve, size, frame.to_px(body.geom))
         if label.inside_share(label.anchor_x, label.anchor_y) >= WATER_MIN_INSIDE:
             labels.append(label)
