@@ -182,7 +182,7 @@ def test_surfaces_clean_up_specks(pg: PosterGrid) -> None:
 
 
 def test_relief_lights_north_west_slopes() -> None:
-    z = np.zeros((5, 5)); z[:, 3:] = 0  # flat
+    z = np.zeros((5, 5))  # flat
     assert np.allclose(relief(z, 1000.0), 0, atol=1e-6)
     rising_south_east = np.add.outer(np.arange(5.0), np.arange(5.0)) * 300  # faces the north-west light
     assert (relief(rising_south_east, 1000.0) > 0).all() and (relief(-rising_south_east, 1000.0) < 0).all()
