@@ -48,3 +48,8 @@ def test_label_flag() -> None:
         with pytest.raises(SystemExit) as e:
             parse_args(bad)
         assert e.value.code == 2
+
+
+def test_disputed_flag() -> None:
+    assert parse_args([]).disputed is False
+    assert parse_args(["--disputed"]).disputed is True

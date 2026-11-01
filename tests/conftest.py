@@ -37,7 +37,7 @@ def fingerprint(png: Path) -> str:
 def environment(mode: str = "default") -> dict[str, str]:
     """Versions of everything that can change the rendered pixels: libraries, and the sizes of the downloaded
     Natural Earth files (a new NE release would otherwise look like a regression)."""
-    from worldmap.data import COUNTRIES, LAKES, RASTER, STATES, fetch
+    from worldmap.data import COUNTRIES, DISPUTED, LAKES, RASTER, STATES, fetch
 
     import geopandas
     import matplotlib
@@ -59,6 +59,7 @@ def environment(mode: str = "default") -> dict[str, str]:
         "countries": str(os.path.getsize(fetch(COUNTRIES))),
         "states": str(os.path.getsize(fetch(STATES))),
         "lakes": str(os.path.getsize(fetch(LAKES))),
+        "disputed": str(os.path.getsize(fetch(DISPUTED))),  # the colouring keeps 2-country disputes apart
         **({"raster": str(os.path.getsize(fetch(RASTER)))} if mode == "earth" else {}),
     }
 

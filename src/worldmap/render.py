@@ -5,8 +5,9 @@ from collections.abc import Callable, Iterator
 import geopandas as gpd
 import matplotlib
 import numpy as np
+import shapely
 from matplotlib.axes import Axes
-from matplotlib.collections import PatchCollection
+from matplotlib.collections import LineCollection, PatchCollection
 from matplotlib.figure import Figure
 from matplotlib.patches import PathPatch, Polygon as MplPolygon
 from matplotlib.path import Path
@@ -16,6 +17,7 @@ from shapely.geometry.polygon import orient
 from shapely.ops import unary_union
 
 from worldmap.coloring import OCEAN
+from worldmap.disputed import Dispute, dispute_fills, stripe_parts
 from worldmap.earth import Fill, Regions
 from worldmap.frame import DPI, POSTER_WIDTH_IN, MapFrame
 from worldmap.labels.label import Label
@@ -29,8 +31,10 @@ STATE_LINE_WIDTH = 0.35
 BAIKONUR_HATCH_WIDTH = 1.6
 LEADER_WIDTH = 0.7
 LEADER_DOT_SIZE = 1.3
-# Drawing order, bottom to top (pins are at 10, labels at 6).
-Z_OCEAN, Z_COUNTRY, Z_BAIKONUR, Z_STATES, Z_LAKES, Z_GLOBE, Z_LEADERS = 0, 1, 1.5, 2, 2.5, 3, 4
+BORDER_DASH = (0, (2.5, 1.5))  # --disputed: borders between a disputed area and the countries involved
+# Drawing order, bottom to top (pins are at 10, labels at 6). Borders sit below the lakes so they don't cross them.
+Z_OCEAN, Z_COUNTRY, Z_BAIKONUR, Z_STRIPES, Z_BAIKONUR_EDGE, Z_BORDERS, Z_STATES, Z_LAKES, Z_GLOBE, Z_LEADERS = 0, 1, 1.5, 1.5, 1.6, 1.7, 2, 2.5, 3, 4
+Z_STATES_UNDER_BORDERS = 1.65  # --disputed: state lines above the stripes, below the (dashed) borders
 
 
 def patches(geom: BaseGeometry) -> Iterator[MplPolygon]:
@@ -66,26 +70,52 @@ def new_figure(frame: MapFrame) -> tuple[Figure, Axes]:
     return fig, ax
 
 
-def draw_countries(ax: Axes, countries_projected: gpd.GeoDataFrame, fill_of: Callable[[int, Point | None], Fill], regions: Regions | None) -> None:
+def draw_countries(ax: Axes, countries_projected: gpd.GeoDataFrame, fill_of: Callable[[int, Point | None], Fill], regions: Regions | None, disputed: bool = False) -> None:
     """Country fills with borders. With `regions` (--color earth), each polygon gets its own fill; otherwise Baikonur
-    (Kazakh land leased to Russia) is hatched in Kazakhstan's colour."""
+    (Kazakh land leased to Russia) is hatched in Kazakhstan's colour. With `disputed`, fills only: draw_borders draws
+    the borders and draw_stripes stripes Baikonur with the other disputed areas."""
     kazakhstan = countries_projected.index[countries_projected.NAME_EN == "Kazakhstan"][0]
+    ec = "none" if disputed else BORDER
     for i, row in countries_projected.iterrows():
         if row.NAME_EN == "Antarctica":
-            ax.add_collection(PatchCollection(list(patches(row.geometry)), fc=ANTARCTICA_FILL, ec=BORDER, lw=BORDER_WIDTH, zorder=Z_COUNTRY))
+            ax.add_collection(PatchCollection(list(patches(row.geometry)), fc=ANTARCTICA_FILL, ec=ec, lw=BORDER_WIDTH, zorder=Z_COUNTRY))
         elif regions is not None:
             for poly, fill in regions[i]:
-                ax.add_collection(PatchCollection(list(patches(poly)), fc=fill, ec=BORDER, lw=BORDER_WIDTH, zorder=Z_COUNTRY))
-        else:
-            ax.add_collection(PatchCollection(list(patches(row.geometry)), fc=fill_of(i, None), ec=BORDER, lw=BORDER_WIDTH, zorder=Z_COUNTRY))
-        if row.NAME_EN == "Baikonur" and regions is None:
+                ax.add_collection(PatchCollection(list(patches(poly)), fc=fill, ec=ec, lw=BORDER_WIDTH, zorder=Z_COUNTRY))
+        elif row.NAME_EN == "Baikonur" and not disputed:
+            # Hatched in Kazakhstan's colour, with its border drawn above the hatching.
+            ax.add_collection(PatchCollection(list(patches(row.geometry)), fc=fill_of(i, None), ec="none", zorder=Z_COUNTRY))
             matplotlib.rcParams["hatch.linewidth"] = BAIKONUR_HATCH_WIDTH
             stripe = fill_of(kazakhstan, None)
             ax.add_collection(PatchCollection(list(patches(row.geometry)), fc="none", ec=stripe, lw=0, hatch="////", zorder=Z_BAIKONUR))
+            ax.add_collection(PatchCollection(list(patches(row.geometry)), fc="none", ec=BORDER, lw=BORDER_WIDTH, zorder=Z_BAIKONUR_EDGE))
+        else:
+            ax.add_collection(PatchCollection(list(patches(row.geometry)), fc=fill_of(i, None), ec=ec, lw=BORDER_WIDTH, zorder=Z_COUNTRY))
 
 
-def draw_states(ax: Axes, states_projected: gpd.GeoDataFrame) -> None:
-    states_projected.plot(ax=ax, color=STATE_LINE, linewidth=STATE_LINE_WIDTH, zorder=Z_STATES)
+def draw_stripes(ax: Axes, disputes: list[Dispute], fill: Callable[[int], Fill], width: float) -> None:
+    """Each disputed area in equal stripes, `width` map units across, of the colours of the countries involved."""
+    for d in disputes:
+        fills = dispute_fills(d, fill)
+        for part, color in zip(stripe_parts(d.geometry, len(fills), width), fills):
+            polys = [patch for g in shapely.get_parts(part) if g.geom_type == "Polygon" for patch in holed_patches(g)]
+            ax.add_collection(PatchCollection(polys, fc=color, ec="none", zorder=Z_STRIPES))
+
+
+def line_coords(geom: BaseGeometry) -> list[np.ndarray]:
+    return [np.asarray(line.coords) for line in shapely.get_parts(shapely.line_merge(geom)) if not line.is_empty]
+
+
+def draw_borders(ax: Axes, solid: BaseGeometry, dashed: BaseGeometry) -> None:
+    """Country borders as lines (--disputed), above the stripes; see disputed.border_lines."""
+    ax.add_collection(LineCollection(line_coords(solid), colors=BORDER, linewidths=BORDER_WIDTH, zorder=Z_BORDERS))
+    ax.add_collection(LineCollection(line_coords(dashed), colors=BORDER, linewidths=BORDER_WIDTH, linestyles=[BORDER_DASH], capstyle="butt", zorder=Z_BORDERS))
+
+
+def draw_states(ax: Axes, states_projected: gpd.GeoDataFrame, disputed: bool = False) -> None:
+    """State/province lines. With `disputed` they go under the borders, which would otherwise lose their dashes where
+    a disputed area's edge follows a state line (Kashmir and Himachal Pradesh)."""
+    states_projected.plot(ax=ax, color=STATE_LINE, linewidth=STATE_LINE_WIDTH, zorder=Z_STATES_UNDER_BORDERS if disputed else Z_STATES)
 
 
 def draw_lakes(ax: Axes, lakes_projected: gpd.GeoDataFrame) -> None:

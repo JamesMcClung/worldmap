@@ -3,7 +3,8 @@ import pytest
 from shapely.geometry import box
 
 from worldmap.coloring import cache_key, color_graph, load_or_compute_coloring, merge_into_parents, spot_check
-from worldmap.data import is_labeled, load_countries, parent_index
+from worldmap.data import is_labeled, load_countries, load_disputed, parent_index
+from worldmap.disputed import dispute_edges, load_disputes
 
 
 def test_color_graph_is_proper() -> None:
@@ -40,6 +41,7 @@ def test_cache_key_covers_major_and_parents() -> None:
     flipped[0] = not flipped[0]
     assert cache_key(c, flipped, parents) != key
     assert cache_key(c, major, {}) != key
+    assert cache_key(c, major, parents, {(0, 1)}) != key
 
 
 def test_dependencies_share_parent_class() -> None:
@@ -48,3 +50,11 @@ def test_dependencies_share_parent_class() -> None:
     col = load_or_compute_coloring(c, [is_labeled(r) for _, r in c.iterrows()], False, parents).color_class
     assert all(col[d] == col[p] for d, p in parents.items())
     assert spot_check(c, col) == []
+
+
+def test_dispute_pairs_differ() -> None:
+    c = load_countries()
+    edges = dispute_edges(load_disputes(c, load_disputed()))
+    major = [is_labeled(r) for _, r in c.iterrows()]
+    col = load_or_compute_coloring(c, major, False, parent_index(c), edges).color_class
+    assert all(col[a] != col[b] for a, b in edges)

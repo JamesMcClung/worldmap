@@ -28,7 +28,7 @@ UNWEIGHTED_LARGEST = 10  # the biggest countries don't count towards colour bala
 WORLD_WIDTH_M = 2 * np.pi * 6378137.0  # width of EPSG:6933 in metres (shift for wrap-around at the antimeridian)
 SIMPLIFY_M = 10_000  # outline simplification for the distance queries
 TOP_UP_SEARCH_M = 5_000_000  # how far to look for top-up neighbours
-COLORING_RULE = "top10-exempt-count-balance/v3-dependencies-merged"  # bump when the colouring logic changes, to invalidate the cache
+COLORING_RULE = "top10-exempt-count-balance/v4-dispute-edges"  # bump when the colouring logic changes, to invalidate the cache
 SPOT_CHECK_PAIRS = [("South Korea", "Japan"), ("Russia", "United States of America"), ("Malaysia", "Philippines"), ("Italy", "Greece"), ("France", "United Kingdom"), ("United Kingdom", "Norway"), ("India", "Sri Lanka")]
 
 
@@ -241,20 +241,21 @@ def merge_into_parents(gdf: gpd.GeoDataFrame, major: list[bool], parent_of: dict
     return merged, [major[position[label]] for label in roots], node_of
 
 
-def cache_key(countries: gpd.GeoDataFrame, major: list[bool], parent_of: dict[int, int]) -> dict:
+def cache_key(countries: gpd.GeoDataFrame, major: list[bool], parent_of: dict[int, int], extra_edges: set[Edge] = set()) -> dict:
     """Everything the colouring depends on, so a change to any of it rebuilds coloring.json."""
     names = list(countries.NAME_EN)
     return {"n_colors": N_COLORS, "max_gap": MAX_GAP, "min_deg": MIN_DEG, "rule": COLORING_RULE, "files": {COUNTRIES: os.path.getsize(fetch(COUNTRIES))},
             "major": [name for name, m in zip(names, major) if m],
-            "parents": sorted([countries.NAME_EN[d], countries.NAME_EN[p]] for d, p in parent_of.items())}
+            "parents": sorted([countries.NAME_EN[d], countries.NAME_EN[p]] for d, p in parent_of.items()),
+            "extra_edges": sorted([countries.NAME_EN[a], countries.NAME_EN[b]] for a, b in extra_edges)}
 
 
-def load_or_compute_coloring(countries: gpd.GeoDataFrame, major: list[bool], recolor: bool, parent_of: dict[int, int]) -> Coloring:
+def load_or_compute_coloring(countries: gpd.GeoDataFrame, major: list[bool], recolor: bool, parent_of: dict[int, int], extra_edges: set[Edge] = set()) -> Coloring:
     """The graph colouring, cached in coloring.json so palette tweaks never reshuffle it and runs skip the
     border/distance work. Rebuilt when the inputs change or when `recolor` is set. Dependencies (`parent_of`) are
-    coloured as part of their parent."""
+    coloured as part of their parent. `extra_edges` (country rows) must get different colours too (disputed.dispute_edges)."""
     cache = CACHE / "coloring.json"
-    key = cache_key(countries, major, parent_of)
+    key = cache_key(countries, major, parent_of, extra_edges)
     names = list(countries.NAME_EN)
     if not recolor and cache.exists():
         try:
@@ -266,6 +267,7 @@ def load_or_compute_coloring(countries: gpd.GeoDataFrame, major: list[bool], rec
             pass
     merged, merged_major, node_of = merge_into_parents(countries, major, parent_of)
     edges = add_proximity_edges(merged, adjacency(merged), merged_major, N_COLORS, max_gap=MAX_GAP, min_deg=MIN_DEG)
+    edges |= {(min(node_of[a], node_of[b]), max(node_of[a], node_of[b])) for a, b in extra_edges if node_of[a] != node_of[b]}
     # Balance colour usage by country count, but don't count the largest countries, so their colours aren't penalised.
     areas = merged.to_crs(EQUAL_AREA_CRS).geometry.area
     weights = [0.0 if rank < UNWEIGHTED_LARGEST else 1.0 for rank in areas.rank(ascending=False, method="first")]

@@ -15,6 +15,7 @@ NE_URL = "https://naciscdn.org/naturalearth/10m/"
 COUNTRIES = "ne_10m_admin_0_countries.zip"
 STATES = "ne_10m_admin_1_states_provinces_lines.zip"
 LAKES = "ne_10m_lakes.zip"
+DISPUTED = "ne_10m_admin_0_disputed_areas.zip"
 RASTER = "ne1/NE1_LR_LC.tif"  # unzipped from NE1_LR_LC.zip
 
 LAKE_MIN_KM2 = 2000  # lakes at least this big are drawn as water (~8 px across on the poster)
@@ -92,6 +93,11 @@ def parent_index(countries: gpd.GeoDataFrame) -> dict[int, int]:
 
 def load_countries() -> gpd.GeoDataFrame:
     return gpd.read_file(fetch(COUNTRIES)).reset_index(drop=True)
+
+
+def load_disputed() -> gpd.GeoDataFrame:
+    """Natural Earth's disputed areas (Kashmir, Crimea, Taiwan...), see disputed.py."""
+    return gpd.read_file(fetch(DISPUTED)).reset_index(drop=True)
 
 
 def load_states() -> gpd.GeoDataFrame:
