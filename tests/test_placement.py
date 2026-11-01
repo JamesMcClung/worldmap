@@ -5,8 +5,8 @@ from matplotlib.path import Path
 
 from worldmap.frame import MapFrame, make_frame
 from worldmap.labels.label import Label, new_label
-from worldmap.labels.placement import clashes, place_labels
-from worldmap.labels.water import WaterLabel
+from worldmap.labels.placement import clashes, place_labels, place_with_water
+from worldmap.labels.water import WATER_MIN_PT, WaterLabel
 from worldmap.render import new_figure
 
 
@@ -69,3 +69,44 @@ def test_water_pushes_country_but_only_water_shrinks(frame: MapFrame, one_label:
 def test_water_only(frame: MapFrame, water_on_top_of_it: WaterLabel) -> None:
     p = place_labels([], frame, water=[water_on_top_of_it])
     assert p.n == 1 and p.water.all()
+
+
+def mid_atlantic_px(frame: MapFrame) -> tuple[float, float]:
+    x, y = frame.to_map.transform(-35, 30)
+    return (x - frame.xmin) * frame.px_per_unit, (y - frame.ymin) * frame.px_per_unit
+
+
+def crossing_water_labels(frame: MapFrame) -> tuple[WaterLabel, WaterLabel]:
+    """Two minimum-size labels wanting the same small water body (exactly their glyph boxes), "Sea" first."""
+    x, y = mid_atlantic_px(frame)
+    parts = np.array([[-30.0, -7, 0, 7], [0, -7, 30, 7]])
+    geom = shapely.box(x - 30, y - 7, x + 30, y + 7)
+    return water_label("Sea", (x, y), geom, parts, WATER_MIN_PT), water_label("Bay", (x, y), geom, parts.copy(), WATER_MIN_PT)
+
+
+def water_label_far_from_its_geom(frame: MapFrame) -> WaterLabel:
+    x, y = mid_atlantic_px(frame)
+    return water_label("Lonely", (x, y), shapely.box(x + 5000, y, x + 5010, y + 10), np.array([[-30.0, -7, 30, 7]]), WATER_MIN_PT)
+
+
+def test_drop_least_important(frame: MapFrame) -> None:
+    sea, bay = crossing_water_labels(frame)
+    p, kept = place_with_water([], [sea, bay], frame)
+    assert [w.text for w in kept] == ["Sea"]
+    assert clashes(p) == ([], [])
+
+
+def test_off_water_is_dropped(frame: MapFrame) -> None:
+    _, kept = place_with_water([], [water_label_far_from_its_geom(frame)], frame)
+    assert kept == []
+
+
+def test_country_labels_never_dropped(frame: MapFrame, one_label: list[Label], water_on_top_of_it: WaterLabel) -> None:
+    p, _ = place_with_water(one_label, [water_on_top_of_it], frame)
+    assert (~p.water).sum() == 1
+
+
+def test_no_water_is_place_labels(frame: MapFrame, two_labels: list[Label]) -> None:
+    a = place_labels(two_labels, frame)
+    b, kept = place_with_water(two_labels_copy(), [], frame)
+    assert kept == [] and np.array_equal(a.x, b.x) and np.array_equal(a.y, b.y)

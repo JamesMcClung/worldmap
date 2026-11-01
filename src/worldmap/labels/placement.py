@@ -11,7 +11,7 @@ from shapely.geometry import Polygon
 from worldmap.frame import MapFrame
 from worldmap.labels.geometry import nearest_point_on_rect, segment_hits_rects, segments_cross
 from worldmap.labels.label import Label
-from worldmap.labels.water import PX_PER_PT, WATER_MIN_PT, WaterLabel
+from worldmap.labels.water import PX_PER_PT, WATER_MIN_INSIDE, WATER_MIN_PT, WaterLabel
 
 SEED = 7
 OUTLINE_SIMPLIFY_PX = 0.5
@@ -260,7 +260,7 @@ def place_labels(labels: list[Label], frame: MapFrame, seed: int = SEED, weights
         np.array([label.width for label in labels] + [e[0] for e in extent]),
         np.array([label.height for label in labels] + [e[1] for e in extent]),
         anchor_x, anchor_y, np.array([label.out for label in labels] + [False] * len(water), bool),
-        np.array([False] * len(labels) + [True] * len(water)),
+        np.array([False] * len(labels) + [True] * len(water), bool),
         np.vstack([np.zeros((0, 4)), *[w.parts for w in water]]),
         np.concatenate([np.zeros(0, int), *[np.full(len(w.parts), len(labels) + k) for k, w in enumerate(water)]]),
     )
@@ -313,3 +313,53 @@ def place_labels(labels: list[Label], frame: MapFrame, seed: int = SEED, weights
         optimize(SHRINK_PASSES)
     print("passes done; unresolved overlaps:", [labels[i].name for i in clashes(p)[0]])
     return p
+
+
+def water_touching(p: Placement, i: int, x: float, y: float) -> list[int]:
+    """The other water labels whose glyph boxes overlap water label i's when i is at (x, y)."""
+    mine = p.owner == i
+    g = p.parts[mine] + np.array([x, y, x, y])
+    others, owners = glyph_boxes(p)[~mine], p.owner[~mine]
+    ox = np.minimum(g[:, None, 2], others[:, 2]) - np.maximum(g[:, None, 0], others[:, 0])
+    oy = np.minimum(g[:, None, 3], others[:, 3]) - np.maximum(g[:, None, 1], others[:, 1])
+    return sorted({int(j) for j in owners[((ox > 0) & (oy > 0)).any(0)]})
+
+
+def place_with_water(labels: list[Label], water: list[WaterLabel], frame: MapFrame) -> tuple[Placement, list[WaterLabel]]:
+    """Place country and water labels together, dropping water labels until none fails, and return the placement
+    and the water labels kept. A water label fails when it ends mostly off its body, or still clashes at its
+    minimum size. Each failing label and the water labels it touches (where it is, or would at its anchor) form a
+    group; the least important water label of each group is dropped and the rest re-placed from where they were.
+    Country labels are never dropped, and start each run at their own size."""
+    sizes = [label.text.get_fontsize() for label in labels]
+    kept, start, dropped = list(water), None, []
+    while True:
+        for label, size in zip(labels, sizes):
+            label.text.set_fontsize(size)
+        p = place_labels(labels, frame, water=kept, start=start)
+        if not water:
+            return p, kept
+        n_country = len(labels)
+        clashing = set(clashes(p)[1])
+        failing = [i for i in range(n_country, p.n)
+                   if kept[i - n_country].inside_share(p.x[i], p.y[i]) < WATER_MIN_INSIDE
+                   or (i in clashing and kept[i - n_country].size <= WATER_MIN_PT / SHRINK_FACTOR)]
+        if not failing and not clashing:
+            break
+        group = {i: i for i in range(n_country, p.n)}  # union-find over the water labels
+
+        def root(i: int) -> int:
+            while group[i] != i:
+                i = group[i]
+            return i
+
+        for f in failing:
+            for j in water_touching(p, f, p.x[f], p.y[f]) + water_touching(p, f, p.anchor_x[f], p.anchor_y[f]):
+                group[root(j)] = root(f)
+        drop = {max(i for i in group if root(i) == r) for r in {root(f) for f in failing}}
+        dropped += [kept[i - n_country].text for i in sorted(drop)]
+        stay = np.array([i not in drop for i in range(p.n)])
+        kept = [w for k, w in enumerate(kept) if n_country + k not in drop]
+        start = (p.x[stay], p.y[stay])  # clashing labels that can still shrink just go round again
+    print("water labels dropped:", dropped)
+    return p, kept
