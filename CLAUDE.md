@@ -48,8 +48,8 @@ Importing any module has no side effects; only `cli.main` (after choosing the ba
 | `colorspace.py` | OKLab/OKLCH conversions, `fit_gamut`, `darken` |
 | `coloring.py` | `merge_into_parents`, `adjacency`, `add_proximity_edges`, `color_graph`, `make_palette`, `load_or_compute_coloring` (cache), `spot_check`, `OCEAN` |
 | `disputed.py` | `--disputed`: `parse_note`, `ALIASES`, `HAND_CLAIMS`, `LABEL_TEXT`, `Dispute`, `load_disputes`, `dispute_edges`, `dispute_fills`, `stripe_parts`, `border_lines`, `disputed_label_args` |
-| `topographic.py` | `--type topographic`: `elevation_grid` (ETOPO -> cached 3' grid), `sample`, `Scale` (`LAND`, `SEA`, `ICE`), `Contours`, `colorize`, `relief`, `shade`, `poster_grid`, `polygon_mask`, `coast_lines`, `draw_topography` |
-| `colorbars.py` | `--type topographic`: `bar_region`, `draw_colorbar` (right-triangle bars in the canvas corners) |
+| `topographic.py` | `--type topographic`: `elevation_grid` (ETOPO -> cached 3' grid), `sample`, `Scale` (`LAND`, `SEA`, `ICE`), `Contours`, `colorize`, `relief`, `shade`, `poster_grid`, `polygon_mask`, `despeckle`, `solid_field`, `surfaces`, `coast_lines`, `draw_topography` |
+| `colorbars.py` | `--type topographic`: `bar_region`, `globe_side`, `curved_title`, `draw_colorbar` (right-triangle bars in the canvas corners) |
 | `earth.py` | `--color earth`: `earth_values` (raster sampling, cache), `earth_fill`, `build_regions`, `fill_at` |
 | `pins.py` | `load_pins`, `PinStyle` (every sprite shading constant), `pin_sprite`, `draw_pins`, `pick_pins` |
 | `labels/label.py` | `Label` dataclass, `make_labels` (anchors, sizes, exclaves), `decide_out_and_wrap` |
@@ -149,11 +149,17 @@ or labels run. `--color`, `--label`, `--disputed`, `--recolor` are ignored; `--o
   `SEA_CONTOURS`, dashed), coastline at `Z_BORDERS`, lakes at `Z_LAKES`, colour bars at `Z_GLOBE`. The coastline
   (`coast_lines`) is the 0.5 contour of the smoothed land-or-ice mask, not Natural Earth's outlines: those disagree
   around Antarctica and left stray dashes.
+- Land/water specks (`surfaces`): patches under `SPECK_PX` = 4 pixels at 200 dpi (islets, river bits) are flipped by
+  rasterio's `sieve` (`despeckle`), then land/ice is coloured where `solid_field` (despeckled + smoothed) is > 0.5,
+  the same field whose 0.5 contour is the coastline, so no land shows without a coast. Filled water specks take
+  the land or ice around them. 8+ px starts deleting visible Aegean islands.
 - Memory: a 200 dpi run peaks around 3.5 GB. Work in blocks or in place on the whole-poster arrays; don't use
   `ax.contour` (its ContourSet keeps a float64 copy of the grid per call, ~665 MB each), use `contour_lines` (contourpy).
 - Colour bars (`colorbars.py`): height bottom-right, depth top-right (`--ocean` only), ice bottom-left. Each is its
   corner quadrant minus the globe grown by `BAR_GAP_IN`, minus `BAR_MARGIN_IN`; signed labels in the gap with a white
   halo (ends marked `≥`/`≤`), the map's contour lines across the bar, and sea level in the coastline's style.
+  The title (`curved_title`, `TITLE_SIZE` bold) is a `TextPath` warped onto the bar's globe-side curve
+  (`globe_side`), centred on it, inside the bar `TITLE_INSET_IN` from it (descenders clear the curve in the top-right bar).
 
 ## Pins (`--pick`, `--pins`)
 
