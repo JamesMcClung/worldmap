@@ -77,6 +77,10 @@ def test_render_topographic_ocean(tmp_path: Path) -> None:
     check_fingerprint("topographic_ocean", render(tmp_path, "--type", "topographic", "--ocean"))
 
 
+def test_render_topographic_water(tmp_path: Path) -> None:
+    check_fingerprint("topographic_water", render(tmp_path, "--type", "topographic", "--label", "water"))
+
+
 def test_topographic_outside_is_transparent(tmp_path: Path) -> None:
     im = np.asarray(Image.open(render(tmp_path, "--type", "topographic", "--dpi", "50", "--pins", str(TESTS / "pins.txt"))))
     h, w = im.shape[:2]

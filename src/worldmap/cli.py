@@ -60,7 +60,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("out", nargs="?", help=f"output PNG (default {DEFAULT_OUT}, or {DEFAULT_PINS_OUT} with --pins)")
     p.add_argument("--type", choices=["political", "topographic"], default="political",
                    help="political = countries, borders and labels (default); topographic = heights, hill shading and "
-                        "contours, with no borders or labels (--color, --label, --disputed and --recolor are ignored)")
+                        "contours, with no borders, and only water labels if --label asks for them (--color, --disputed, "
+                        "--recolor and --label countries, territories are ignored)")
     p.add_argument("--ocean", action="store_true",
                    help="with --type topographic, colour the sea by depth (ignored with --type political)")
     p.add_argument("--recolor", action="store_true", help="rebuild the cached graph colouring")
@@ -172,6 +173,10 @@ def draw_topographic(args: argparse.Namespace, out: str, frame: MapFrame) -> Non
     if args.ocean:
         draw_colorbar(ax, frame, "tr", SEA, "Depth", SEA_CONTOURS)
     draw_colorbar(ax, frame, "bl", ICE, "Ice", ICE_CONTOURS)
+    kinds = kinds_from_labels(args.label)
+    if kinds:  # without water kinds no label stage runs
+        placement, water = place_with_water([], make_water_labels(load_water_bodies(kinds, project(load_lakes())), frame), frame)
+        draw_water_labels(ax, water, placement, frame)
     ax.set_xlim(frame.xmin, frame.xmax)
     ax.set_ylim(frame.ymin, frame.ymax)
     add_pins(ax, frame, args)
