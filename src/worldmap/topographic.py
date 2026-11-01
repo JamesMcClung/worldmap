@@ -20,7 +20,6 @@ GRID_STEP_DEG = 0.05  # 3 arc-minutes: about one poster pixel at 200 dpi
 ELEVATION_RULE = "etopo2022-60s-mean-3min/v1"  # bump when the reduction changes, to rebuild the cached grid
 
 
-
 @dataclass(frozen=True)
 class Scale:
     """A colour scale from `start` metres (cmap position 0, at the colour bar's canvas edge) to `end` (position 1, at
@@ -56,7 +55,7 @@ LIGHT_AZIMUTH, LIGHT_ALTITUDE = 315, 45  # degrees: lit from the north-west
 LAND_SHADE, SEA_SHADE = 1.0, 0.4  # how strongly slopes lighten/darken land and ice, and the sea floor (--ocean)
 LAND_CONTOURS = Contours(1000, "#5a4a3a", 0.6)
 ICE_CONTOURS = Contours(1000, "#7a8fa3", 0.6)
-SEA_CONTOURS = Contours(2000, "#1f4466", 0.5, "dashed")  # dashed, as in mockup E
+SEA_CONTOURS = Contours(2000, "#1f4466", 0.5, "dashed")
 CONTOUR_WIDTH = 0.3
 SAMPLE_BLOCK = 1 << 17  # points per block in sample() and colorize()
 VERT_EXAG = 6.0  # hill-shading exaggeration of heights (z and pixel size both in metres); tuned on crops
