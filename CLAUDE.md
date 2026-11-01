@@ -1,13 +1,13 @@
 # worldmap
 
 The `worldmap` package (console script `make_map`, also `python -m worldmap`) renders a poster-sized political world map PNG (country borders, state/province borders for
-large countries, non-overlapping country labels). Output default: `worldmap.png`, an RGBA PNG 7200 x 3693 px (36 in wide at 200 dpi), transparent outside the globe outline.
+large countries, non-overlapping country labels), or with `--type topographic` a hill-shaded height map. Output default: `worldmap.png`, an RGBA PNG 7200 x 3693 px (36 in wide at 200 dpi), transparent outside the globe outline.
 
 ## Setup and run
 
 ```
 python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'   # deps in pyproject.toml; [dev] adds pytest, mypy
-.venv/bin/make_map [out.png] [--recolor] [--color colorblind|earth] [--label LIST] [--disputed] [--pins FILE] [--pin-size IN] [--dpi DPI] [--pick FILE]
+.venv/bin/make_map [out.png] [--type political|topographic] [--ocean] [--recolor] [--color colorblind|earth] [--label LIST] [--disputed] [--pins FILE] [--pin-size IN] [--dpi DPI] [--pick FILE]
 ```
 
 `--dpi` only changes the `savefig` dpi (and the pin sprite's pixel size): layout is always measured at
@@ -16,14 +16,15 @@ A run takes ~7-12 s. Output goes to the current directory. After changing the en
 
 Natural Earth data (public domain) is downloaded by `data.fetch(name)` on first use into `.cache/` at the repo root, located
 relative to `data.py` (`CACHE`), so the package must be installed editable (`-e`). The land-cover raster (~75 MB zip,
-394 MB unzipped into `.cache/ne1/`) is fetched only for `--color earth`. `coloring.json` and `earth.json` live in `.cache/` too.
+394 MB unzipped into `.cache/ne1/`) is fetched only for `--color earth`; ETOPO 2022 (466 MB GeoTIFF) and the Natural Earth ice files only for
+`--type topographic`. `coloring.json`, `earth.json` and `etopo_3min.npy`/`.json` live in `.cache/` too.
 `.cache/` is gitignored. User-facing docs are in `README.md`; MIT `LICENSE`.
 
 ## Tests
 
-`.venv/bin/pytest` (~25 s). Unit tests cover the pure pieces (colour maths, `color_graph`, pin parsing and sprite, label geometry,
+`.venv/bin/pytest` (~90 s). Unit tests cover the pure pieces (colour maths, `color_graph`, pin parsing and sprite, label geometry,
 CLI errors), and `test_import_has_no_pyplot` guards that importing any module doesn't pick a matplotlib backend (`--pick` needs to).
-`test_regression.py` renders the default, `--color earth`, `--pins`, `--label countries,territories` and `--disputed` maps in a subprocess and compares a SHA-256 of the decoded pixels
+`test_regression.py` renders the default, `--color earth`, `--pins`, `--label countries,territories`, `--disputed`, `--type topographic` and `--type topographic --ocean` maps in a subprocess and compares a SHA-256 of the decoded pixels
 with `tests/fingerprints.json`:
 - A commit that changes the output on purpose re-records with `UPDATE_REFERENCE=1 .venv/bin/pytest` and commits `fingerprints.json`
   in the same commit, saying in the body what changed visually. Refactors must leave the fingerprints unchanged.
@@ -47,6 +48,8 @@ Importing any module has no side effects; only `cli.main` (after choosing the ba
 | `colorspace.py` | OKLab/OKLCH conversions, `fit_gamut`, `darken` |
 | `coloring.py` | `merge_into_parents`, `adjacency`, `add_proximity_edges`, `color_graph`, `make_palette`, `load_or_compute_coloring` (cache), `spot_check`, `OCEAN` |
 | `disputed.py` | `--disputed`: `parse_note`, `ALIASES`, `HAND_CLAIMS`, `LABEL_TEXT`, `Dispute`, `load_disputes`, `dispute_edges`, `dispute_fills`, `stripe_parts`, `border_lines`, `disputed_label_args` |
+| `topographic.py` | `--type topographic`: `elevation_grid` (ETOPO -> cached 3' grid), `sample`, `Scale` (`LAND`, `SEA`, `ICE`), `Contours`, `colorize`, `relief`, `shade`, `poster_grid`, `polygon_mask`, `despeckle`, `solid_field`, `surfaces`, `coast_lines`, `draw_topography` |
+| `colorbars.py` | `--type topographic`: `bar_region`, `globe_side`, `curved_title`, `draw_colorbar` (right-triangle bars in the canvas corners) |
 | `earth.py` | `--color earth`: `earth_values` (raster sampling, cache), `earth_fill`, `build_regions`, `fill_at` |
 | `pins.py` | `load_pins`, `PinStyle` (every sprite shading constant), `pin_sprite`, `draw_pins`, `pick_pins` |
 | `labels/label.py` | `Label` dataclass, `make_labels` (anchors, sizes, exclaves), `decide_out_and_wrap` |
@@ -124,6 +127,39 @@ Today: 72 two-country areas, 11 with 3+ countries, 6 breakaways (self-governing,
 - Labels (only with `countries` in `--label`): self-governing areas get upright labels via `make_labels(relabel=, extra=)`;
   `LABEL_TEXT` shortens official names (Northern Cyprus, Donetsk, Luhansk). Other disputed areas get none.
 - `--color earth`: no stripes, but dashed borders and labels. Natural Earth's data is used as it is (it predates 2022-23 changes).
+
+## `--type topographic`
+
+`cli.main` branches to `draw_topographic` right after the frame (and `--pick`), so none of the political data, colouring
+or labels run. `--color`, `--label`, `--disputed`, `--recolor` are ignored; `--ocean` is ignored with `--type political`.
+- Data: ETOPO 2022 60" ice-surface GeoTIFF (`data.ETOPO`, Deflate + float predictor, read with rasterio, the only
+  user of it), reduced to `GRID_STEP_DEG` = 3' block means as int16 and cached in `etopo_3min.npy` (keyed on the file size
+  and `ELEVATION_RULE`; bump it if the reduction changes). Ice: Natural Earth `glaciated_areas` + `antarctic_ice_shelves_polys`
+  (`load_ice`; the shelves' holes are dropped, the islands in them are ice-covered). Land vs water: Natural Earth
+  `ne_10m_land` (`load_land`), not the sign of the height. Lakes: the political `load_lakes()`.
+- Raster (`draw_topography`): `poster_grid` inverse-projects every pixel centre at `min(dpi, DPI)` (one pixel per
+  cell; `inside` = re-projects to itself), `sample` is bilinear and wraps at +-180. Masks (`polygon_mask`) are
+  rasterised with rasterio by pixel centre. Ice wins over land and water (ice shelves). Colours are signed `Scale`s
+  (`start` at the colour bar's canvas edge, `end` at its tip): `LAND` -500..6000 m (land below sea level is darker
+  green), `SEA` +500..-8000 m with `--ocean` (water above 0 m is ETOPO's averaging along coasts) else flat `OCEAN`,
+  `ICE` 0..4000 m. Shading is `relief()`, a Lambert term relative to flat ground (not matplotlib's
+  `LightSource.hillshade`, which rescales to the steepest slope on the globe and flattened the Alps), scaled by
+  `VERT_EXAG`, `LAND_SHADE`, `SEA_SHADE`.
+- Layers: raster at `Z_COUNTRY` clipped to the outline, contours just above (`LAND_CONTOURS`, `ICE_CONTOURS`,
+  `SEA_CONTOURS`, dashed), coastline at `Z_BORDERS`, lakes at `Z_LAKES`, colour bars at `Z_GLOBE`. The coastline
+  (`coast_lines`) is the 0.5 contour of the smoothed land-or-ice mask, not Natural Earth's outlines: those disagree
+  around Antarctica and left stray dashes.
+- Land/water specks (`surfaces`): patches under `SPECK_PX` = 4 pixels at 200 dpi (islets, river bits) are flipped by
+  rasterio's `sieve` (`despeckle`), then land/ice is coloured where `solid_field` (despeckled + smoothed) is > 0.5,
+  the same field whose 0.5 contour is the coastline, so no land shows without a coast. Filled water specks take
+  the land or ice around them. 8+ px starts deleting visible Aegean islands.
+- Memory: a 200 dpi run peaks around 3.5 GB. Work in blocks or in place on the whole-poster arrays; don't use
+  `ax.contour` (its ContourSet keeps a float64 copy of the grid per call, ~665 MB each), use `contour_lines` (contourpy).
+- Colour bars (`colorbars.py`): height bottom-right, depth top-right (`--ocean` only), ice bottom-left. Each is its
+  corner quadrant minus the globe grown by `BAR_GAP_IN`, minus `BAR_MARGIN_IN`; signed labels in the gap with a white
+  halo (ends marked `≥`/`≤`), the map's contour lines across the bar, and sea level in the coastline's style.
+  The title (`curved_title`, `TITLE_SIZE` bold) is a `TextPath` warped onto the bar's globe-side curve
+  (`globe_side`), centred on it, inside the bar `TITLE_INSET_IN` from it (descenders clear the curve in the top-right bar).
 
 ## Pins (`--pick`, `--pins`)
 

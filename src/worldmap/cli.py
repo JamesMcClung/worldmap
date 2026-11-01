@@ -7,22 +7,26 @@ Pins: --pick pins.txt (click the rendered map to add pins) and --pins pins.txt [
 import argparse
 import os
 import sys
+import time
 
 import geopandas as gpd
 import matplotlib
+from matplotlib.axes import Axes
 from shapely.geometry import Point
 
+from worldmap.colorbars import draw_colorbar
 from worldmap.coloring import Coloring, load_or_compute_coloring, make_palette, spot_check
 from worldmap.colorspace import RGB
 from worldmap.data import is_labeled, load_countries, load_disputed, load_lakes, load_states, parent_index, project
 from worldmap.disputed import DISPUTED_GREY, STRIPE_WIDTH_IN, border_lines, dispute_edges, disputed_label_args, load_disputes
 from worldmap.earth import Fill, build_regions, fill_at
-from worldmap.frame import DPI, make_frame
+from worldmap.frame import DPI, MapFrame, make_frame
 from worldmap.labels.label import decide_out_and_wrap, make_labels
 from worldmap.labels.placement import place_labels
 from worldmap.labels.regions import child_regions
 from worldmap.pins import draw_pins, load_pins, pick_pins, pin_sprite
 from worldmap.render import draw_borders, draw_countries, draw_labels, draw_lakes, draw_states, draw_stripes, new_figure, subtract_lakes
+from worldmap.topographic import ICE, ICE_CONTOURS, LAND, LAND_CONTOURS, SEA, SEA_CONTOURS, draw_topography
 
 
 DEFAULT_OUT, DEFAULT_PINS_OUT = "worldmap.png", "worldmap_pins.png"
@@ -53,6 +57,11 @@ def label_kinds(s: str) -> set[str]:
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(prog="make_map", description=(__doc__ or "").split("\n")[0])
     p.add_argument("out", nargs="?", help=f"output PNG (default {DEFAULT_OUT}, or {DEFAULT_PINS_OUT} with --pins)")
+    p.add_argument("--type", choices=["political", "topographic"], default="political",
+                   help="political = countries, borders and labels (default); topographic = heights, hill shading and "
+                        "contours, with no borders or labels (--color, --label, --disputed and --recolor are ignored)")
+    p.add_argument("--ocean", action="store_true",
+                   help="with --type topographic, colour the sea by depth (ignored with --type political)")
     p.add_argument("--recolor", action="store_true", help="rebuild the cached graph colouring")
     p.add_argument("--color", choices=["colorblind", "earth"], default="colorblind",
                    help="how countries are filled: colorblind = distinct colours that red/green colour-blind viewers "
@@ -92,6 +101,14 @@ def main(argv: list[str] | None = None) -> None:
     if args.pick and not os.path.exists(out):
         sys.exit("--pick shows the rendered map: run make_map first to create %s" % out)
 
+    frame = make_frame()
+    if args.pick:
+        pick_pins(args.pick, out, frame, args.pin_size, DPI)
+        return
+    if args.type == "topographic":
+        draw_topographic(args, out, frame)
+        return
+
     countries = load_countries()
     major = [is_labeled(row) for _, row in countries.iterrows()]
     disputes = load_disputes(countries, project(load_disputed()))
@@ -104,16 +121,11 @@ def main(argv: list[str] | None = None) -> None:
         """Country i's fill; with --color earth, that of its polygon containing (or nearest) `pt`, else its largest."""
         return fills[i] if regions is None else fill_at(regions, i, pt)
 
-    frame = make_frame()
-    if args.pick:
-        pick_pins(args.pick, out, frame, args.pin_size, DPI)
-        return
-
     fig, ax = new_figure(frame)
     draw_countries(ax, countries_p, fill_of, regions, args.disputed)
     if args.disputed:
         if regions is None:  # natural colours don't stand for countries, so no stripes with --color earth
-            draw_stripes(ax, disputes, lambda i: fill_of(i, None), STRIPE_WIDTH_IN * DPI / frame.px_per_unit)
+            draw_stripes(ax, disputes, fill_of, STRIPE_WIDTH_IN * DPI / frame.px_per_unit)
         draw_borders(ax, *border_lines(countries_p, disputes, parent_index(countries)))
     draw_states(ax, states_p, args.disputed)
     draw_lakes(ax, lakes_p)
@@ -131,15 +143,36 @@ def main(argv: list[str] | None = None) -> None:
     placement = place_labels(labels, frame)
     draw_labels(ax, labels, placement, frame)
 
+    add_pins(ax, frame, args)
+    # Layout above is measured at DPI; saving at another resolution only rescales it.
+    fig.savefig(out, dpi=args.dpi, transparent=True)
+    print("wrote", out, "labels:", len(labels), "leaders:", int(placement.out.sum()))
+
+
+def add_pins(ax: Axes, frame: MapFrame, args: argparse.Namespace) -> None:
+    """The --pins, if any, above everything else."""
     if args.pins:
         pins = load_pins(args.pins)
         draw_pins(ax, frame, pins, pin_sprite(args.pin_size * args.dpi), args.pin_size)
         ax.set_xlim(frame.xmin, frame.xmax)
         ax.set_ylim(frame.ymin, frame.ymax)
         print("pins:", len(pins))
-    # Layout above is measured at DPI; saving at another resolution only rescales it.
+
+
+def draw_topographic(args: argparse.Namespace, out: str, frame: MapFrame) -> None:
+    """--type topographic: heights (and sea depths with --ocean), colour bars in the corners, pins; nothing political."""
+    start = time.perf_counter()
+    fig, ax = new_figure(frame)
+    draw_topography(ax, frame, args.dpi, args.ocean)
+    draw_colorbar(ax, frame, "br", LAND, "Height", LAND_CONTOURS)
+    if args.ocean:
+        draw_colorbar(ax, frame, "tr", SEA, "Depth", SEA_CONTOURS)
+    draw_colorbar(ax, frame, "bl", ICE, "Ice", ICE_CONTOURS)
+    ax.set_xlim(frame.xmin, frame.xmax)
+    ax.set_ylim(frame.ymin, frame.ymax)
+    add_pins(ax, frame, args)
     fig.savefig(out, dpi=args.dpi, transparent=True)
-    print("wrote", out, "labels:", len(labels), "leaders:", int(placement.out.sum()))
+    print("wrote", out, "in %.1f s" % (time.perf_counter() - start))
 
 
 if __name__ == "__main__":

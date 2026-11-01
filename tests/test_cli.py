@@ -4,14 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from worldmap.cli import main, parse_args
+from worldmap.cli import parse_args
 from worldmap.frame import DPI
-
-
-def test_ocean_flag_rejected() -> None:
-    with pytest.raises(SystemExit) as e:
-        main(["--ocean"])
-    assert e.value.code == 2
 
 
 def test_dpi_flag() -> None:
@@ -27,7 +21,7 @@ def test_console_script_help() -> None:
     """The installed `make_map` command still works (needs `pip install -e .` after entry-point changes)."""
     out = subprocess.run([Path(sys.executable).parent / "make_map", "-h"], check=True, capture_output=True, text=True).stdout
     assert "--pin-size" in out
-    assert "--ocean" not in out
+    assert "--type" in out and "--ocean" in out
 
 
 def test_color_flag() -> None:
@@ -50,6 +44,9 @@ def test_label_flag() -> None:
         assert e.value.code == 2
 
 
-def test_disputed_flag() -> None:
-    assert parse_args([]).disputed is False
-    assert parse_args(["--disputed"]).disputed is True
+def test_type_flag() -> None:
+    assert (parse_args([]).type, parse_args([]).ocean) == ("political", False)
+    assert (parse_args(["--type", "topographic", "--ocean"]).type, parse_args(["--ocean"]).ocean) == ("topographic", True)
+    with pytest.raises(SystemExit) as e:
+        parse_args(["--type", "sky"])
+    assert e.value.code == 2
