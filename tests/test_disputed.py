@@ -142,7 +142,7 @@ def test_taiwan_coast_is_not_dashed(lines: tuple[BaseGeometry, BaseGeometry], di
     assert lines[1].intersection(taiwan.geometry.buffer(1_000)).length == 0
 
 
-def disputed_labels(countries: gpd.GeoDataFrame, disputes: list[Dispute], with_countries: bool) -> list[str]:
+def disputed_labels(countries: gpd.GeoDataFrame, disputes: list[Dispute], with_countries: bool) -> list[tuple[str, str]]:
     """Label texts make_labels gives with the --disputed extras, as cli.main builds them (political colours)."""
     matplotlib.use("Agg")
     frame = make_frame()
@@ -157,12 +157,13 @@ def disputed_labels(countries: gpd.GeoDataFrame, disputes: list[Dispute], with_c
 
 
 def test_disputed_labels(countries: gpd.GeoDataFrame, disputes_projected: list[Dispute]) -> None:
-    labels = dict(disputed_labels(countries, disputes_projected, True))
+    found = disputed_labels(countries, disputes_projected, True)
+    labels = dict(found)
     assert {"Somaliland", "Northern Cyprus", "Abkhazia", "South Ossetia", "Transnistria", "Nagorno-Karabakh",
             "Donetsk", "Luhansk", "Taiwan", "Western Sahara", "Kosovo"} <= labels.keys()
     assert "Kashmir" not in labels and "Crimean Peninsula" not in labels and "Turkish Republic of Northern Cyprus" not in labels
     assert labels["Abkhazia"] == labels["Donetsk"] == "normal"
-    assert len([n for n in labels if n == "Taiwan"]) == 1
+    assert [name for name, _ in found].count("Taiwan") == 1
 
 
 def test_disputed_labels_need_countries(countries: gpd.GeoDataFrame, disputes_projected: list[Dispute]) -> None:
