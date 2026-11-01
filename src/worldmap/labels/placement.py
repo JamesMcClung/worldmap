@@ -333,7 +333,8 @@ def water_touching(p: Placement, i: int, x: float, y: float) -> list[int]:
 def place_with_water(labels: list[Label], water: list[WaterLabel], frame: MapFrame) -> tuple[Placement, list[WaterLabel]]:
     """Place country and water labels together, dropping water labels until none fails, and return the placement
     and the water labels kept. A water label fails when it ends mostly off its body, or still clashes at its
-    minimum size. Each failing label and the water labels it touches (where it is, or would at its anchor) form a
+    minimum size (or without having shrunk in that run: so every round drops or shrinks something, and the loop
+    ends). Each failing label and the water labels it touches (where it is, or would at its anchor) form a
     group; the least important water label of each group is dropped and the rest re-placed from where they were.
     Country labels are never dropped, and start each run at their own size."""
     sizes = [label.text.get_fontsize() for label in labels]
@@ -341,6 +342,7 @@ def place_with_water(labels: list[Label], water: list[WaterLabel], frame: MapFra
     while True:
         for label, size in zip(labels, sizes):
             label.text.set_fontsize(size)
+        sizes_before = [w.size for w in kept]
         p = place_labels(labels, frame, water=kept, start=start)
         if not water:
             return p, kept
@@ -348,7 +350,8 @@ def place_with_water(labels: list[Label], water: list[WaterLabel], frame: MapFra
         clashing = set(clashes(p)[1])
         failing = [i for i in range(n_country, p.n)
                    if kept[i - n_country].inside_share(p.x[i], p.y[i]) < WATER_MIN_INSIDE
-                   or (i in clashing and kept[i - n_country].size <= kept[i - n_country].min_size * (1 + 1e-9))]
+                   or (i in clashing and (kept[i - n_country].size <= kept[i - n_country].min_size * (1 + 1e-9)
+                                          or kept[i - n_country].size == sizes_before[i - n_country]))]  # can't or didn't shrink
         if not failing and not clashing:
             break
         group = {i: i for i in range(n_country, p.n)}  # union-find over the water labels

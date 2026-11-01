@@ -123,3 +123,18 @@ def test_oceans_shrink_no_smaller_than_ocean_floor(frame: MapFrame, monkeypatch:
     monkeypatch.setattr(placement, "clashes", always_clashing)  # every shrink round shrinks it
     place_labels([], frame, water=[ocean])
     assert ocean.size == pytest.approx(OCEAN_MIN_PT)
+
+
+def test_drop_loop_ends_when_nothing_can_shrink(frame: MapFrame, monkeypatch: pytest.MonkeyPatch) -> None:
+    import threading
+
+    x, y = mid_atlantic_px(frame)
+    sea = water_label("Sea", (x, y), shapely.box(x - 100, y - 20, x + 100, y + 20), np.array([[-60.0, -10, 60, 10]]), 14)
+    monkeypatch.setattr(placement, "clashes", always_clashing)  # a clash the solver never sees during its shrink rounds...
+    monkeypatch.setattr(placement, "SHRINK_ROUNDS", 0)  # ...so it is never shrunk
+    result: list = []
+    worker = threading.Thread(target=lambda: result.append(place_with_water([], [sea], frame)), daemon=True)
+    worker.start()
+    worker.join(timeout=30)
+    assert not worker.is_alive(), "place_with_water went round forever"
+    assert result[0][1] == []
