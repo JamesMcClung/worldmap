@@ -112,7 +112,7 @@ A pin file has one `lon,lat` per line, and `#` starts a comment:
 
 ```
 pip install -e '.[dev]'
-pytest           # ~90 s: unit tests plus pixel-exact renders of the default, --color earth, --pins, --label countries,territories, --label countries,water, --disputed and three topographic maps
+pytest           # ~135 s: unit tests plus pixel-exact renders of the default, --color earth, --pins, --label countries,territories, --label countries,water, --disputed and three topographic maps
 mypy src
 ```
 
