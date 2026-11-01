@@ -38,7 +38,8 @@ def test_label_flag() -> None:
     assert parse_args(["--label", "territories"]).label == {"territories"}
     assert parse_args(["--label", "countries,territories"]).label == {"countries", "territories"}
     assert parse_args(["--label", "none"]).label == set()
-    for bad in [["--label", "oceans"], ["--label", "none,countries"], ["--label", ""], ["--regions"]]:
+    assert parse_args(["--label", "countries,oceans,seas,lakes,water"]).label == {"countries", "oceans", "seas", "lakes", "water"}
+    for bad in [["--label", "rivers"], ["--label", "none,countries"], ["--label", ""], ["--regions"]]:
         with pytest.raises(SystemExit) as e:
             parse_args(bad)
         assert e.value.code == 2
