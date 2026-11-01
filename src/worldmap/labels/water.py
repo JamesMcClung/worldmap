@@ -82,7 +82,7 @@ def load_water_bodies(kinds: set[Kind], lakes_projected: gpd.GeoDataFrame) -> li
     Atlantic are one ATLANTIC; the Pacific, cut by the antimeridian, is labelled twice (left and right of x = 0).
     Every other body is labelled once, on its largest polygon."""
     marine = project(load_marine())
-    marine = marine[marine.name.notna()]
+    marine = marine[marine.name.notna() & ~marine.name.str.endswith(" River")]  # rivers come later, with river drawing
     marine["geometry"] = shapely.make_valid(marine.geometry.values)  # some are self-intersecting rough areas
     marine = marine[[classify(c) in kinds for c in marine.featurecla]]
     bodies = []

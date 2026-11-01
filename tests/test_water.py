@@ -44,6 +44,7 @@ def test_seas_lakes_and_straits(lakes_projected: gpd.GeoDataFrame) -> None:
     everything = load_water_bodies({"oceans", "seas", "lakes", "straits"}, lakes_projected)
     names = [b.text for b in everything]
     assert "Strait of Gibraltar" in names and "Lake Victoria" in names
+    assert "Saint Lawrence River" not in names  # a 'channel' in Natural Earth, but a river: not labelled yet
     assert names.count("Bering Sea") == 1 and names.count("Caspian Sea") == 1
     assert everything[0].kind == "oceans"
     ranks = [b.rank for b in everything if b.kind != "oceans"]
