@@ -7,7 +7,8 @@ from shapely.geometry import Point
 
 from worldmap.curves import arc_lengths, bend
 from worldmap.data import load_lakes, project
-from worldmap.labels.water import classify, fit_curve, kinds_from_labels, load_water_bodies
+from worldmap.frame import MapFrame, make_frame
+from worldmap.labels.water import OCEAN_PT, SEA_MAX_PT, WATER_MIN_INSIDE, WATER_MIN_PT, classify, fit_curve, kinds_from_labels, load_water_bodies, make_water_labels
 
 
 @pytest.fixture(scope="module")
@@ -89,3 +90,28 @@ def test_fit_curve_follows_a_bend() -> None:
     upper = ring.intersection(shapely.box(-10, 2, 10, 10))  # an upward arch
     c = fit_curve(upper, 90)
     assert c[len(c) // 2, 1] > c[0, 1] and c[len(c) // 2, 1] > c[-1, 1]
+
+
+@pytest.fixture(scope="module")
+def frame() -> MapFrame:
+    return make_frame()
+
+
+def test_water_label_layout(frame: MapFrame, lakes_projected: gpd.GeoDataFrame) -> None:
+    bodies = load_water_bodies({"oceans", "seas"}, lakes_projected)
+    labels = make_water_labels(bodies, frame)
+    med = next(l for l in labels if l.text == "Mediterranean Sea")
+    atlantic = next(l for l in labels if l.text == "ATLANTIC OCEAN")
+    assert atlantic.size == OCEAN_PT and WATER_MIN_PT <= med.size <= SEA_MAX_PT
+    assert len(med.parts) == len("MediterraneanSea")
+    assert med.inside_share(med.anchor_x, med.anchor_y) >= WATER_MIN_INSIDE
+    width = med.parts[:, 2].max() - med.parts[:, 0].min()
+    med.scale(0.5)
+    assert med.parts[:, 2].max() - med.parts[:, 0].min() == pytest.approx(width / 2)
+
+
+def test_hopeless_bodies_left_out(frame: MapFrame, lakes_projected: gpd.GeoDataFrame) -> None:
+    bodies = load_water_bodies({"oceans", "seas", "lakes", "straits"}, lakes_projected)
+    labels = make_water_labels(bodies, frame)
+    assert 0 < len(labels) < len(bodies)
+    assert all(l.inside_share(l.anchor_x, l.anchor_y) >= WATER_MIN_INSIDE for l in labels)

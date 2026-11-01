@@ -7,10 +7,18 @@ from typing import Literal
 import geopandas as gpd
 import numpy as np
 import shapely
+from matplotlib.colors import to_rgb
+from matplotlib.font_manager import FontProperties
+from matplotlib.path import Path
+from matplotlib.textpath import TextPath, TextToPath
 from shapely.geometry import Polygon
 from shapely.geometry.base import BaseGeometry
 
+from worldmap.coloring import OCEAN
+from worldmap.colorspace import RGB, fit_gamut, srgb_to_oklch
+from worldmap.curves import arc_lengths, bend
 from worldmap.data import load_marine, project
+from worldmap.frame import DPI, MapFrame
 
 WATER_KINDS = ("oceans", "seas", "lakes", "water")  # the --label values; water = all of them plus straits
 Kind = Literal["oceans", "seas", "lakes", "straits"]
@@ -22,6 +30,19 @@ MAX_BEND_DEG = 40  # the most a label's curve may turn from one end to the other
 OCEAN_MAX_TILT_DEG = 20  # oceans run nearly level; seas may follow their shape up to vertical
 SEA_MAX_TILT_DEG = 90
 CURVE_SAMPLES = 2000  # interior points sampled to find a body's long direction
+OCEAN_PT = 30  # oceans: fixed size, letter-spaced
+OCEAN_TRACKING_EM = 0.6  # extra space after each letter, in ems
+SEA_MAX_PT = 14  # seas, lakes, straits: sized to fill SEA_FILL of their curve, within these
+WATER_MIN_PT = 6.5
+SEA_FILL = 0.8
+WATER_MIN_INSIDE = 0.35  # a water label with less of its glyph boxes over its body than this is dropped
+WATER_HALO_PX = 2.4  # halo width (poster px); glyph boxes are padded by half of it
+WATER_HALO = OCEAN  # the trim: the water colour itself
+_ocean_hue = srgb_to_oklch(to_rgb(OCEAN))[2]
+_fitted = fit_gamut(0.50, 0.08, _ocean_hue)
+assert _fitted is not None
+WATER_TEXT: RGB = _fitted[0]  # a deeper blue in the ocean's hue
+PX_PER_PT = DPI / 72
 OCEAN_TEXT = {"Atlantic": "ATLANTIC OCEAN", "Pacific": "PACIFIC OCEAN", "Indian": "INDIAN OCEAN", "Arctic": "ARCTIC OCEAN", "Southern": "SOUTHERN OCEAN"}
 
 
@@ -143,3 +164,96 @@ def fit_curve(geom: Polygon, max_tilt_deg: float, n: int = 64) -> np.ndarray:
     if (chord[1] < 0) if vertical else (chord[0] < 0):
         curve = curve[::-1]
     return curve
+
+
+@dataclass
+class WaterLabel:
+    text: str
+    kind: Kind
+    rank: int
+    geom: BaseGeometry  # the body, in poster px
+    anchor_x: float  # the curve's middle (px): where the label wants to be
+    anchor_y: float
+    size: float  # pt
+    glyphs: Path  # the bent text, in px relative to the label's position
+    parts: np.ndarray  # (k, 4) x0, y0, x1, y1 per non-space glyph, px relative to the label's position, halo-padded
+
+    def scale(self, factor: float) -> None:
+        """Shrink the label by `factor` about its position."""
+        self.glyphs = Path(np.asarray(self.glyphs.vertices) * factor, self.glyphs.codes)
+        self.parts = self.parts * factor
+        self.size *= factor
+
+    def inside_share(self, x: float, y: float) -> float:
+        """The share of the glyph boxes' area over the body when the label is at (x, y)."""
+        boxes = shapely.box(self.parts[:, 0] + x, self.parts[:, 1] + y, self.parts[:, 2] + x, self.parts[:, 3] + y)
+        total = shapely.area(boxes).sum()
+        return float(shapely.area(shapely.intersection(boxes, self.geom)).sum() / total) if total > 0 else 0.0
+
+
+def font(kind: Kind, size: float) -> FontProperties:
+    return FontProperties(size=size, style="normal" if kind == "oceans" else "italic")
+
+
+def text_width(text: str, prop: FontProperties) -> float:
+    """Advance width of `text` in points."""
+    return TextToPath().get_text_width_height_descent(text, prop, ismath=False)[0] if text else 0.0
+
+
+def extend(curve: np.ndarray, length: float) -> np.ndarray:
+    """`curve` with straight continuations of `length` at both ends."""
+    def step(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+        d = b - a
+        return b + d / np.hypot(*d) * length
+    return np.vstack([step(curve[1], curve[0]), curve, step(curve[-2], curve[-1])])
+
+
+def lay_out(body: WaterBody, curve: np.ndarray, size: float, geom_px: BaseGeometry) -> WaterLabel:
+    """`body`'s name at `size` pt, centred on `curve` (px), its x-height (cap height for oceans) centred on it."""
+    prop = font(body.kind, size)
+    tracking = OCEAN_TRACKING_EM * size if body.kind == "oceans" else 0.0
+    text = body.text
+    total = text_width(text, prop) + tracking * (len(text) - 1)
+    middle = TextPath((0, 0), "H" if body.kind == "oceans" else "x", prop=prop).get_extents().ymax / 2
+    length = arc_lengths(curve)[-1]
+    reach = max(0.0, total * PX_PER_PT - length) / 2 + size * PX_PER_PT  # extend the curve if the text is longer (+ overhang)
+    long_curve = extend(curve, reach)
+    centre = reach + length / 2  # distance along long_curve of the curve's middle
+    h = 1.0  # px, for tangents
+    anchor = bend(long_curve, np.array([centre]), np.zeros(1), h)[0]
+    vertices, codes, parts = [], [], []
+    for k, ch in enumerate(text):
+        if ch.isspace():
+            continue
+        x = text_width(text[:k], prop) + tracking * k
+        glyph = TextPath((x, 0), ch, prop=prop)
+        if len(glyph.vertices) == 0:
+            continue
+        u = centre + (glyph.vertices[:, 0] - total / 2) * PX_PER_PT
+        v = (glyph.vertices[:, 1] - middle) * PX_PER_PT
+        bent = bend(long_curve, u, v, h) - anchor
+        vertices.append(bent)
+        codes.append(glyph.codes)
+        pad = WATER_HALO_PX / 2
+        parts.append([*(bent.min(axis=0) - pad), *(bent.max(axis=0) + pad)])
+    glyphs = Path(np.vstack(vertices), np.concatenate(codes))
+    return WaterLabel(body.text, body.kind, body.rank, geom_px, float(anchor[0]), float(anchor[1]), size, glyphs, np.array(parts))
+
+
+def make_water_labels(bodies: list[WaterBody], frame: MapFrame) -> list[WaterLabel]:
+    """A curved label per body, in the same order, leaving out those with under WATER_MIN_INSIDE of their glyph
+    boxes over their body to start with (most small bays: no room for their name)."""
+    ppu = frame.px_per_unit
+    labels = []
+    for body in bodies:
+        tilt = OCEAN_MAX_TILT_DEG if body.kind == "oceans" else SEA_MAX_TILT_DEG
+        curve = (fit_curve(body.geom, tilt) - np.array([frame.xmin, frame.ymin])) * ppu
+        if body.kind == "oceans":
+            size = float(OCEAN_PT)
+        else:
+            width_1pt = text_width(body.text, font(body.kind, 1)) * PX_PER_PT
+            size = float(np.clip(SEA_FILL * arc_lengths(curve)[-1] / width_1pt, WATER_MIN_PT, SEA_MAX_PT))
+        label = lay_out(body, curve, size, frame.to_px(body.geom))
+        if label.inside_share(label.anchor_x, label.anchor_y) >= WATER_MIN_INSIDE:
+            labels.append(label)
+    return labels
