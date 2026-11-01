@@ -1,10 +1,13 @@
 import geopandas as gpd
 import numpy as np
 import pytest
+import shapely
+import shapely.affinity
+from shapely.geometry import Point
 
 from worldmap.curves import arc_lengths, bend
 from worldmap.data import load_lakes, project
-from worldmap.labels.water import classify, kinds_from_labels, load_water_bodies
+from worldmap.labels.water import classify, fit_curve, kinds_from_labels, load_water_bodies
 
 
 @pytest.fixture(scope="module")
@@ -53,3 +56,36 @@ def test_bend_straight_and_circle() -> None:
     arc = np.stack([10 * np.cos(theta), 10 * np.sin(theta)], -1)
     pts = bend(arc, np.array([arc_lengths(arc)[-1] / 2]), np.array([2.0]), 0.01)
     assert np.allclose(pts, [[0, 12]], atol=1e-2)  # left of rightward travel over the top is up, away from the centre
+
+
+def test_fit_curve_horizontal_and_reading_direction() -> None:
+    ellipse = shapely.affinity.scale(Point(0, 0).buffer(1), 10, 2)
+    c = fit_curve(ellipse, 90)
+    assert c[0, 0] < c[-1, 0] and np.ptp(c[:, 1]) < 0.5
+
+
+def test_fit_curve_steep_never_upside_down() -> None:
+    red_sea_like = shapely.affinity.rotate(shapely.affinity.scale(Point(0, 0).buffer(1), 10, 1), -60)
+    c = fit_curve(red_sea_like, 90)
+    assert c[0, 0] < c[-1, 0]  # never right to left (upside down)
+    assert c[0, 1] > c[-1, 1]  # this one runs down to the right
+
+
+def test_fit_curve_vertical_reads_bottom_to_top() -> None:
+    tall = shapely.affinity.scale(Point(0, 0).buffer(1), 1, 10)
+    c = fit_curve(tall, 90)
+    assert c[0, 1] < c[-1, 1]
+
+
+def test_fit_curve_tilt_clamped() -> None:
+    tall = shapely.affinity.scale(Point(0, 0).buffer(1), 1, 10)
+    c = fit_curve(tall, 20)
+    angle = np.degrees(np.arctan2(c[-1, 1] - c[0, 1], c[-1, 0] - c[0, 0]))
+    assert abs(angle) <= 20 + 1e-6
+
+
+def test_fit_curve_follows_a_bend() -> None:
+    ring = Point(0, 0).buffer(10).difference(Point(0, 0).buffer(8))
+    upper = ring.intersection(shapely.box(-10, 2, 10, 10))  # an upward arch
+    c = fit_curve(upper, 90)
+    assert c[len(c) // 2, 1] > c[0, 1] and c[len(c) // 2, 1] > c[-1, 1]
