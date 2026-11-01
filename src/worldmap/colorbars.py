@@ -1,5 +1,6 @@
 """--type topographic: colour bars in the empty canvas corners outside the globe. Each is a right triangle with its
-right angle in the corner and its third side following the globe; tick labels sit in the gap between bar and globe."""
+right angle in the corner and its third side following the globe; tick labels sit in the gap between bar and globe,
+the title inside the bar, curved along that third side."""
 
 from typing import Literal
 
@@ -8,7 +9,11 @@ import shapely
 from matplotlib import patheffects
 from matplotlib.axes import Axes
 from matplotlib.collections import LineCollection
+from matplotlib.font_manager import FontProperties
+from matplotlib.patches import PathPatch
 from matplotlib.patches import Polygon as MplPolygon
+from matplotlib.path import Path
+from matplotlib.textpath import TextPath
 from shapely.geometry import LineString, Polygon, box
 
 from worldmap.frame import DPI, MapFrame
@@ -20,8 +25,10 @@ BAR_MARGIN_IN = 0.2  # from the canvas edges
 TICK_STEP = 1000  # metres
 TIP = 0.97  # the top value sits this far along from the canvas edge to the tip; beyond it, the top colour
 TEXT_COLOR = "#3a3a3a"
-TICK_SIZE, TITLE_SIZE = 9, 12  # points
+TICK_SIZE, TITLE_SIZE = 9, 24  # points
+TITLE_INSET_IN = 0.08  # from the bar's curved side to the title
 HALO = [patheffects.withStroke(linewidth=2.5, foreground="white")]  # readable on a transparent or dark background
+TITLE_HALO = [patheffects.withStroke(linewidth=3, foreground="white")]
 
 
 def bar_region(frame: MapFrame, corner: Corner) -> Polygon:
@@ -57,10 +64,46 @@ def tick_label(v: float, scale: Scale) -> str:
     return metres(v)
 
 
+def globe_side(region: Polygon) -> np.ndarray:
+    """The bar's curved side (the one following the globe) as (n, 2) vertices, left to right."""
+    x0, y0, x1, y1 = region.bounds
+    edges = box(x0, y0, x1, y1).exterior.buffer(1e-6 * (x1 - x0))
+    curve = shapely.line_merge(region.exterior.difference(edges))
+    side = max(shapely.get_parts(curve), key=lambda g: g.length)
+    xy = np.asarray(side.coords)
+    return xy if xy[0, 0] < xy[-1, 0] else xy[::-1]
+
+
+def curved_title(region: Polygon, title: str, unit: float) -> Path:
+    """`title`'s glyphs bent along the bar's curved side, centred on it, inside the bar TITLE_INSET_IN from it.
+    `unit` is map units per poster inch."""
+    side = globe_side(region)
+    s = np.concatenate([[0], np.cumsum(np.hypot(*np.diff(side, axis=0).T))])
+    glyphs = TextPath((0, 0), title, size=TITLE_SIZE, prop=FontProperties(weight="bold"))
+    scale = unit / 72  # map units per point
+    u, v = glyphs.vertices[:, 0] * scale, glyphs.vertices[:, 1] * scale
+    extents = glyphs.get_extents()
+    width, top, bottom = extents.xmax * scale, extents.ymax * scale, extents.ymin * scale
+    u = u + s[-1] / 2 - width / 2  # distance along the side
+
+    def at(d: np.ndarray) -> np.ndarray:
+        return np.stack([np.interp(d, s, side[:, 0]), np.interp(d, s, side[:, 1])], axis=-1)
+
+    h = 0.05 * unit
+    tangent = at(u + h) - at(u - h)
+    tangent /= np.hypot(*tangent.T)[:, None]
+    normal = np.stack([-tangent[:, 1], tangent[:, 0]], axis=-1)  # to the left of the direction of reading
+    mid, mid_normal = at(np.array([s[-1] / 2]))[0], normal[len(normal) // 2]
+    inset = TITLE_INSET_IN * unit
+    inside_left = region.contains(shapely.Point(mid + mid_normal * inset))
+    v = v + inset - bottom if inside_left else v - inset - top  # descenders above the side, or cap tops below it
+    return Path(at(u) + normal * v[:, None], glyphs.codes)
+
+
 def draw_colorbar(ax: Axes, frame: MapFrame, corner: Corner, scale: Scale, title: str, contours: Contours) -> None:
     """A colour bar in `corner`: scale.start at the canvas edge (the bottom for br/bl, the top for tr) to scale.end near
     the tip, a labelled tick every TICK_STEP on the globe side, the map's contour lines across it (and sea level in
-    the coastline's style), and `title` at the tip."""
+    the coastline's style), and `title` along the curved side."""
     from worldmap.render import BORDER, BORDER_WIDTH, Z_GLOBE
     from worldmap.topographic import CONTOUR_WIDTH
 
@@ -106,7 +149,5 @@ def draw_colorbar(ax: Axes, frame: MapFrame, corner: Corner, scale: Scale, title
                 path_effects=HALO)
         ax.text(x + sign * pad, y, tick_label(v, scale), fontsize=TICK_SIZE, color=TEXT_COLOR, ha="right" if left else "left",
                 va="center", path_effects=HALO, zorder=Z_GLOBE + 0.2)
-    title_y = tip + (pad if up else -pad)
-    title_x = x1 if left else x0
-    ax.text(title_x, title_y, title, fontsize=TITLE_SIZE, fontweight="bold", color=TEXT_COLOR, ha="right" if left else "left",
-            va="bottom" if up else "top", path_effects=HALO, zorder=Z_GLOBE + 0.2)
+    ax.add_patch(PathPatch(curved_title(region, title, unit), fc=TEXT_COLOR, ec="none", path_effects=TITLE_HALO,
+                           zorder=Z_GLOBE + 0.2))

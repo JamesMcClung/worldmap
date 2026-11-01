@@ -112,7 +112,7 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "ff1a0266320450ceb35fe50c3a9bdb194b23dacbf53d32933853d9212c877b0a"
+    "sha256": "409e6edf61e43dcbd4620854143f85d4c9c7f7e0d42ffcebb5078a0d1b6d2cd8"
   },
   "topographic_ocean": {
     "env": {
@@ -136,6 +136,6 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "a3e1e8053dbafaa11e82d1de01ea28c79b99a7ecf35f1d76d59b7d875a73816f"
+    "sha256": "954ef22741314fa49d5856b499dc202efccf5172225200167152e40aa67d6267"
   }
 }
