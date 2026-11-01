@@ -157,16 +157,33 @@ def fit_curve(geom: Polygon, max_tilt_deg: float, n: int = 64, max_bend_deg: flo
             lo, hi = (mid, hi) if turn(a * mid, b, s0, s1) <= max_bend_deg else (lo, mid)
         a *= lo
     ss = np.linspace(s0, s1, n)
-    curve = mean + ss[:, None] * d + (a * ss**2 + b * ss + c)[:, None] * normal
-    chord = curve[-1] - curve[0]
-    tilt = (np.degrees(np.arctan2(chord[1], chord[0])) + 90) % 180 - 90
-    if abs(tilt) > max_tilt_deg:  # the linear term tilted it past the limit: turn it back about its middle
-        curve = rotate(curve, curve[n // 2], np.sign(tilt) * max_tilt_deg - tilt)
+
+    def build(a: float) -> np.ndarray:
+        curve = mean + ss[:, None] * d + (a * ss**2 + b * ss + c)[:, None] * normal
         chord = curve[-1] - curve[0]
-    vertical = abs(abs(np.degrees(np.arctan2(chord[1], chord[0]))) - 90) <= 1
-    if (chord[1] < 0) if vertical else (chord[0] < 0):
-        curve = curve[::-1]
-    return curve
+        tilt = (np.degrees(np.arctan2(chord[1], chord[0])) + 90) % 180 - 90
+        if abs(tilt) > max_tilt_deg:  # the linear term tilted it past the limit: turn it back about its middle
+            curve = rotate(curve, curve[n // 2], np.sign(tilt) * max_tilt_deg - tilt)
+            chord = curve[-1] - curve[0]
+        vertical = abs(abs(np.degrees(np.arctan2(chord[1], chord[0]))) - 90) <= 1
+        if (chord[1] < 0) if vertical else (chord[0] < 0):
+            curve = curve[::-1]
+        return curve
+
+    def upright(curve: np.ndarray) -> bool:
+        """Every step goes the way the text reads, so no glyph leans past vertical (upside down)."""
+        steps = np.diff(curve, axis=0)
+        chord = curve[-1] - curve[0]
+        vertical = abs(abs(np.degrees(np.arctan2(chord[1], chord[0]))) - 90) <= 1
+        return bool((steps[:, 1 if vertical else 0] >= 0).all())
+
+    if upright(build(a)):
+        return build(a)
+    lo, hi = 0.0, 1.0  # a steep curve: flatten its bend until both ends still read forwards
+    for _ in range(40):
+        mid = (lo + hi) / 2
+        lo, hi = (mid, hi) if upright(build(a * mid)) else (lo, mid)
+    return build(a * lo)
 
 
 @dataclass

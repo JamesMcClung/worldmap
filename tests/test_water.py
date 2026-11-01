@@ -137,3 +137,10 @@ def test_draw_water_labels(frame: MapFrame, lakes_projected: gpd.GeoDataFrame) -
     gx0, gy0, gx1, gy1 = med[0].glyphs.get_extents().extents
     px, py = frame.px_to_map(np.array([p.x[0] + (gx0 + gx1) / 2]), np.array([p.y[0] + (gy0 + gy1) / 2]))
     assert abs((ext.x0 + ext.x1) / 2 - px[0]) * frame.px_per_unit < 1 and abs((ext.y0 + ext.y1) / 2 - py[0]) * frame.px_per_unit < 1
+
+
+def test_fit_curve_steep_and_bent_never_tips_past_vertical() -> None:
+    ring = Point(0, 0).buffer(10).difference(Point(0, 0).buffer(8))
+    arch = shapely.affinity.rotate(ring.intersection(shapely.box(-10, 2, 10, 10)), 80, origin=(0, 0))  # chord at ~80 degrees
+    c = fit_curve(arch, 90)
+    assert (np.diff(c[:, 0]) >= -1e-9).all()  # every step still goes right: no glyph leans upside down

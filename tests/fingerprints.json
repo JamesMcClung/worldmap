@@ -161,7 +161,7 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "52eb51340ea3ae228f3c586a7aac885be9c049da7f97203610848bd2c617c3d8"
+    "sha256": "b916d43673932002549d4ae4cfcc42ddd891ef7504a7d9705789bf0fbd2c79a2"
   },
   "water": {
     "env": {
@@ -180,6 +180,6 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "6262a2ecf43fcdd890eb0bff016e20e12004b7b94f0a88e9b5ae7d9deaa9bd26"
+    "sha256": "3175dc887471bc135a212484f695121260310c216f86e5af0788436c99c77ae8"
   }
 }
