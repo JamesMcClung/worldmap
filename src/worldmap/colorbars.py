@@ -47,10 +47,15 @@ def metres(v: float) -> str:
     return ("−" if v < 0 else "") + f"{abs(int(v)):,} m"
 
 
+def multiples(scale: Scale, step: float) -> list[float]:
+    """The multiples of `step` strictly between the scale's ends, ascending."""
+    lo, hi = sorted((scale.start, scale.end))
+    return [float(v) for v in np.arange(np.floor(lo / step) + 1, np.ceil(hi / step)) * step]
+
+
 def tick_values(scale: Scale) -> list[float]:
     """The scale's two ends, and every multiple of TICK_STEP between them, from the canvas edge to the tip."""
-    lo, hi = sorted((scale.start, scale.end))
-    inner = [float(v) for v in np.arange(np.floor(lo / TICK_STEP) + 1, np.ceil(hi / TICK_STEP)) * TICK_STEP]
+    inner = multiples(scale, TICK_STEP)
     values = [scale.start, *inner, scale.end]
     return values if scale.start < scale.end else [scale.start, *inner[::-1], scale.end]
 
@@ -125,11 +130,10 @@ def draw_colorbar(ax: Axes, frame: MapFrame, corner: Corner, scale: Scale, title
         cut = LineString([(x0 - 1, y), (x1 + 1, y)]).intersection(region)
         return [np.asarray(part.coords) for part in shapely.get_parts(cut) if part.geom_type == "LineString"]
 
-    lo, hi = sorted((scale.start, scale.end))
-    levels = [v for v in np.arange(np.floor(lo / contours.step) + 1, np.ceil(hi / contours.step)) * contours.step if v != 0]
+    levels = [v for v in multiples(scale, contours.step) if v != 0]
     ax.add_collection(LineCollection([seg for v in levels for seg in across(v)], colors=contours.color, linewidths=CONTOUR_WIDTH,
                                      alpha=contours.alpha, linestyles=contours.style, zorder=Z_GLOBE + 0.05))
-    if lo < 0 < hi:
+    if 0 < scale.position(0) < 1:  # sea level is on the bar
         ax.add_collection(LineCollection(across(0), colors=BORDER, linewidths=BORDER_WIDTH, zorder=Z_GLOBE + 0.05))
 
     unit = DPI / frame.px_per_unit
