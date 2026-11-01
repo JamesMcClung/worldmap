@@ -14,6 +14,7 @@ from matplotlib.patches import Polygon as MplPolygon
 from worldmap.coloring import OCEAN
 from worldmap.data import CACHE, ETOPO, fetch, load_ice, load_lakes, load_land, project
 from worldmap.frame import DPI, POSTER_WIDTH_IN, MapFrame
+from worldmap.render import BORDER, BORDER_WIDTH, Z_BORDERS, Z_COUNTRY, Z_LAKES, holed_patches
 
 GRID_STEP_DEG = 0.05  # 3 arc-minutes: about one poster pixel at 200 dpi
 ELEVATION_RULE = "etopo2022-60s-mean-3min/v1"  # bump when the reduction changes, to rebuild the cached grid
@@ -277,8 +278,6 @@ def surfaces(land: np.ndarray, ice: np.ndarray, pg: PosterGrid, dpi: float) -> t
 def draw_topography(ax: Axes, frame: MapFrame, dpi: float, ocean: bool) -> None:
     """Everything on the globe for --type topographic: the coloured, hill-shaded heights (sea depths with `ocean`),
     contours, the coastline and the lakes."""
-    from worldmap.render import BORDER, BORDER_WIDTH, Z_BORDERS, Z_COUNTRY, Z_LAKES, holed_patches
-
     pg = poster_grid(frame, dpi)
     z = sample(elevation_grid(), pg.lon, pg.lat)
     z[~pg.inside] = 0
