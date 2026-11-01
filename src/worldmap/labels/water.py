@@ -198,6 +198,11 @@ class WaterLabel:
     glyphs: Path  # the bent text, in px relative to the label's position
     parts: np.ndarray  # (k, 4) x0, y0, x1, y1 per non-space glyph, px relative to the label's position, halo-padded
 
+    @property
+    def min_size(self) -> float:
+        """The smallest it may shrink to (pt): oceans stay bigger than any sea."""
+        return OCEAN_MIN_PT if self.kind == "oceans" else WATER_MIN_PT
+
     def scale(self, factor: float) -> None:
         """Shrink the label by `factor` about its position."""
         self.glyphs = Path(np.asarray(self.glyphs.vertices) * factor, self.glyphs.codes)

@@ -11,7 +11,7 @@ from shapely.geometry import Polygon
 from worldmap.frame import MapFrame
 from worldmap.labels.geometry import nearest_point_on_rect, segment_hits_rects, segments_cross
 from worldmap.labels.label import Label
-from worldmap.labels.water import PX_PER_PT, WATER_MIN_INSIDE, WATER_MIN_PT, WaterLabel
+from worldmap.labels.water import PX_PER_PT, WATER_MIN_INSIDE, WaterLabel
 
 SEED = 7
 OUTLINE_SIMPLIFY_PX = 0.5
@@ -309,11 +309,12 @@ def place_labels(labels: list[Label], frame: MapFrame, seed: int = SEED, weights
                 p.height[i] *= SHRINK_FACTOR
         for i in water_bad:
             w = water[i - len(labels)]
-            if w.size > WATER_MIN_PT:
-                w.scale(SHRINK_FACTOR)
+            if w.size > w.min_size:
+                factor = max(SHRINK_FACTOR, w.min_size / w.size)  # stop at its floor
+                w.scale(factor)
                 p.parts[p.owner == i] = w.parts
-                p.width[i] *= SHRINK_FACTOR
-                p.height[i] *= SHRINK_FACTOR
+                p.width[i] *= factor
+                p.height[i] *= factor
         optimize(SHRINK_PASSES)
     print("passes done; unresolved overlaps:", [labels[i].name for i in clashes(p)[0]])
     return p
@@ -347,7 +348,7 @@ def place_with_water(labels: list[Label], water: list[WaterLabel], frame: MapFra
         clashing = set(clashes(p)[1])
         failing = [i for i in range(n_country, p.n)
                    if kept[i - n_country].inside_share(p.x[i], p.y[i]) < WATER_MIN_INSIDE
-                   or (i in clashing and kept[i - n_country].size <= WATER_MIN_PT / SHRINK_FACTOR)]
+                   or (i in clashing and kept[i - n_country].size <= kept[i - n_country].min_size * (1 + 1e-9))]
         if not failing and not clashing:
             break
         group = {i: i for i in range(n_country, p.n)}  # union-find over the water labels

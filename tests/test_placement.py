@@ -6,7 +6,8 @@ from matplotlib.path import Path
 from worldmap.frame import MapFrame, make_frame
 from worldmap.labels.label import Label, new_label
 from worldmap.labels.placement import clashes, place_labels, place_with_water
-from worldmap.labels.water import WATER_MIN_PT, WaterLabel
+from worldmap.labels import placement
+from worldmap.labels.water import OCEAN_MIN_PT, WATER_MIN_PT, WaterLabel
 from worldmap.render import new_figure
 
 
@@ -39,10 +40,10 @@ def one_label(frame: MapFrame) -> list[Label]:
     return [country_label(frame, "Atlantis", -35, 30, 500)]
 
 
-def water_label(text: str, anchor: tuple[float, float], geom: shapely.Geometry, parts: np.ndarray, size: float) -> WaterLabel:
+def water_label(text: str, anchor: tuple[float, float], geom: shapely.Geometry, parts: np.ndarray, size: float, kind: str = "seas") -> WaterLabel:
     x0, y0, x1, y1 = parts.min(axis=0)[0], parts.min(axis=0)[1], parts.max(axis=0)[2], parts.max(axis=0)[3]
     glyphs = Path([(x0, y0), (x1, y0), (x1, y1), (x0, y1), (x0, y0)], closed=True)
-    return WaterLabel(text, "seas", 1, geom, anchor[0], anchor[1], size, glyphs, parts)
+    return WaterLabel(text, kind, 0 if kind == "oceans" else 1, geom, anchor[0], anchor[1], size, glyphs, parts)  # type: ignore[arg-type]
 
 
 @pytest.fixture
@@ -110,3 +111,15 @@ def test_no_water_is_place_labels(frame: MapFrame, two_labels: list[Label]) -> N
     a = place_labels(two_labels, frame)
     b, kept = place_with_water(two_labels_copy(), [], frame)
     assert kept == [] and np.array_equal(a.x, b.x) and np.array_equal(a.y, b.y)
+
+
+def always_clashing(p: placement.Placement) -> tuple[list[int], list[int]]:
+    return [], [int(i) for i in np.flatnonzero(p.water)]
+
+
+def test_oceans_shrink_no_smaller_than_ocean_floor(frame: MapFrame, monkeypatch: pytest.MonkeyPatch) -> None:
+    x, y = mid_atlantic_px(frame)
+    ocean = water_label("OCEAN", (x, y), shapely.box(x - 500, y - 100, x + 500, y + 100), np.array([[-200.0, -20, 200, 20]]), 20, "oceans")
+    monkeypatch.setattr(placement, "clashes", always_clashing)  # every shrink round shrinks it
+    place_labels([], frame, water=[ocean])
+    assert ocean.size == pytest.approx(OCEAN_MIN_PT)
