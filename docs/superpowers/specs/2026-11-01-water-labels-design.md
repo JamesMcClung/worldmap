@@ -29,7 +29,8 @@ splits it).
 **Style.**
 - Oceans: ALL CAPS and big, the largest water names on the map, with letter spacing so the name spreads
   across the open ocean.
-- Seas, gulfs, bays, lakes, straits: smaller, in their normal case.
+- Seas, gulfs, bays, lakes, straits: smaller, in their normal case, in italics (the atlas convention for
+  water, and it sets them apart from the upright country names).
 - Colour: entirely blue. Text is a deeper blue in the ocean's hue (`coloring.OCEAN`, `#e3f0f7`). The trim
   (halo) is also blue, a light one close to the water colour, *not* the white halo the country labels use.
   Overall similar shades to the water, quieter than the country names.
