@@ -59,6 +59,7 @@ SEA_CONTOURS = Contours(2000, "#1f4466", 0.5, "dashed")  # dashed, as in mockup 
 CONTOUR_WIDTH = 0.3
 SAMPLE_BLOCK = 1 << 17  # points per block in sample() and colorize()
 VERT_EXAG = 6.0  # hill-shading exaggeration of heights (z and pixel size both in metres); tuned on crops
+SPECK_PX = 4  # land or water patches smaller than this many pixels (at DPI) are filled in: islets, rivers
 
 
 @dataclass
@@ -226,11 +227,26 @@ def smoothed(mask: np.ndarray) -> np.ndarray:
     return m
 
 
-def coast_lines(solid: np.ndarray, pg: PosterGrid) -> list[np.ndarray]:
-    """The coastline: the edge of `solid` (land or ice), traced from the same pixels the colours use, so it always
-    sits where land meets water. (Natural Earth's land, glacier and ice-shelf outlines don't quite agree around
-    Antarctica, and drawing them left stray dashes in the slivers between them.)"""
-    return contour_lines(pg.x, pg.y, np.ma.masked_array(smoothed(solid)), np.array([0.5]))
+def despeckle(mask: np.ndarray, dpi: float) -> np.ndarray:
+    """`mask` with its patches (4-connected) smaller than SPECK_PX pixels at DPI flipped to their surroundings: islands
+    too small to get a coastline, and specks of water inland."""
+    from rasterio.features import sieve
+
+    size = max(2, round(SPECK_PX * (min(dpi, DPI) / DPI) ** 2))
+    return sieve(mask.astype(np.uint8), size, connectivity=4).astype(bool)
+
+
+def solid_field(solid: np.ndarray, dpi: float) -> np.ndarray:
+    """The land-or-ice mask despeckled and smoothed: land and ice are coloured where it is > 0.5, and the coastline
+    is its 0.5 contour, so every coloured island has a coastline and no coastline is left empty."""
+    return smoothed(despeckle(solid, dpi))
+
+
+def coast_lines(field: np.ndarray, pg: PosterGrid) -> list[np.ndarray]:
+    """The coastline: the 0.5 contour of `field` (smoothed land or ice), so it sits where the colours change from land
+    to water. (Natural Earth's land, glacier and ice-shelf outlines don't quite agree around Antarctica, and drawing
+    them left stray dashes in the slivers between them.)"""
+    return contour_lines(pg.x, pg.y, np.ma.masked_array(field), np.array([0.5]))
 
 
 def contour_lines(x: np.ndarray, y: np.ndarray, z: np.ma.MaskedArray, levels: np.ndarray) -> list[np.ndarray]:
@@ -245,6 +261,19 @@ def contour_lines(x: np.ndarray, y: np.ndarray, z: np.ma.MaskedArray, levels: np
     return lines
 
 
+def surfaces(land: np.ndarray, ice: np.ndarray, pg: PosterGrid, dpi: float) -> tuple[np.ndarray, np.ndarray, list[np.ndarray]]:
+    """The land and ice masks (ice wins), and the coastline, from Natural Earth's land and ice masks, with specks
+    cleaned up (`solid_field`). A filled-in speck of water takes the land or ice around it."""
+    raw = land | ice
+    field = solid_field(raw, dpi)
+    solid = field > 0.5
+    coast = coast_lines(field, pg)
+    del field
+    filled = solid & ~raw
+    ice = solid & (ice | (filled & (smoothed(ice) > smoothed(land))))
+    return solid & ~ice, ice, coast
+
+
 def draw_topography(ax: Axes, frame: MapFrame, dpi: float, ocean: bool) -> None:
     """Everything on the globe for --type topographic: the coloured, hill-shaded heights (sea depths with `ocean`),
     contours, the coastline and the lakes."""
@@ -254,8 +283,8 @@ def draw_topography(ax: Axes, frame: MapFrame, dpi: float, ocean: bool) -> None:
     z = sample(elevation_grid(), pg.lon, pg.lat)
     z[~pg.inside] = 0
     pg.lon = pg.lat = np.empty((0, 0), np.float32)  # done with them; ~200 MB at 200 dpi
-    ice = polygon_mask(project(load_ice()), frame, pg) & pg.inside
-    land = polygon_mask(project(load_land()), frame, pg) & ~ice & pg.inside
+    land, ice, coast = surfaces(polygon_mask(project(load_land()), frame, pg) & pg.inside,
+                                polygon_mask(project(load_ice()), frame, pg) & pg.inside, pg, dpi)
     sea = ~land & ~ice & pg.inside
     shaded = shade(colorize(z, land, ice, ocean), z, frame.width / len(pg.x), sea, ocean)
     rgba = np.empty(z.shape + (4,), np.float32)  # allocated after shading, so the two peaks don't add up
@@ -276,7 +305,6 @@ def draw_topography(ax: Axes, frame: MapFrame, dpi: float, ocean: bool) -> None:
     contours(ice, np.arange(ICE_CONTOURS.step, z.max() + 1, ICE_CONTOURS.step), ICE_CONTOURS)
     if ocean:
         contours(sea, -np.arange(SEA_CONTOURS.step, -z.min() + 1, SEA_CONTOURS.step)[::-1], SEA_CONTOURS)
-    coast = coast_lines(land | ice, pg)
     ax.add_collection(LineCollection(coast, colors=BORDER, linewidths=BORDER_WIDTH, zorder=Z_BORDERS))
     for g in project(load_lakes()).geometry:
         ax.add_collection(PatchCollection(list(holed_patches(g)), fc=OCEAN, ec=BORDER, lw=BORDER_WIDTH, zorder=Z_LAKES))

@@ -6,7 +6,7 @@ from worldmap.coloring import OCEAN
 from worldmap.data import load_ice, load_lakes, load_land, project
 from worldmap.frame import make_frame
 from worldmap.topographic import (LAND_BELOW_SEA, Grid, PosterGrid, coast_lines, colorize, draw_topography, elevation_grid,
-                                  polygon_mask, poster_grid, relief, sample, shade)
+                                  polygon_mask, poster_grid, relief, sample, shade, smoothed, solid_field, surfaces)
 
 
 @pytest.fixture(scope="module")
@@ -143,7 +143,7 @@ def coast(pg: PosterGrid):
 
     f = make_frame()
     solid = (polygon_mask(project(load_land()), f, pg) | polygon_mask(project(load_ice()), f, pg)) & pg.inside
-    return MultiLineString([line for line in coast_lines(solid, pg) if len(line) > 1])
+    return MultiLineString([line for line in coast_lines(solid_field(solid, 50), pg) if len(line) > 1])
 
 
 def test_coastline_follows_land_and_ice(coast) -> None:
@@ -160,11 +160,25 @@ def test_coastline_follows_land_and_ice(coast) -> None:
 def test_coast_lines_trace_the_mask_edge(pg: PosterGrid) -> None:
     solid = np.zeros(pg.inside.shape, bool)
     solid[100:120, 300:340] = True
-    (line,) = coast_lines(solid, pg)
+    (line,) = coast_lines(smoothed(solid), pg)
     cols = (line[:, 0] - pg.x[0]) / (pg.x[1] - pg.x[0])
     rows = (pg.y[0] - line[:, 1]) / (pg.y[0] - pg.y[1])
     assert abs(cols.min() - 299.5) < 0.6 and abs(cols.max() - 339.5) < 0.6  # half-way between in and out pixels
     assert abs(rows.min() - 99.5) < 0.6 and abs(rows.max() - 119.5) < 0.6
+
+
+def test_surfaces_clean_up_specks(pg: PosterGrid) -> None:
+    land = np.zeros(pg.inside.shape, bool)
+    land[100:140, 300:330] = True
+    land[120, 315] = False  # a speck of water inland
+    land[50, 50] = land[50, 51] = True  # an islet
+    ice = np.zeros_like(land)
+    ice[100:140, 330:360] = True
+    ice[110, 345] = False  # a speck of water in the ice
+    land_out, ice_out, coast = surfaces(land, ice, pg, 200)
+    assert land_out[120, 315] and ice_out[110, 345] and not land_out[110, 345]
+    assert not land_out[50, 50] and not land_out[50, 51]
+    assert len(coast) == 1 and not (land_out & ice_out).any()
 
 
 def test_relief_lights_north_west_slopes() -> None:
