@@ -66,7 +66,7 @@ def fetch(name: str) -> Path:
 
 def is_labeled(row: pd.Series) -> bool:
     """Whether a country feature gets a name label (and counts as a 'real' country for across-water colouring).
-    Dependencies are labelled only with --regions (labels/regions.py)."""
+    Dependencies are labelled only with --label territories (labels/regions.py)."""
     if is_dependency(row):
         return False
     return row.NAME_EN in LABELED_EXTRA or (row.TYPE in LABELED_TYPES and row.NAME_EN not in NOT_LABELED)

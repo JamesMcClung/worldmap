@@ -100,13 +100,13 @@ def new_label(ax: Axes, renderer: RendererBase, frame: MapFrame, name: str, anch
     return label
 
 
-def make_labels(countries_projected: gpd.GeoDataFrame, frame: MapFrame, ax: Axes, renderer: RendererBase, fill_of: Callable[[int, Point | None], Fill], children: Sequence["ChildRegion"] = ()) -> list[Label]:
-    """One label per labelled country, plus an italic one per child region (--regions), largest first (see
-    anchor_piece for where each goes)."""
+def make_labels(countries_projected: gpd.GeoDataFrame, frame: MapFrame, ax: Axes, renderer: RendererBase, fill_of: Callable[[int, Point | None], Fill], children: Sequence["ChildRegion"] = (), countries: bool = True) -> list[Label]:
+    """One label per labelled country (if `countries`), plus an italic one per child region (--label territories),
+    largest first (see anchor_piece for where each goes)."""
     tolerance = frame.width / INSCRIBED_CIRCLE_DIVISOR
     labels, island_names = [], []
     for i, row in countries_projected.iterrows():
-        if not is_labeled(row):
+        if not countries or not is_labeled(row):
             continue
         polys = [p for p in (row.geometry.geoms if isinstance(row.geometry, MultiPolygon) else [row.geometry]) if not p.is_empty]
         if not polys:

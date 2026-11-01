@@ -14,7 +14,7 @@ def test_render_default(tmp_path: Path) -> None:
 
 
 def test_render_earth(tmp_path: Path) -> None:
-    check_fingerprint("earth", render(tmp_path, "--earth"))
+    check_fingerprint("earth", render(tmp_path, "--color", "earth"))
 
 
 def test_render_pins(tmp_path: Path) -> None:
@@ -22,7 +22,7 @@ def test_render_pins(tmp_path: Path) -> None:
 
 
 def test_render_regions(tmp_path: Path) -> None:
-    check_fingerprint("regions", render(tmp_path, "--regions"))
+    check_fingerprint("regions", render(tmp_path, "--label", "countries,territories"))
 
 
 def test_render_failure_shows_stderr(tmp_path: Path) -> None:

@@ -21,16 +21,16 @@ Install with `-e` (editable): map data is downloaded into the repo's `.cache/` d
 ```
 make_map                      # writes worldmap.png
 make_map out.png              # choose the output file
-make_map --earth              # natural colours (sand to green) from Natural Earth land-cover imagery
-make_map --regions            # also label dependencies and outlying regions, e.g. "Alaska (United States)"
+make_map --color earth        # natural colours (sand to green) from Natural Earth land-cover imagery
+make_map --label countries,territories  # also label dependencies and outlying regions, e.g. "Alaska (US)"
 make_map --pick pins.txt      # click on the rendered map to add pins to pins.txt
 make_map --pins pins.txt      # draw the pins; writes worldmap_pins.png
 ```
 
 | Option | Effect |
 | --- | --- |
-| `--earth` | Colour each region by what it looks like from space instead of distinct political colours. The first run downloads a ~75 MB raster. |
-| `--regions` | Also label dependencies (Greenland, Bermuda, Guam...) and outlying parts of countries (Alaska, Tasmania, Kaliningrad...), in italics with the parent country in parentheses. Without it they are unlabelled. |
+| `--color NAME` | How countries are filled. `colorblind` (default): distinct colours that red/green colour-blind viewers can tell apart. `earth`: each region coloured by what it looks like from space; the first run downloads a ~75 MB raster. |
+| `--label LIST` | What to label: a comma-separated list, or `none`. `countries` (default): sovereign countries. `territories`: dependencies (Greenland, Bermuda, Guam...) and outlying parts of countries (Alaska, Tasmania, Kaliningrad...), in italics with the parent country in parentheses. The list replaces the default, so `--label territories` labels territories only. |
 | `--pins FILE` | Draw pins from `FILE`, one `lon,lat` per line (`#` starts a comment). |
 | `--pin-size IN` | Pin diameter in inches on the 36 in poster (default 0.24). |
 | `--dpi DPI` | Output dots per inch on the 36 in poster (default 200, i.e. 7200 px wide). The layout is the same at any resolution; e.g. `--dpi 50` makes an 1800 px preview. |
@@ -45,18 +45,18 @@ A run takes about 10 s once the data is downloaded. Output goes to the current d
 
 The images in [`examples/`](examples) are rendered at `--dpi 50` (1800 px wide); the default is 200 dpi (7200 px).
 
-Political colours (the default):
+Colour-blind-friendly colours (the default):
 
 ```
-make_map examples/political.png --dpi 50
+make_map examples/colorblind.png --dpi 50
 ```
 
-![Political world map](examples/political.png)
+![World map in colour-blind-friendly colours](examples/colorblind.png)
 
-Natural colours with `--earth`:
+Natural colours with `--color earth`:
 
 ```
-make_map examples/earth.png --earth --dpi 50
+make_map examples/earth.png --color earth --dpi 50
 ```
 
 ![World map in natural colours](examples/earth.png)
@@ -81,7 +81,7 @@ A pin file has one `lon,lat` per line, and `#` starts a comment:
 
 ```
 pip install -e '.[dev]'
-pytest           # ~25 s: unit tests plus pixel-exact renders of the default, --earth, --pins and --regions maps
+pytest           # ~25 s: unit tests plus pixel-exact renders of the default, --color earth, --pins and --label countries,territories maps
 mypy src
 ```
 

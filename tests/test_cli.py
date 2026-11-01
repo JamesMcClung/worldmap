@@ -30,6 +30,21 @@ def test_console_script_help() -> None:
     assert "--ocean" not in out
 
 
-def test_regions_flag() -> None:
-    assert parse_args([]).regions is False
-    assert parse_args(["--regions"]).regions is True
+def test_color_flag() -> None:
+    assert parse_args([]).color == "colorblind"
+    assert parse_args(["--color", "earth"]).color == "earth"
+    for bad in [["--color", "pastel"], ["--earth"]]:
+        with pytest.raises(SystemExit) as e:
+            parse_args(bad)
+        assert e.value.code == 2
+
+
+def test_label_flag() -> None:
+    assert parse_args([]).label == {"countries"}
+    assert parse_args(["--label", "territories"]).label == {"territories"}
+    assert parse_args(["--label", "countries,territories"]).label == {"countries", "territories"}
+    assert parse_args(["--label", "none"]).label == set()
+    for bad in [["--label", "oceans"], ["--label", "none,countries"], ["--label", ""], ["--regions"]]:
+        with pytest.raises(SystemExit) as e:
+            parse_args(bad)
+        assert e.value.code == 2

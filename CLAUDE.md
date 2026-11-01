@@ -7,7 +7,7 @@ large countries, non-overlapping country labels). Output default: `worldmap.png`
 
 ```
 python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'   # deps in pyproject.toml; [dev] adds pytest, mypy
-.venv/bin/make_map [out.png] [--recolor] [--earth] [--regions] [--pins FILE] [--pin-size IN] [--dpi DPI] [--pick FILE]
+.venv/bin/make_map [out.png] [--recolor] [--color colorblind|earth] [--label LIST] [--pins FILE] [--pin-size IN] [--dpi DPI] [--pick FILE]
 ```
 
 `--dpi` only changes the `savefig` dpi (and the pin sprite's pixel size): layout is always measured at
@@ -16,14 +16,14 @@ A run takes ~7-12 s. Output goes to the current directory. After changing the en
 
 Natural Earth data (public domain) is downloaded by `data.fetch(name)` on first use into `.cache/` at the repo root, located
 relative to `data.py` (`CACHE`), so the package must be installed editable (`-e`). The land-cover raster (~75 MB zip,
-394 MB unzipped into `.cache/ne1/`) is fetched only for `--earth`. `coloring.json` and `earth.json` live in `.cache/` too.
+394 MB unzipped into `.cache/ne1/`) is fetched only for `--color earth`. `coloring.json` and `earth.json` live in `.cache/` too.
 `.cache/` is gitignored. User-facing docs are in `README.md`; MIT `LICENSE`.
 
 ## Tests
 
 `.venv/bin/pytest` (~25 s). Unit tests cover the pure pieces (colour maths, `color_graph`, pin parsing and sprite, label geometry,
 CLI errors), and `test_import_has_no_pyplot` guards that importing any module doesn't pick a matplotlib backend (`--pick` needs to).
-`test_regression.py` renders the default, `--earth`, `--pins` and `--regions` maps in a subprocess and compares a SHA-256 of the decoded pixels
+`test_regression.py` renders the default, `--color earth`, `--pins` and `--label countries,territories` maps in a subprocess and compares a SHA-256 of the decoded pixels
 with `tests/fingerprints.json`:
 - A commit that changes the output on purpose re-records with `UPDATE_REFERENCE=1 .venv/bin/pytest` and commits `fingerprints.json`
   in the same commit, saying in the body what changed visually. Refactors must leave the fingerprints unchanged.
@@ -41,15 +41,15 @@ Importing any module has no side effects; only `cli.main` (after choosing the ba
 
 | Module | Contents |
 |---|---|
-| `cli.py` | `parse_args`, `graph_fills` (palette + Baikonur), `main()`: the pipeline as a sequence of stage calls |
+| `cli.py` | `parse_args` (`--label`: `label_kinds`, a list that replaces the default `countries`; `none` = no labels), `graph_fills` (palette + Baikonur), `main()`: the pipeline as a sequence of stage calls |
 | `data.py` | `fetch`, file names, `CRS`, `STATE_COUNTRIES`, lakes filter, `is_dependency`, `parent_index`, `is_labeled`, `load_*`, `project` |
 | `frame.py` | `MapFrame` (transformers, globe outline, extent, `px_per_unit`, `to_px`, `px_to_map`), `make_frame`, `DPI`, `POSTER_WIDTH_IN` |
 | `colorspace.py` | OKLab/OKLCH conversions, `fit_gamut`, `darken` |
 | `coloring.py` | `merge_into_parents`, `adjacency`, `add_proximity_edges`, `color_graph`, `make_palette`, `load_or_compute_coloring` (cache), `spot_check`, `OCEAN` |
-| `earth.py` | `--earth`: `earth_values` (raster sampling, cache), `earth_fill`, `build_regions`, `fill_at` |
+| `earth.py` | `--color earth`: `earth_values` (raster sampling, cache), `earth_fill`, `build_regions`, `fill_at` |
 | `pins.py` | `load_pins`, `PinStyle` (every sprite shading constant), `pin_sprite`, `draw_pins`, `pick_pins` |
 | `labels/label.py` | `Label` dataclass, `make_labels` (anchors, sizes, exclaves), `decide_out_and_wrap` |
-| `labels/regions.py` | `--regions`: `ChildRegion`, `HAND_PICKED` (parent + lon/lat boxes), `child_regions` |
+| `labels/regions.py` | `--label territories`: `ChildRegion`, `HAND_PICKED` (parent + lon/lat boxes), `child_regions` |
 | `labels/placement.py` | `CostWeights`, `Placement` (per-label arrays), `cost_batch`, `candidates`, `place_labels`, `leader_ends` |
 | `labels/geometry.py` | `rect`, `nearest_point_on_rect`, `segment_hits_rects`, `segments_cross`, `two_line` |
 | `render.py` | `new_figure`, `draw_countries`, `draw_states`, `draw_lakes`, `subtract_lakes`, `draw_labels`, line widths and z-orders |
@@ -89,7 +89,9 @@ Palette tweaks never change which countries share a class. If you change the col
 The script prints a spot-check of same-coloured pairs (Korea/Japan, Malaysia/Philippines, Italy/Greece, France/UK,
 UK/Norway, India/Sri Lanka, Russia/US) on every run; it should be empty.
 
-## `--earth` colouring mode
+## `--color earth` colouring mode
+
+The default, `--color colorblind`, is the graph colouring above.
 
 Replaces the graph colouring with a natural palette derived from real imagery: the Natural Earth I land-cover raster
 (`.cache/ne1/NE1_LR_LC.tif`, from https://naciscdn.org/naturalearth/10m/raster/NE1_LR_LC.zip, fetched automatically).
@@ -116,7 +118,7 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
 
 - Which features get labels: `is_labeled()` (sovereign countries and a few extras; dependencies, small territories and Antarctica excluded).
   Names shortened in `RENAME`.
-- `--regions` adds italic `<region> (<parent>)` labels (`labels/regions.py`): every dependency that doesn't touch its
+- `--label territories` adds italic `<region> (<parent>)` labels (`labels/regions.py`): every dependency that doesn't touch its
   parent (so not Hong Kong/Macau), plus `HAND_PICKED` parts of a parent's polygons (Alaska, Kaliningrad, Tasmania...),
   selected by testing each polygon's representative point against lon/lat boxes. Child labels are anchored on and sized
   by their largest polygon (a hull-based size makes spread-out archipelagos huge).

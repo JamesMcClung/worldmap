@@ -67,7 +67,7 @@ def new_figure(frame: MapFrame) -> tuple[Figure, Axes]:
 
 
 def draw_countries(ax: Axes, countries_projected: gpd.GeoDataFrame, fill_of: Callable[[int, Point | None], Fill], regions: Regions | None) -> None:
-    """Country fills with borders. With `regions` (--earth), each polygon gets its own fill; otherwise Baikonur
+    """Country fills with borders. With `regions` (--color earth), each polygon gets its own fill; otherwise Baikonur
     (Kazakh land leased to Russia) is hatched in Kazakhstan's colour."""
     kazakhstan = countries_projected.index[countries_projected.NAME_EN == "Kazakhstan"][0]
     for i, row in countries_projected.iterrows():
