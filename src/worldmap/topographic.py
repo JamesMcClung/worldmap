@@ -7,14 +7,14 @@ from dataclasses import dataclass
 import geopandas as gpd
 import numpy as np
 from matplotlib.axes import Axes
-from matplotlib.collections import LineCollection, PatchCollection
+from matplotlib.collections import LineCollection
 from matplotlib.colors import LinearSegmentedColormap, to_rgb
 from matplotlib.patches import Polygon as MplPolygon
 
 from worldmap.coloring import OCEAN
 from worldmap.data import CACHE, ETOPO, fetch, load_ice, load_lakes, load_land, project
 from worldmap.frame import DPI, POSTER_WIDTH_IN, MapFrame
-from worldmap.render import BORDER, BORDER_WIDTH, Z_BORDERS, Z_COUNTRY, Z_LAKES, holed_patches
+from worldmap.render import BORDER, BORDER_WIDTH, Z_BORDERS, Z_COUNTRY, draw_lakes
 
 GRID_STEP_DEG = 0.05  # 3 arc-minutes: about one poster pixel at 200 dpi
 ELEVATION_RULE = "etopo2022-60s-mean-3min/v1"  # bump when the reduction changes, to rebuild the cached grid
@@ -302,5 +302,4 @@ def draw_topography(ax: Axes, frame: MapFrame, dpi: float, ocean: bool) -> None:
     if ocean:
         contours(sea, -np.arange(SEA_CONTOURS.step, -z.min() + 1, SEA_CONTOURS.step)[::-1], SEA_CONTOURS)
     ax.add_collection(LineCollection(coast, colors=BORDER, linewidths=BORDER_WIDTH, zorder=Z_BORDERS))
-    for g in project(load_lakes()).geometry:
-        ax.add_collection(PatchCollection(list(holed_patches(g)), fc=OCEAN, ec=BORDER, lw=BORDER_WIDTH, zorder=Z_LAKES))
+    draw_lakes(ax, project(load_lakes()))
