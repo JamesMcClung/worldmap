@@ -16,6 +16,7 @@ from matplotlib.path import Path
 from matplotlib.textpath import TextPath
 from shapely.geometry import LineString, Polygon, box
 
+from worldmap.curves import arc_lengths, bend
 from worldmap.frame import DPI, MapFrame
 from worldmap.render import BORDER, BORDER_WIDTH, Z_GLOBE
 from worldmap.topographic import CONTOUR_WIDTH, Contours, Scale
@@ -84,26 +85,21 @@ def curved_title(region: Polygon, title: str, unit: float) -> Path:
     """`title`'s glyphs bent along the bar's curved side, centred on it, inside the bar TITLE_INSET_IN from it.
     `unit` is map units per poster inch."""
     side = globe_side(region)
-    s = np.concatenate([[0], np.cumsum(np.hypot(*np.diff(side, axis=0).T))])
+    s = arc_lengths(side)
     glyphs = TextPath((0, 0), title, size=TITLE_SIZE, prop=FontProperties(weight="bold"))
     scale = unit / 72  # map units per point
     u, v = glyphs.vertices[:, 0] * scale, glyphs.vertices[:, 1] * scale
     extents = glyphs.get_extents()
     width, top, bottom = extents.xmax * scale, extents.ymax * scale, extents.ymin * scale
     u = u + s[-1] / 2 - width / 2  # distance along the side
-
-    def at(d: np.ndarray) -> np.ndarray:
-        return np.stack([np.interp(d, s, side[:, 0]), np.interp(d, s, side[:, 1])], axis=-1)
-
     h = 0.05 * unit
-    tangent = at(u + h) - at(u - h)
-    tangent /= np.hypot(*tangent.T)[:, None]
-    normal = np.stack([-tangent[:, 1], tangent[:, 0]], axis=-1)  # to the left of the direction of reading
-    mid, mid_normal = at(np.array([s[-1] / 2]))[0], normal[len(normal) // 2]
+    k = [len(u) // 2]
+    mid = bend(side, np.array([s[-1] / 2]), np.zeros(1), h)[0]
+    mid_normal = bend(side, u[k], np.ones(1), h)[0] - bend(side, u[k], np.zeros(1), h)[0]
     inset = TITLE_INSET_IN * unit
     inside_left = region.contains(shapely.Point(mid + mid_normal * inset))
     v = v + inset - bottom if inside_left else v - inset - top  # descenders above the side, or cap tops below it
-    return Path(at(u) + normal * v[:, None], glyphs.codes)
+    return Path(bend(side, u, v, h), glyphs.codes)
 
 
 def draw_colorbar(ax: Axes, frame: MapFrame, corner: Corner, scale: Scale, title: str, contours: Contours) -> None:

@@ -1,6 +1,8 @@
 import geopandas as gpd
+import numpy as np
 import pytest
 
+from worldmap.curves import arc_lengths, bend
 from worldmap.data import load_lakes, project
 from worldmap.labels.water import classify, kinds_from_labels, load_water_bodies
 
@@ -42,3 +44,12 @@ def test_seas_lakes_and_straits(lakes_projected: gpd.GeoDataFrame) -> None:
     assert everything[0].kind == "oceans"
     ranks = [b.rank for b in everything if b.kind != "oceans"]
     assert ranks == sorted(ranks)
+
+
+def test_bend_straight_and_circle() -> None:
+    line = np.array([[0.0, 0.0], [10.0, 0.0]])
+    assert np.allclose(bend(line, np.array([2.0, 5.0]), np.array([1.0, -1.0]), 0.01), [[2, 1], [5, -1]])
+    theta = np.linspace(np.pi, 0, 500)  # upper half circle, radius 10, left to right
+    arc = np.stack([10 * np.cos(theta), 10 * np.sin(theta)], -1)
+    pts = bend(arc, np.array([arc_lengths(arc)[-1] / 2]), np.array([2.0]), 0.01)
+    assert np.allclose(pts, [[0, 12]], atol=1e-2)  # left of rightward travel over the top is up, away from the centre
