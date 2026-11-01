@@ -126,7 +126,10 @@ def water_cost(p: Placement, label: WaterLabel, i: int, cx: np.ndarray, cy: np.n
         gap_y = np.clip(np.maximum(g[..., None, 1] - dots[:, 1], dots[:, 1] - g[..., None, 3]), 0, None)
         gap = np.hypot(gap_x, gap_y).min(1)  # (candidates, dots): nearest glyph
         cost += weights.dot_cover * (np.clip(dot_r - gap, 0, None) / dot_r).sum(1)
-        cost += weights.leader_hits_label * segment_hits_rects(dots, ends, g[:, :, None, :]).any(1).sum(1)
+        lo, hi = np.minimum(dots, ends), np.maximum(dots, ends)
+        close = (lo[:, 0] <= envelope[2]) & (hi[:, 0] >= envelope[0]) & (lo[:, 1] <= envelope[3]) & (hi[:, 1] >= envelope[1])
+        if close.any():
+            cost += weights.leader_hits_label * segment_hits_rects(dots[close], ends[close], g[:, :, None, :]).any(1).sum(1)
 
     mid_x, mid_y = (g[..., 0] + g[..., 2]) / 2, (g[..., 1] + g[..., 3]) / 2
     area = (g[..., 2] - g[..., 0]) * (g[..., 3] - g[..., 1])
@@ -188,7 +191,8 @@ def cost_batch(p: Placement, labels: Sequence[Label | WaterLabel], i: int, cx: n
         envelope = np.array([boxes[:, 0].min(), boxes[:, 1].min(), boxes[:, 2].max(), boxes[:, 3].max()])
         cost += weights.overlap * overlap_area(boxes[:, None, :], near(glyph_boxes(p), envelope)) / (h * h)
         if p.out[i]:
-            g = glyph_boxes(p)
+            reach = np.array([min(anchor_x, end[..., 0].min()), min(anchor_y, end[..., 1].min()), max(anchor_x, end[..., 0].max()), max(anchor_y, end[..., 1].max())])
+            g = near(glyph_boxes(p), reach + [-1, -1, 1, 1])
             g = g[~((g[:, 0] <= anchor_x) & (anchor_x <= g[:, 2]) & (g[:, 1] <= anchor_y) & (anchor_y <= g[:, 3]))]
             cost += weights.leader_hits_label * segment_hits_rects(start, end, g[None]).sum(1)
     return cost
