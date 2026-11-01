@@ -17,7 +17,8 @@ from matplotlib.textpath import TextPath
 from shapely.geometry import LineString, Polygon, box
 
 from worldmap.frame import DPI, MapFrame
-from worldmap.topographic import Contours, Scale
+from worldmap.render import BORDER, BORDER_WIDTH, Z_GLOBE
+from worldmap.topographic import CONTOUR_WIDTH, Contours, Scale
 
 Corner = Literal["br", "tr", "bl"]  # bottom-right, top-right, bottom-left
 BAR_GAP_IN = 0.7  # gap between the bar and the globe, for the tick labels (poster inches)
@@ -104,9 +105,6 @@ def draw_colorbar(ax: Axes, frame: MapFrame, corner: Corner, scale: Scale, title
     """A colour bar in `corner`: scale.start at the canvas edge (the bottom for br/bl, the top for tr) to scale.end near
     the tip, a labelled tick every TICK_STEP on the globe side, the map's contour lines across it (and sea level in
     the coastline's style), and `title` along the curved side."""
-    from worldmap.render import BORDER, BORDER_WIDTH, Z_GLOBE
-    from worldmap.topographic import CONTOUR_WIDTH
-
     region = bar_region(frame, corner)
     x0, y0, x1, y1 = region.bounds
     up = corner != "tr"  # the canvas edge is at the bottom
