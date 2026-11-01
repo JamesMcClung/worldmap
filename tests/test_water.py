@@ -8,7 +8,7 @@ from shapely.geometry import Point
 from worldmap.curves import arc_lengths, bend
 from worldmap.data import load_lakes, project
 from worldmap.frame import MapFrame, make_frame
-from worldmap.labels.water import OCEAN_PT, SEA_MAX_PT, WATER_MIN_INSIDE, WATER_MIN_PT, classify, fit_curve, kinds_from_labels, load_water_bodies, make_water_labels
+from worldmap.labels.water import OCEAN_PT, SEA_MAX_PT, WATER_MIN_INSIDE, WATER_MIN_PT, WATER_TEXT, classify, fit_curve, kinds_from_labels, load_water_bodies, make_water_labels
 
 
 @pytest.fixture(scope="module")
@@ -115,3 +115,24 @@ def test_hopeless_bodies_left_out(frame: MapFrame, lakes_projected: gpd.GeoDataF
     labels = make_water_labels(bodies, frame)
     assert 0 < len(labels) < len(bodies)
     assert all(l.inside_share(l.anchor_x, l.anchor_y) >= WATER_MIN_INSIDE for l in labels)
+
+
+def test_draw_water_labels(frame: MapFrame, lakes_projected: gpd.GeoDataFrame) -> None:
+    from matplotlib.patches import PathPatch
+
+    from worldmap.labels.placement import place_labels
+    from worldmap.render import draw_water_labels, new_figure
+
+    med = [l for l in make_water_labels(load_water_bodies({"seas"}, lakes_projected), frame) if l.text == "Mediterranean Sea"]
+    p = place_labels([], frame, water=med)
+    p.x[0] += 100  # somewhere other than its anchor
+    fig, ax = new_figure(frame)
+    before = len(ax.patches)
+    draw_water_labels(ax, med, p, frame)
+    added = ax.patches[before:]
+    assert len(added) == 1 and isinstance(added[0], PathPatch)
+    assert np.allclose(added[0].get_facecolor()[:3], WATER_TEXT)
+    ext = added[0].get_path().get_extents()
+    gx0, gy0, gx1, gy1 = med[0].glyphs.get_extents().extents
+    px, py = frame.px_to_map(np.array([p.x[0] + (gx0 + gx1) / 2]), np.array([p.y[0] + (gy0 + gy1) / 2]))
+    assert abs((ext.x0 + ext.x1) / 2 - px[0]) * frame.px_per_unit < 1 and abs((ext.y0 + ext.y1) / 2 - py[0]) * frame.px_per_unit < 1

@@ -4,6 +4,7 @@ from collections.abc import Callable, Iterator
 
 import geopandas as gpd
 import matplotlib
+import matplotlib.patheffects as pe
 import numpy as np
 import shapely
 from matplotlib.axes import Axes
@@ -21,7 +22,9 @@ from worldmap.disputed import Dispute, dispute_fills, stripe_parts
 from worldmap.earth import Fill, Regions
 from worldmap.frame import DPI, POSTER_WIDTH_IN, MapFrame
 from worldmap.labels.label import Label
+from worldmap.labels.label import LABEL_ZORDER
 from worldmap.labels.placement import Placement, leader_ends
+from worldmap.labels.water import WATER_HALO, WATER_HALO_PX, WATER_TEXT, WaterLabel
 
 BORDER, STATE_LINE = "#3a3a3a", "#7d7d7d"
 ANTARCTICA_FILL = "#ffffff"  # Antarctica is drawn white and left unlabelled
@@ -143,3 +146,15 @@ def draw_labels(ax: Axes, labels: list[Label], placement: Placement, frame: MapF
             x1, y1 = frame.px_to_map(end_x[i], end_y[i])
             ax.plot([x0, x1], [y0, y1], color=label.color, lw=LEADER_WIDTH, zorder=Z_LEADERS, solid_capstyle="round")
             ax.plot([x0], [y0], marker="o", ms=LEADER_DOT_SIZE, color=label.color, zorder=Z_LEADERS)
+
+
+def draw_water_labels(ax: Axes, water: list[WaterLabel], placement: Placement, frame: MapFrame) -> None:
+    """Each water label's bent glyphs at its placed position (the water labels come after the country labels in
+    `placement`), blue with a water-coloured halo, just under the country labels."""
+    first = placement.n - len(water)
+    halo = [pe.withStroke(linewidth=WATER_HALO_PX * 72 / DPI, foreground=WATER_HALO)]
+    for k, label in enumerate(water):
+        vertices = np.asarray(label.glyphs.vertices) + [placement.x[first + k], placement.y[first + k]]
+        x, y = frame.px_to_map(vertices[:, 0], vertices[:, 1])
+        path = Path(np.stack([x, y], -1), label.glyphs.codes)
+        ax.add_patch(PathPatch(path, fc=WATER_TEXT, ec="none", lw=0, zorder=LABEL_ZORDER - 0.1, path_effects=halo))
