@@ -208,8 +208,6 @@ def polygon_mask(projected: gpd.GeoDataFrame, frame: MapFrame, pg: PosterGrid) -
     rows, cols = pg.inside.shape
     transform = from_origin(frame.xmin, frame.ymax, frame.width / cols, frame.height / rows)
     shapes = [g for g in projected.geometry if g is not None and not g.is_empty]
-    if not shapes:
-        return np.zeros((rows, cols), bool)
     return rasterize(shapes, out_shape=(rows, cols), transform=transform, fill=0, default_value=1, dtype="uint8").astype(bool)
 
 
