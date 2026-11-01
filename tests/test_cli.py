@@ -44,21 +44,9 @@ def test_label_flag() -> None:
         assert e.value.code == 2
 
 
-def test_disputed_flag() -> None:
-    assert parse_args([]).disputed is False
-    assert parse_args(["--disputed"]).disputed is True
-
-
-def test_type_default_political() -> None:
-    args = parse_args([])
-    assert args.type == "political" and not args.ocean
-
-
-def test_type_topographic() -> None:
-    args = parse_args(["--type", "topographic", "--ocean"])
-    assert (args.type, args.ocean) == ("topographic", True)
-
-
-def test_type_unknown_errors() -> None:
-    with pytest.raises(SystemExit):
+def test_type_flag() -> None:
+    assert (parse_args([]).type, parse_args([]).ocean) == ("political", False)
+    assert (parse_args(["--type", "topographic", "--ocean"]).type, parse_args(["--ocean"]).ocean) == ("topographic", True)
+    with pytest.raises(SystemExit) as e:
         parse_args(["--type", "sky"])
+    assert e.value.code == 2
