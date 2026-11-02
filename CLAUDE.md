@@ -204,9 +204,9 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
   Atlantic are one ATLANTIC; the Pacific is split at x = 0 into two bodies. Each body is labelled once, on its largest
   polygon; order = oceans, then scalerank, then area (most important first; the drop loop removes from the end).
 - Curve (`fit_curve`): principal axis of interior sample points, tilt clamped, quadratic fit with the bend clamped
-  (`MAX_BEND_DEG`), read left to right (bottom to top within 1 degree of vertical). Oceans (`body_curve`): level, fitted on
-  their water within `OCEAN_REACH` radii of the largest inscribed circle and centred on it (the middle of a whole ocean
-  put ATLANTIC across Brazil). Sizes fill `SEA_FILL` of the curve within `WATER_MIN_PT`..`SEA_MAX_PT` (oceans
+  (`MAX_BEND_DEG`, `MAX_TILT_DEG`), read left to right (bottom to top within 1 degree of vertical). Oceans too, fitted on
+  the whole ocean, so ATLANTIC and the left PACIFIC run pole to pole (a level label at the widest water put them in the
+  south). Sizes fill `SEA_FILL` of the curve within `WATER_MIN_PT`..`SEA_MAX_PT` (oceans
   `OCEAN_MIN_PT`..`OCEAN_PT`, letter-spaced, upright caps; the rest italic).
 - `WaterLabel`: one bent `Path` per label plus a halo-padded box per glyph (`parts`), both relative to its position.
   Bodies whose name doesn't sit >= `WATER_MIN_INSIDE` over them at their anchor are left out up front (~160 of ~380 kept).

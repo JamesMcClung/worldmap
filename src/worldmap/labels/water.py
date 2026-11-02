@@ -27,10 +27,7 @@ SEA: Kind = "seas"
 CLASSES: dict[str, Kind] = {"ocean": "oceans", "strait": "straits", "channel": "straits"}
 CLASSES |= {c: SEA for c in ("sea", "gulf", "bay", "sound", "fjord", "lagoon", "inlet")}  # reefs, river mouths and the unnamed 'generic' areas are never labelled
 MAX_BEND_DEG = 40  # the most a label's curve may turn from one end to the other
-OCEAN_MAX_BEND_DEG = 10
-OCEAN_MAX_TILT_DEG = 0  # oceans run level (along a parallel); seas may follow their shape up to vertical
-SEA_MAX_TILT_DEG = 90
-OCEAN_REACH = 3  # an ocean's curve follows its water within this many radii of its largest inscribed circle
+MAX_TILT_DEG = 90  # labels follow their body's shape up to vertical (oceans too: the Atlantic's runs pole to pole)
 CURVE_SAMPLES = 2000  # interior points sampled to find a body's long direction
 OCEAN_PT = 30  # oceans: letter-spaced, sized like seas but within these (the Arctic and Southern bands are narrow)
 OCEAN_MIN_PT = 18
@@ -266,16 +263,8 @@ def lay_out(body: WaterBody, curve: np.ndarray, size: float, geom_px: BaseGeomet
 
 
 def body_curve(body: WaterBody) -> np.ndarray:
-    """The curve a body's name follows (map units). An ocean's is level, gently bent along its water within
-    OCEAN_REACH radii of its largest inscribed circle, and centred on that circle: the middle of a whole ocean
-    may be land or a narrow passage."""
-    if body.kind != "oceans":
-        return fit_curve(body.geom, SEA_MAX_TILT_DEG)
-    circle = shapely.maximum_inscribed_circle(body.geom, np.sqrt(body.geom.area) / 1000)
-    centre, radius = np.asarray(circle.coords[0]), circle.length
-    area = largest(body.geom.intersection(shapely.Point(centre).buffer(OCEAN_REACH * radius)))
-    curve = fit_curve(area, OCEAN_MAX_TILT_DEG, max_bend_deg=OCEAN_MAX_BEND_DEG)
-    return curve + centre - curve[len(curve) // 2]
+    """The curve a body's name follows (map units): along its long direction, so the Atlantic's runs pole to pole."""
+    return fit_curve(body.geom, MAX_TILT_DEG)
 
 
 def make_water_labels(bodies: list[WaterBody], frame: MapFrame) -> list[WaterLabel]:
