@@ -3,7 +3,6 @@
 from collections.abc import Callable, Iterator
 
 import geopandas as gpd
-import matplotlib
 import matplotlib.patheffects as pe
 import numpy as np
 import shapely
@@ -31,12 +30,11 @@ ANTARCTICA_FILL = "#ffffff"  # Antarctica is drawn white and left unlabelled
 GLOBE_STROKE = 2.2
 BORDER_WIDTH = 0.6
 STATE_LINE_WIDTH = 0.35
-BAIKONUR_HATCH_WIDTH = 1.6
 LEADER_WIDTH = 0.7
 LEADER_DOT_SIZE = 1.3
 BORDER_DASH = (0, (2.5, 1.5))  # --disputed: borders between a disputed area and the countries involved
 # Drawing order, bottom to top (pins are at 10, labels at 6). Borders sit below the lakes so they don't cross them.
-Z_OCEAN, Z_COUNTRY, Z_BAIKONUR, Z_STRIPES, Z_BAIKONUR_EDGE, Z_BORDERS, Z_STATES, Z_LAKES, Z_GLOBE, Z_LEADERS = 0, 1, 1.5, 1.5, 1.6, 1.7, 2, 2.5, 3, 4
+Z_OCEAN, Z_COUNTRY, Z_STRIPES, Z_BAIKONUR_EDGE, Z_BORDERS, Z_STATES, Z_LAKES, Z_GLOBE, Z_LEADERS = 0, 1, 1.5, 1.6, 1.7, 2, 2.5, 3, 4
 Z_STATES_UNDER_BORDERS = 1.65  # --disputed: state lines above the stripes, below the (dashed) borders
 
 
@@ -74,10 +72,9 @@ def new_figure(frame: MapFrame) -> tuple[Figure, Axes]:
 
 
 def draw_countries(ax: Axes, countries_projected: gpd.GeoDataFrame, fill_of: Callable[[int, Point | None], Fill], regions: Regions | None, disputed: bool = False) -> None:
-    """Country fills with borders. With `regions` (--color earth), each polygon gets its own fill; otherwise Baikonur
-    (Kazakh land leased to Russia) is hatched in Kazakhstan's colour. With `disputed`, fills only: draw_borders draws
-    the borders and draw_stripes stripes Baikonur with the other disputed areas."""
-    kazakhstan = countries_projected.index[countries_projected.NAME_EN == "Kazakhstan"][0]
+    """Country fills with borders. With `regions` (--color earth), each polygon gets its own fill. Baikonur (Kazakh
+    land leased to Russia) is striped by draw_stripes, so its border is drawn again above the stripes. With `disputed`,
+    fills only: draw_borders draws the borders."""
     ec = "none" if disputed else BORDER
     for i, row in countries_projected.iterrows():
         if row.NAME_EN == "Antarctica":
@@ -86,11 +83,7 @@ def draw_countries(ax: Axes, countries_projected: gpd.GeoDataFrame, fill_of: Cal
             for poly, fill in regions[i]:
                 ax.add_collection(PatchCollection(list(patches(poly)), fc=fill, ec=ec, lw=BORDER_WIDTH, zorder=Z_COUNTRY))
         elif row.NAME_EN == "Baikonur" and not disputed:
-            # Hatched in Kazakhstan's colour, with its border drawn above the hatching.
             ax.add_collection(PatchCollection(list(patches(row.geometry)), fc=fill_of(i, None), ec="none", zorder=Z_COUNTRY))
-            matplotlib.rcParams["hatch.linewidth"] = BAIKONUR_HATCH_WIDTH
-            stripe = fill_of(kazakhstan, None)
-            ax.add_collection(PatchCollection(list(patches(row.geometry)), fc="none", ec=stripe, lw=0, hatch="////", zorder=Z_BAIKONUR))
             ax.add_collection(PatchCollection(list(patches(row.geometry)), fc="none", ec=BORDER, lw=BORDER_WIDTH, zorder=Z_BAIKONUR_EDGE))
         else:
             ax.add_collection(PatchCollection(list(patches(row.geometry)), fc=fill_of(i, None), ec=ec, lw=BORDER_WIDTH, zorder=Z_COUNTRY))

@@ -87,8 +87,8 @@ Pipeline (`cli.main`):
   can separate them. Tune via `PALETTE_CHROMA`, `L_RED`, `L_GREEN` in `coloring.py`. Label text/lines/dots are the fill's own
   OKLab hue, darkened (`darken()`, L=0.26).
 - Hues are assigned to colour classes to maximise the OKLab distance between classes that touch.
-- Baikonur (Kazakh land leased to Russia) is hardcoded to Russia's fill with Kazakhstan-colour hatching, its border drawn
-  above the hatching. With `--disputed` it is striped like the other disputed areas instead.
+- Baikonur (Kazakh land leased to Russia) is hardcoded to Russia's fill, striped with Kazakhstan's colour by `draw_stripes`
+  (its dispute alone, without `--disputed`), its border drawn again above the stripes.
 - Verified approximately with a Machado deuteranopia/protanopia simulation, not with a real colour-blind viewer.
 
 ## Caching
@@ -111,7 +111,7 @@ its fraction of bluish-white "ice" pixels. `earth_fill()` maps G-R linearly (`GR
 ramp and blends toward ice. Every disjoint polygon is coloured independently (Alaska, French Guiana, Kaliningrad, Baikonur, islands);
 polygons with < `MIN_PIX` pixels sample a 7x7 window at their centroid, then fall back to the whole country. Labels take the colour
 of the polygon they sit on (`fill_at(regions, i, pt)`; `Regions` maps country -> [(projected polygon, fill)]). Results are cached in `earth.json`
-(keyed on file sizes + `EARTH_RULE`; bump it if the sampling logic changes). The graph colouring still runs but is unused; Baikonur's hatching is off.
+(keyed on file sizes + `EARTH_RULE`; bump it if the sampling logic changes). The graph colouring still runs but is unused; Baikonur's stripes are off.
 
 ## `--disputed`
 
@@ -128,7 +128,7 @@ Today: 72 two-country areas, 11 with 3+ countries, 6 breakaways (self-governing,
 - Borders: with `--disputed`, fills have no edges and `draw_borders` draws `border_lines`: a disputed outline is dashed
   (`BORDER_DASH`) where it meets a country involved (the one running it counts, so Kashmir's edge inside India is a new
   dashed line) or another disputed area sharing a country, within `SNAP_M`; every other ring of the country polygons stays solid.
-- Z-order: fills 1, stripes / Baikonur hatch 1.5, Baikonur's edge 1.6, borders 1.7, states 2, lakes 2.5 (borders must stay below the lakes).
+- Z-order: fills 1, stripes 1.5, Baikonur's edge 1.6, borders 1.7, states 2, lakes 2.5 (borders must stay below the lakes).
   With `--disputed`, state lines move to 1.65, under the borders, or they hide dashes that follow a state line (Kashmir/Himachal).
 - Labels (only with `countries` in `--label`): self-governing areas get upright labels via `make_labels(relabel=, extra=)`;
   `LABEL_TEXT` shortens official names (Northern Cyprus, Donetsk, Luhansk). Other disputed areas get none.

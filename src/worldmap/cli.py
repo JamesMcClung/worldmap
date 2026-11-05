@@ -87,7 +87,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def graph_fills(countries: gpd.GeoDataFrame, coloring: Coloring) -> dict[int, RGB]:
     """Each country's fill from its colour class. Baikonur (Kazakh land leased to Russia) takes Russia's fill;
-    render.draw_countries hatches it in Kazakhstan's."""
+    render.draw_stripes stripes it with Kazakhstan's."""
     palette = make_palette(coloring.k, coloring.class_pairs)
     color_class = dict(zip(countries.index, coloring.color_class))
     index_of = dict(zip(countries.NAME_EN, countries.index))
@@ -126,9 +126,10 @@ def main(argv: list[str] | None = None) -> None:
 
     fig, ax = new_figure(frame)
     draw_countries(ax, countries_p, fill_of, regions, args.disputed)
+    if regions is None:  # natural colours don't stand for countries, so no stripes with --color earth
+        striped = disputes if args.disputed else [d for d in disputes if d.name == "Baikonur"]
+        draw_stripes(ax, striped, fill_of, STRIPE_WIDTH_IN * frame.units_per_in)
     if args.disputed:
-        if regions is None:  # natural colours don't stand for countries, so no stripes with --color earth
-            draw_stripes(ax, disputes, fill_of, STRIPE_WIDTH_IN * frame.units_per_in)
         draw_borders(ax, *border_lines(countries_p, disputes, parent_index(countries)))
     draw_states(ax, states_p, args.disputed)
     draw_lakes(ax, lakes_p)
