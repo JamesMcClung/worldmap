@@ -21,7 +21,8 @@ RASTER = "ne1/NE1_LR_LC.tif"  # unzipped from NE1_LR_LC.zip
 GLACIERS = "ne_10m_glaciated_areas.zip"
 ICE_SHELVES = "ne_10m_antarctic_ice_shelves_polys.zip"
 LAND_OUTLINE = "ne_10m_land.zip"  # --type topographic: decides land vs water (heights alone get the Dead Sea wrong)
-PHYSICAL = {LAKES, GLACIERS, ICE_SHELVES, LAND_OUTLINE}  # under physical/ rather than cultural/
+MARINE = "ne_10m_geography_marine_polys.zip"  # named oceans, seas, bays, straits... (label areas, not coastlines)
+PHYSICAL = {LAKES, GLACIERS, ICE_SHELVES, LAND_OUTLINE, MARINE}  # under physical/ rather than cultural/
 # ETOPO 2022 (NOAA, public domain): land heights and sea depths in metres, 60 arc-second grid, top of the ice.
 ETOPO = "ETOPO_2022_v1_60s_N90W180_surface.tif"
 ETOPO_URL = "https://www.ngdc.noaa.gov/mgg/global/relief/ETOPO2022/data/60s/60s_surface_elev_gtif/" + ETOPO
@@ -121,6 +122,11 @@ def load_lakes() -> gpd.GeoDataFrame:
     lakes = gpd.read_file(fetch(LAKES))
     big = lakes.to_crs(EQUAL_AREA_CRS).area >= LAKE_MIN_KM2 * 1e6
     return lakes[big & ~lakes.name.isin(DRY_LAKES)]
+
+
+def load_marine() -> gpd.GeoDataFrame:
+    """Natural Earth's marine label areas (oceans, seas, gulfs, straits...), unfiltered: see labels/water.py."""
+    return gpd.read_file(fetch(MARINE))[["name", "featurecla", "scalerank", "geometry"]]
 
 
 def load_ice_shelves() -> gpd.GeoDataFrame:

@@ -22,10 +22,11 @@ from worldmap.disputed import DISPUTED_GREY, STRIPE_WIDTH_IN, border_lines, disp
 from worldmap.earth import Fill, build_regions, fill_at
 from worldmap.frame import DPI, MapFrame, make_frame
 from worldmap.labels.label import decide_out_and_wrap, make_labels
-from worldmap.labels.placement import place_labels
+from worldmap.labels.placement import place_with_water
 from worldmap.labels.regions import child_regions
+from worldmap.labels.water import WATER_KINDS, kinds_from_labels, load_water_bodies, make_water_labels
 from worldmap.pins import draw_pins, load_pins, pick_pins, pin_sprite
-from worldmap.render import draw_borders, draw_countries, draw_labels, draw_lakes, draw_states, draw_stripes, new_figure, subtract_lakes
+from worldmap.render import draw_borders, draw_countries, draw_labels, draw_lakes, draw_states, draw_stripes, draw_water_labels, new_figure, subtract_lakes
 from worldmap.topographic import ICE, ICE_CONTOURS, LAND, LAND_CONTOURS, SEA, SEA_CONTOURS, draw_topography
 
 
@@ -40,7 +41,7 @@ def positive_float(s: str) -> float:
     return v
 
 
-LABEL_KINDS = ("countries", "territories")
+LABEL_KINDS = ("countries", "territories", *WATER_KINDS)
 
 
 def label_kinds(s: str) -> set[str]:
@@ -59,7 +60,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("out", nargs="?", help=f"output PNG (default {DEFAULT_OUT}, or {DEFAULT_PINS_OUT} with --pins)")
     p.add_argument("--type", choices=["political", "topographic"], default="political",
                    help="political = countries, borders and labels (default); topographic = heights, hill shading and "
-                        "contours, with no borders or labels (--color, --label, --disputed and --recolor are ignored)")
+                        "contours, with no borders, and only water labels if --label asks for them (--color, --disputed, "
+                        "--recolor and --label countries, territories are ignored)")
     p.add_argument("--ocean", action="store_true",
                    help="with --type topographic, colour the sea by depth (ignored with --type political)")
     p.add_argument("--recolor", action="store_true", help="rebuild the cached graph colouring")
@@ -68,7 +70,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         "can tell apart (default); earth = land cover as seen from space (sandy desert -> light green)")
     p.add_argument("--label", metavar="LIST", type=label_kinds, default={"countries"},
                    help="what to label, comma-separated, or none: countries (default); territories = dependencies and "
-                        "outlying regions (Alaska, Greenland, Kaliningrad...) with their parent country")
+                        "outlying regions (Alaska, Greenland, Kaliningrad...) with their parent country; oceans, seas "
+                        "(and gulfs, bays...), lakes; water = oceans, seas, lakes, straits and channels")
     p.add_argument("--disputed", action="store_true",
                    help="stripe disputed areas in the colours of the countries involved and dash their borders")
     p.add_argument("--pins", metavar="FILE", help="draw the pins listed in FILE (one lon,lat per line)")
@@ -140,13 +143,15 @@ def main(argv: list[str] | None = None) -> None:
     relabel, extra = disputed_label_args(disputes, lambda i, pt: fill_of(i, pt) if regions else DISPUTED_GREY) if args.disputed else ({}, [])
     labels = make_labels(countries_p, frame, ax, renderer, fill_of, children, "countries" in args.label, relabel, extra)
     decide_out_and_wrap(labels, renderer)
-    placement = place_labels(labels, frame)
+    water = make_water_labels(load_water_bodies(kinds_from_labels(args.label), lakes_p), frame) if kinds_from_labels(args.label) else []
+    placement, water = place_with_water(labels, water, frame)
     draw_labels(ax, labels, placement, frame)
+    draw_water_labels(ax, water, placement, frame)
 
     add_pins(ax, frame, args)
     # Layout above is measured at DPI; saving at another resolution only rescales it.
     fig.savefig(out, dpi=args.dpi, transparent=True)
-    print("wrote", out, "labels:", len(labels), "leaders:", int(placement.out.sum()))
+    print("wrote", out, "labels:", len(labels), "leaders:", int(placement.out.sum()), "water labels:", len(water))
 
 
 def add_pins(ax: Axes, frame: MapFrame, args: argparse.Namespace) -> None:
@@ -168,6 +173,10 @@ def draw_topographic(args: argparse.Namespace, out: str, frame: MapFrame) -> Non
     if args.ocean:
         draw_colorbar(ax, frame, "tr", SEA, "Depth", SEA_CONTOURS)
     draw_colorbar(ax, frame, "bl", ICE, "Ice", ICE_CONTOURS)
+    kinds = kinds_from_labels(args.label)
+    if kinds:  # without water kinds no label stage runs
+        placement, water = place_with_water([], make_water_labels(load_water_bodies(kinds, project(load_lakes())), frame), frame)
+        draw_water_labels(ax, water, placement, frame)
     ax.set_xlim(frame.xmin, frame.xmax)
     ax.set_ylim(frame.ymin, frame.ymax)
     add_pins(ax, frame, args)

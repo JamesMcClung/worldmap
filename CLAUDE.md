@@ -22,9 +22,9 @@ relative to `data.py` (`CACHE`), so the package must be installed editable (`-e`
 
 ## Tests
 
-`.venv/bin/pytest` (~90 s). Unit tests cover the pure pieces (colour maths, `color_graph`, pin parsing and sprite, label geometry,
+`.venv/bin/pytest` (~135 s). Unit tests cover the pure pieces (colour maths, `color_graph`, pin parsing and sprite, label geometry,
 CLI errors), and `test_import_has_no_pyplot` guards that importing any module doesn't pick a matplotlib backend (`--pick` needs to).
-`test_regression.py` renders the default, `--color earth`, `--pins`, `--label countries,territories`, `--disputed`, `--type topographic` and `--type topographic --ocean` maps in a subprocess and compares a SHA-256 of the decoded pixels
+`test_regression.py` renders the default, `--color earth`, `--pins`, `--label countries,territories`, `--label countries,water` (`water`), `--disputed`, `--type topographic`, `--type topographic --ocean` and `--type topographic --label water` (`topographic_water`) maps in a subprocess and compares a SHA-256 of the decoded pixels
 with `tests/fingerprints.json`:
 - A commit that changes the output on purpose re-records with `UPDATE_REFERENCE=1 .venv/bin/pytest` and commits `fingerprints.json`
   in the same commit, saying in the body what changed visually. Refactors must leave the fingerprints unchanged.
@@ -33,6 +33,10 @@ with `tests/fingerprints.json`:
 - A missing fingerprint fails. Rendered PNGs are kept in `.cache/reference/` (`<mode>.png`, and `<mode>.new.png` on a mismatch) to compare by eye.
 - The test reads the `coloring.json`/`earth.json` caches, so changes to colouring or land-cover sampling need a `--recolor` run
   (or deleting `earth.json`) to be exercised.
+- `conftest.private_caches` (session, autouse) points the in-process tests' `coloring.json`/`earth.json` at a temp copy, so a
+  test with other inputs can't overwrite the real caches; the render subprocesses still read the real ones.
+- `conftest.environment(mode)` keys data files per mode (`raster` for earth, ETOPO etc. for topographic*, `marine` for *water*):
+  a new key on an existing mode would make it skip, so add keys only for the modes that use them.
 
 `.venv/bin/mypy src` should report no issues (default mode, missing stubs ignored).
 
@@ -43,7 +47,7 @@ Importing any module has no side effects; only `cli.main` (after choosing the ba
 | Module | Contents |
 |---|---|
 | `cli.py` | `parse_args` (`--label`: `label_kinds`, a list that replaces the default `countries`; `none` = no labels), `graph_fills` (palette + Baikonur), `main()`: the pipeline as a sequence of stage calls |
-| `data.py` | `fetch`, file names, `CRS`, `STATE_COUNTRIES`, lakes filter, `is_dependency`, `parent_index`, `is_labeled`, `load_*`, `project` |
+| `data.py` | `fetch`, file names (`MARINE`: the marine label areas), `CRS`, `STATE_COUNTRIES`, lakes filter, `is_dependency`, `parent_index`, `is_labeled`, `load_*`, `project` |
 | `frame.py` | `MapFrame` (transformers, globe outline, extent, `px_per_unit`, `to_px`, `px_to_map`), `make_frame`, `DPI`, `POSTER_WIDTH_IN` |
 | `colorspace.py` | OKLab/OKLCH conversions, `fit_gamut`, `darken` |
 | `coloring.py` | `merge_into_parents`, `adjacency`, `add_proximity_edges`, `color_graph`, `make_palette`, `load_or_compute_coloring` (cache), `spot_check`, `OCEAN` |
@@ -54,9 +58,11 @@ Importing any module has no side effects; only `cli.main` (after choosing the ba
 | `pins.py` | `load_pins`, `PinStyle` (every sprite shading constant), `pin_sprite`, `draw_pins`, `pick_pins` |
 | `labels/label.py` | `Label` dataclass, `make_labels` (anchors, sizes, exclaves), `decide_out_and_wrap` |
 | `labels/regions.py` | `--label territories`: `ChildRegion`, `HAND_PICKED` (parent + lon/lat boxes), `child_regions` |
-| `labels/placement.py` | `CostWeights`, `Placement` (per-label arrays), `cost_batch`, `candidates`, `place_labels`, `leader_ends` |
+| `labels/water.py` | `--label oceans,seas,lakes,water`: `kinds_from_labels`, `classify`, `WaterBody`, `load_water_bodies`, `fit_curve`, `body_curve`, `WaterLabel`, `make_water_labels`, style constants |
+| `labels/placement.py` | `CostWeights`, `Placement` (per-label arrays, water glyph boxes), `cost_batch`/`water_cost`, `candidates`, `clashes`, `place_labels`, `place_with_water` (drop loop), `leader_ends` |
 | `labels/geometry.py` | `rect`, `nearest_point_on_rect`, `segment_hits_rects`, `segments_cross`, `two_line` |
-| `render.py` | `new_figure`, `draw_countries`, `draw_stripes`, `draw_borders`, `draw_states`, `draw_lakes`, `subtract_lakes`, `draw_labels`, line widths and z-orders |
+| `curves.py` | `arc_lengths`, `bend` (points along a polyline + its left normal): text bending for `colorbars.curved_title` and water labels |
+| `render.py` | `new_figure`, `draw_countries`, `draw_stripes`, `draw_borders`, `draw_states`, `draw_lakes`, `subtract_lakes`, `draw_labels`, `draw_water_labels`, line widths and z-orders |
 
 Pipeline (`cli.main`):
 1. **Colouring** of all country features. Dependencies (`is_dependency`: `SOVEREIGNT != ADMIN`, not a lease or
@@ -131,7 +137,8 @@ Today: 72 two-country areas, 11 with 3+ countries, 6 breakaways (self-governing,
 ## `--type topographic`
 
 `cli.main` branches to `draw_topographic` right after the frame (and `--pick`), so none of the political data, colouring
-or labels run. `--color`, `--label`, `--disputed`, `--recolor` are ignored; `--ocean` is ignored with `--type political`.
+or country labels run. `--color`, `--disputed`, `--recolor` and `--label countries,territories` are ignored; water kinds in
+`--label` add water labels (`place_with_water` with no country labels), else no label stage runs. `--ocean` is ignored with `--type political`.
 - Data: ETOPO 2022 60" ice-surface GeoTIFF (`data.ETOPO`, Deflate + float predictor, read with rasterio, the only
   user of it), reduced to `GRID_STEP_DEG` = 3' block means as int16 and cached in `etopo_3min.npy` (keyed on the file size
   and `ELEVATION_RULE`; bump it if the reduction changes). Ice: Natural Earth `glaciated_areas` + `antarctic_ice_shelves_polys`
@@ -188,6 +195,31 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
   country; stuck labels shrink slightly (floor ~5 pt) rather than being dropped.
 - Cost terms: label must lie inside the globe outline, label-label overlap, covering another leader's dot, leader/label and leader/leader crossings,
   drifting outside the country, leader length; weights in `CostWeights`. All labels are movable.
+
+## Water labels (`labels/water.py`)
+
+- Bodies: Natural Earth `ne_10m_geography_marine_polys` (`data.MARINE`, rough label areas, never drawn) + the drawn lakes.
+  `classify`: ocean -> oceans; sea/gulf/bay/sound/fjord/lagoon/inlet -> seas; strait/channel -> straits (only via `water`);
+  reefs, rivers, unnamed `generic` areas and names ending " River" (Saint Lawrence is a 'channel') never. North + South
+  Atlantic are one ATLANTIC; the Pacific is split at x = 0 into two bodies. Each body is labelled once, on its largest
+  polygon; order = oceans, then scalerank, then area (most important first; the drop loop removes from the end).
+- Curve (`fit_curve`): principal axis of interior sample points, tilt clamped, quadratic fit with the bend clamped
+  (`MAX_BEND_DEG`, `MAX_TILT_DEG`), read left to right (bottom to top within 1 degree of vertical). Oceans too, fitted on
+  the whole ocean, so ATLANTIC and the left PACIFIC run pole to pole (a level label at the widest water put them in the
+  south). Sizes fill `SEA_FILL` of the curve within `WATER_MIN_PT`..`SEA_MAX_PT` (oceans
+  `OCEAN_MIN_PT`..`OCEAN_PT`, letter-spaced caps; all upright).
+- `WaterLabel`: one bent `Path` per label plus a halo-padded box per glyph (`parts`), both relative to its position.
+  Bodies whose name doesn't sit >= `WATER_MIN_INSIDE` over them at their anchor are left out up front (~160 of ~380 kept).
+- Solver: water labels come after the country labels in `Placement`; x/y is their anchor position. Country terms skip
+  water labels' boxes (so with no water every array is as before), plus overlap with water glyph boxes and their own
+  leader crossing them. Water labels: glyph-box overlap with everything, other leaders/dots, `outside_water` (glyph
+  centres over the body, approximate), `water_drift`, outside globe. `clashes` -> (country, water); country labels shrink
+  only for country clashes, water labels for anything.
+- `place_with_water`: re-solves (warm start, country sizes reset) dropping per group of failing labels the least
+  important; a failing label (off its water, or clashing at its minimum size) is grouped with the water labels it
+  touches where it is or at its anchor, so the solver pushing a random rival off its water can't drop the wrong one.
+- Drawing: `PathPatch` in `WATER_TEXT` (OKLCH L 0.50 in the ocean hue) with an `OCEAN`-coloured halo, under the country
+  labels. `--label countries,water` takes ~28 s (vs ~10 s), mostly the country labels' extra passes.
 
 ## Gotchas
 

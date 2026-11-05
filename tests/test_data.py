@@ -1,4 +1,4 @@
-from worldmap.data import is_labeled, load_countries, parent_index
+from worldmap.data import is_labeled, load_countries, load_marine, parent_index
 
 
 def test_dependencies_and_parents() -> None:
@@ -18,3 +18,10 @@ def test_dependencies_not_labeled() -> None:
     assert not {"Greenland", "Faroe Islands", "Puerto Rico", "Falkland Islands"} & labeled
     assert {"Palestine", "Kosovo", "Western Sahara", "Israel", "Denmark"} <= labeled
     assert not {"Northern Cyprus", "Somaliland", "Baikonur"} & labeled
+
+
+def test_load_marine() -> None:
+    marine = load_marine()
+    assert {"name", "featurecla", "scalerank"} <= set(marine.columns)
+    assert (marine.featurecla == "ocean").sum() == 7
+    assert "Mediterranean Sea" in set(marine.name)

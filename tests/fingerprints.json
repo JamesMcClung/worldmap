@@ -11,7 +11,7 @@
       "numpy": "2.5.4",
       "pillow": "12.3.0",
       "pyproj": "3.8.0",
-      "python": "3.14.3",
+      "python": "3.14.10",
       "shapely": "2.2.0",
       "states": "5993148"
     },
@@ -29,7 +29,7 @@
       "numpy": "2.5.4",
       "pillow": "12.3.0",
       "pyproj": "3.8.0",
-      "python": "3.14.3",
+      "python": "3.14.10",
       "shapely": "2.2.0",
       "states": "5993148"
     },
@@ -47,7 +47,7 @@
       "numpy": "2.5.4",
       "pillow": "12.3.0",
       "pyproj": "3.8.0",
-      "python": "3.14.3",
+      "python": "3.14.10",
       "raster": "393760706",
       "shapely": "2.2.0",
       "states": "5993148"
@@ -66,7 +66,7 @@
       "numpy": "2.5.4",
       "pillow": "12.3.0",
       "pyproj": "3.8.0",
-      "python": "3.14.3",
+      "python": "3.14.10",
       "shapely": "2.2.0",
       "states": "5993148"
     },
@@ -84,7 +84,7 @@
       "numpy": "2.5.4",
       "pillow": "12.3.0",
       "pyproj": "3.8.0",
-      "python": "3.14.3",
+      "python": "3.14.10",
       "shapely": "2.2.0",
       "states": "5993148"
     },
@@ -107,7 +107,7 @@
       "numpy": "2.5.4",
       "pillow": "12.3.0",
       "pyproj": "3.8.0",
-      "python": "3.14.3",
+      "python": "3.14.10",
       "rasterio": "1.5.2",
       "shapely": "2.2.0",
       "states": "5993148"
@@ -131,11 +131,55 @@
       "numpy": "2.5.4",
       "pillow": "12.3.0",
       "pyproj": "3.8.0",
-      "python": "3.14.3",
+      "python": "3.14.10",
       "rasterio": "1.5.2",
       "shapely": "2.2.0",
       "states": "5993148"
     },
     "sha256": "a6d807bd7f1bb133d38c85dda167321318f3d940ad6e21184d74f1b9bb8eda4e"
+  },
+  "topographic_water": {
+    "env": {
+      "countries": "4930492",
+      "disputed": "215221",
+      "etopo": "465969062",
+      "freetype": "2.14.3",
+      "gdal": "3.12.2",
+      "geopandas": "1.2.0",
+      "geos": "3.14.1",
+      "glaciers": "1644604",
+      "ice_shelves": "163651",
+      "lakes": "2349685",
+      "land": "3269070",
+      "marine": "940563",
+      "matplotlib": "3.11.2",
+      "numpy": "2.5.4",
+      "pillow": "12.3.0",
+      "pyproj": "3.8.0",
+      "python": "3.14.10",
+      "rasterio": "1.5.2",
+      "shapely": "2.2.0",
+      "states": "5993148"
+    },
+    "sha256": "417b5a2ad7acfa1b62a754f76121765db655a425651c38cd4c498de1d67df879"
+  },
+  "water": {
+    "env": {
+      "countries": "4930492",
+      "disputed": "215221",
+      "freetype": "2.14.3",
+      "geopandas": "1.2.0",
+      "geos": "3.14.1",
+      "lakes": "2349685",
+      "marine": "940563",
+      "matplotlib": "3.11.2",
+      "numpy": "2.5.4",
+      "pillow": "12.3.0",
+      "pyproj": "3.8.0",
+      "python": "3.14.10",
+      "shapely": "2.2.0",
+      "states": "5993148"
+    },
+    "sha256": "c88a0939d93f3f0a6d612ece26eb8671fd67bbda95e99dc7d84c00cb372bcaec"
   }
 }
