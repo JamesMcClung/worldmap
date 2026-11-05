@@ -23,7 +23,7 @@ OCEAN_MIN_CHANNEL = 250  # pixels with every channel at least this are ocean (wh
 NO_DATA_VALUES = [10.0, 0.0]  # (G - R, icy fraction) for a country with no land pixels at all
 ICE_START, ICE_RANGE = 0.15, 0.6  # icy fraction where the blend toward ICE starts, and over which it completes
 SAND, GREEN, ICE = (0.85, 0.09, 78), (0.84, 0.095, 135), "#eef3f4"  # OKLCH (L, C, hue deg)
-EARTH_RULE = "v1"  # bump when the sampling logic changes, to invalidate earth.json
+EARTH_RULE = "v2"  # bump when the sampling logic changes, to invalidate earth.json
 
 Fill = RGB | str  # an RGB tuple or a matplotlib colour string
 Regions = dict[int, list[tuple[Polygon, Fill]]]  # country index -> [(projected polygon, fill)]
@@ -49,10 +49,13 @@ def earth_values(countries: gpd.GeoDataFrame) -> list[list[list[float]]]:
         cached = json.loads(cache.read_text())
         if cached["key"] == key:
             return cached["vals"]
-    from PIL import Image, ImageDraw
+    import rasterio
+    from rasterio.features import rasterize
+    from rasterio.windows import Window, transform as window_transform
 
-    Image.MAX_IMAGE_PIXELS = None
-    image = np.asarray(Image.open(raster).convert("RGB"))
+    with rasterio.open(raster) as src:
+        image = np.moveaxis(src.read(), 0, -1)  # (rows, cols, RGB)
+        transform = src.transform
     height, width = image.shape[:2]
 
     def to_pixels(coords) -> list[tuple[float, float]]:
@@ -71,12 +74,10 @@ def earth_values(countries: gpd.GeoDataFrame) -> list[list[list[float]]]:
             lon0, lat0, lon1, lat1 = poly.bounds
             col0, col1 = max(0, int((lon0 + 180) / 360 * width)), min(width, int((lon1 + 180) / 360 * width) + 2)
             row0, row1 = max(0, int((90 - lat1) / 180 * height)), min(height, int((90 - lat0) / 180 * height) + 2)
-            mask = Image.new("L", (col1 - col0, row1 - row0), 0)
-            draw = ImageDraw.Draw(mask)
-            draw.polygon([(x - col0, y - row0) for x, y in to_pixels(poly.exterior.coords)], fill=1)
-            for ring in poly.interiors:
-                draw.polygon([(x - col0, y - row0) for x, y in to_pixels(ring.coords)], fill=0)
-            pixels = image[row0:row1, col0:col1][np.asarray(mask, bool)]
+            window = Window(col0, row0, col1 - col0, row1 - row0)
+            mask = rasterize([poly], out_shape=(row1 - row0, col1 - col0), transform=window_transform(window, transform),
+                             fill=0, default_value=1, dtype="uint8").astype(bool)  # pixel centres inside, holes cleared
+            pixels = image[row0:row1, col0:col1][mask]
             all_pixels.append(pixels)
             stats = pixel_stats(pixels)
             if stats is None or stats[2] < MIN_PIX:  # tiny: look at a window around the centroid instead

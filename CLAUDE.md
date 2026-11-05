@@ -139,8 +139,7 @@ Today: 72 two-country areas, 11 with 3+ countries, 6 breakaways (self-governing,
 `cli.main` branches to `draw_topographic` right after the frame (and `--pick`), so none of the political data, colouring
 or country labels run. `--color`, `--disputed`, `--recolor` and `--label countries,territories` are ignored; water kinds in
 `--label` add water labels (`place_with_water` with no country labels), else no label stage runs. `--ocean` is ignored with `--type political`.
-- Data: ETOPO 2022 60" ice-surface GeoTIFF (`data.ETOPO`, Deflate + float predictor, read with rasterio, the only
-  user of it), reduced to `GRID_STEP_DEG` = 3' block means as int16 and cached in `etopo_3min.npy` (keyed on the file size
+- Data: ETOPO 2022 60" ice-surface GeoTIFF (`data.ETOPO`, Deflate + float predictor, read with rasterio), reduced to `GRID_STEP_DEG` = 3' block means as int16 and cached in `etopo_3min.npy` (keyed on the file size
   and `ELEVATION_RULE`; bump it if the reduction changes). Ice: Natural Earth `glaciated_areas` + `antarctic_ice_shelves_polys`
   (`load_ice`; the shelves' holes are dropped, the islands in them are ice-covered). Land vs water: Natural Earth
   `ne_10m_land` (`load_land`), not the sign of the height. Lakes: the political `load_lakes()`.
