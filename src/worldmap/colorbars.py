@@ -17,7 +17,7 @@ from matplotlib.textpath import TextPath
 from shapely.geometry import LineString, Polygon, box
 
 from worldmap.curves import arc_lengths, bend
-from worldmap.frame import DPI, MapFrame
+from worldmap.frame import MapFrame
 from worldmap.render import BORDER, BORDER_WIDTH, Z_GLOBE
 from worldmap.topographic import CONTOUR_WIDTH, Contours, Scale
 
@@ -35,7 +35,7 @@ TITLE_HALO = [patheffects.withStroke(linewidth=3, foreground="white")]
 
 def bar_region(frame: MapFrame, corner: Corner) -> Polygon:
     """The corner's quadrant of the canvas, minus the globe grown by the gap, minus a margin from the canvas edges."""
-    unit = DPI / frame.px_per_unit  # map units per poster inch
+    unit = frame.units_per_in
     m = BAR_MARGIN_IN * unit
     xs = (0, frame.xmax - m) if corner in ("br", "tr") else (frame.xmin + m, 0)
     ys = (frame.ymin + m, 0) if corner in ("br", "bl") else (0, frame.ymax - m)
@@ -132,7 +132,7 @@ def draw_colorbar(ax: Axes, frame: MapFrame, corner: Corner, scale: Scale, title
     if 0 < scale.position(0) < 1:  # sea level is on the bar
         ax.add_collection(LineCollection(across(0), colors=BORDER, linewidths=BORDER_WIDTH, zorder=Z_GLOBE + 0.05))
 
-    unit = DPI / frame.px_per_unit
+    unit = frame.units_per_in
     tick, pad = 0.08 * unit, 0.12 * unit
     left = corner in ("br", "tr")  # labels left of the bar (the globe is to the left)
     for v in tick_values(scale):

@@ -3,7 +3,7 @@ import pytest
 from shapely.geometry import Polygon, box
 
 from worldmap.colorbars import BAR_GAP_IN, bar_region, curved_title, draw_colorbar, globe_side
-from worldmap.frame import DPI, make_frame
+from worldmap.frame import make_frame
 from worldmap.topographic import LAND, LAND_CONTOURS, SEA, SEA_CONTOURS, Contours, Scale
 
 
@@ -11,7 +11,7 @@ from worldmap.topographic import LAND, LAND_CONTOURS, SEA, SEA_CONTOURS, Contour
 def test_bar_region_clears_globe_and_canvas(corner: str) -> None:
     f = make_frame()
     r = bar_region(f, corner)  # type: ignore[arg-type]
-    gap = BAR_GAP_IN * DPI / f.px_per_unit
+    gap = BAR_GAP_IN * f.units_per_in
     assert r.area > 0 and r.distance(Polygon(f.outline)) >= gap * 0.99
     assert box(f.xmin, f.ymin, f.xmax, f.ymax).contains(r)
 
@@ -27,7 +27,7 @@ def test_title_curves_inside_the_bar_along_the_globe(corner: str) -> None:
     from shapely.geometry import LineString, MultiPoint
 
     f = make_frame()
-    region, unit = bar_region(f, corner), DPI / f.px_per_unit  # type: ignore[arg-type]
+    region, unit = bar_region(f, corner), f.units_per_in  # type: ignore[arg-type]
     side = globe_side(region)
     assert side[0, 0] < side[-1, 0] and LineString(side).distance(Polygon(f.outline)) < BAR_GAP_IN * unit * 1.01
     glyphs = MultiPoint(curved_title(region, "Height", unit).vertices)

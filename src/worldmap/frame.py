@@ -40,6 +40,11 @@ class MapFrame:
         """Poster pixels per map unit."""
         return POSTER_WIDTH_IN * DPI / self.width
 
+    @property
+    def units_per_in(self) -> float:
+        """Map units per poster inch."""
+        return DPI / self.px_per_unit
+
     def to_px(self, geom: BaseGeometry, simplify: float = PX_SIMPLIFY) -> BaseGeometry:
         """Geometry in map units -> poster pixels (origin bottom left), simplified by `simplify` px."""
         ppu = self.px_per_unit

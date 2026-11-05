@@ -128,7 +128,7 @@ def main(argv: list[str] | None = None) -> None:
     draw_countries(ax, countries_p, fill_of, regions, args.disputed)
     if args.disputed:
         if regions is None:  # natural colours don't stand for countries, so no stripes with --color earth
-            draw_stripes(ax, disputes, fill_of, STRIPE_WIDTH_IN * DPI / frame.px_per_unit)
+            draw_stripes(ax, disputes, fill_of, STRIPE_WIDTH_IN * frame.units_per_in)
         draw_borders(ax, *border_lines(countries_p, disputes, parent_index(countries)))
     draw_states(ax, states_p, args.disputed)
     draw_lakes(ax, lakes_p)
