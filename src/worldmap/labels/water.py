@@ -213,8 +213,8 @@ class WaterLabel:
         return float(shapely.area(shapely.intersection(boxes, self.geom)).sum() / total) if total > 0 else 0.0
 
 
-def font(kind: Kind, size: float) -> FontProperties:
-    return FontProperties(size=size, style="normal" if kind == "oceans" else "italic")
+def font(size: float) -> FontProperties:
+    return FontProperties(size=size)
 
 
 def text_width(text: str, prop: FontProperties) -> float:
@@ -232,7 +232,7 @@ def extend(curve: np.ndarray, length: float) -> np.ndarray:
 
 def lay_out(body: WaterBody, curve: np.ndarray, size: float, geom_px: BaseGeometry) -> WaterLabel:
     """`body`'s name at `size` pt, centred on `curve` (px), its x-height (cap height for oceans) centred on it."""
-    prop = font(body.kind, size)
+    prop = font(size)
     tracking = OCEAN_TRACKING_EM * size if body.kind == "oceans" else 0.0
     text = body.text
     total = text_width(text, prop) + tracking * (len(text) - 1)
@@ -274,7 +274,7 @@ def make_water_labels(bodies: list[WaterBody], frame: MapFrame) -> list[WaterLab
     labels = []
     for body in bodies:
         curve = (body_curve(body) - np.array([frame.xmin, frame.ymin])) * ppu
-        width_1pt = text_width(body.text, font(body.kind, 1)) * PX_PER_PT
+        width_1pt = text_width(body.text, font(1)) * PX_PER_PT
         if body.kind == "oceans":
             width_1pt += OCEAN_TRACKING_EM * (len(body.text) - 1) * PX_PER_PT
         low, high = (OCEAN_MIN_PT, OCEAN_PT) if body.kind == "oceans" else (WATER_MIN_PT, SEA_MAX_PT)
