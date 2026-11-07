@@ -1,11 +1,14 @@
+import geopandas as gpd
 import numpy as np
 import pytest
+import shapely
 from matplotlib.colors import to_rgb
 
 from worldmap.coloring import OCEAN
 from worldmap.data import load_ice, load_lakes, load_land, project
 from worldmap.frame import make_frame
 from worldmap.topographic import (LAND_BELOW_SEA, Grid, PosterGrid, coast_lines, colorize, draw_topography, elevation_grid,
+                                  estuary_path, extend_to_sea, grow,
                                   polygon_mask, poster_grid, relief, sample, shade, smoothed, solid_field, surfaces)
 
 
@@ -238,3 +241,48 @@ def test_draw_topography_holds_little_memory() -> None:
     plt.close(fig)
     pixels = 1800 * 923
     assert held < 40 * pixels  # the RGBA image is 16 bytes a pixel; the rest is lines and patches
+
+
+def small_grid(rows: int = 20, cols: int = 30) -> PosterGrid:
+    """Pixel centres at integer map coordinates: x = column, y = rows - 1 - row."""
+    return PosterGrid(np.arange(cols, dtype=float), np.arange(rows - 1, -1, -1, dtype=float), np.empty((0, 0)), np.empty((0, 0)), np.ones((rows, cols), bool))
+
+
+def estuary_scene() -> tuple[PosterGrid, np.ndarray, np.ndarray]:
+    """Sea in the right-hand 5 columns; a filled-in estuary along row 10 from column 10 to the sea."""
+    grid = small_grid()
+    sea = np.zeros((20, 30), bool)
+    sea[:, 25:] = True
+    estuary = np.zeros((20, 30), bool)
+    estuary[10, 10:25] = True
+    return grid, estuary, sea
+
+
+def test_grow() -> None:
+    m = np.zeros((5, 5), bool)
+    m[2, 2] = True
+    assert grow(m).sum() == 9 and grow(m)[1:4, 1:4].all()
+
+
+def test_estuary_path_follows_the_estuary_to_the_sea() -> None:
+    grid, estuary, sea = estuary_scene()
+    path = estuary_path((9.0, 9.0), estuary, sea, grid, reach=40)  # row 10 is y = 9
+    assert path[0] == (10.0, 9.0) and path[-1] == (25.0, 9.0)
+    assert all(y == 9.0 for _, y in path)
+
+
+def test_estuary_path_none_needed_or_found() -> None:
+    grid, estuary, sea = estuary_scene()
+    assert estuary_path((24.0, 9.0), estuary, sea, grid, reach=40) == []  # already at the sea
+    assert estuary_path((9.0, 2.0), estuary, sea, grid, reach=40) == []  # no estuary next to it
+    assert estuary_path((9.0, 9.0), estuary, sea, grid, reach=5) == []  # the sea is out of reach
+
+
+def test_extend_to_sea_extends_mouths_only() -> None:
+    grid, estuary, sea = estuary_scene()
+    main = shapely.LineString([(0, 9), (5, 9), (9, 9)])  # flows east into the estuary
+    tributary = shapely.LineString([(5, 0), (5, 9)])  # joins it: that end is no mouth
+    rivers = gpd.GeoDataFrame({"scalerank": [1, 5]}, geometry=[main, tributary])
+    out = extend_to_sea(rivers, estuary, sea, grid, 200)
+    assert list(out.geometry[0].coords) == [(0, 9), (5, 9), (9, 9), (25, 9)]
+    assert out.geometry[1].equals(tributary)

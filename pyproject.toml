@@ -19,7 +19,7 @@ dependencies = [
     "pillow>=10",
     "pyogrio>=0.7",
     "pyproj>=3.6",
-    "rasterio>=1.4",  # reads the ETOPO elevation GeoTIFF (--type topographic)
+    "rasterio>=1.4",  # reads the ETOPO (--type topographic) and land-cover (--color earth) GeoTIFFs
     "shapely>=2.1",  # maximum_inscribed_circle
 ]
 

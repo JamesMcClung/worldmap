@@ -123,7 +123,7 @@ def dispute_fills(d: Dispute, fill: Callable[[int], Fill]) -> list[Fill]:
 
 
 def stripe_parts(geom: BaseGeometry, n: int, width: float) -> list[BaseGeometry]:
-    """`geom` cut into `n` sets of 45-degree stripes `width` across, running like '/' (as Baikonur's hatching): part i
+    """`geom` cut into `n` sets of 45-degree stripes `width` across, running like '/': part i
     holds the stripes k with k % n == i, stripe k being k*width <= (y - x)/sqrt(2) < (k+1)*width. Counted from the
     origin, so neighbouring areas line up."""
     if n == 1:

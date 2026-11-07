@@ -251,10 +251,11 @@ def clashes(p: Placement) -> tuple[list[int], list[int]]:
 
 
 def place_labels(labels: list[Label], frame: MapFrame, seed: int = SEED, weights: CostWeights = CostWeights(),
-                 water: Sequence[WaterLabel] = (), start: tuple[np.ndarray, np.ndarray] | None = None) -> Placement:
+                 water: Sequence[WaterLabel] = (), start: tuple[np.ndarray, np.ndarray] | None = None, fixed: int = 0) -> Placement:
     """Place the labels (largest first in `labels`) and the water labels (most important first). Labels still
     overlapping after descent are shrunk slightly (their text too) and the descent repeated: country labels only
-    for other country labels, water labels for anything. `start`: positions to start from, for all labels."""
+    for other country labels, water labels for anything. `start`: positions to start from, for all labels. The
+    first `fixed` labels (country labels, then water labels) stay where `start` puts them, at their size."""
     items: list[Label | WaterLabel] = [*labels, *water]
     anchor_x = np.array([label.anchor_x for label in items])
     anchor_y = np.array([label.anchor_y for label in items])
@@ -287,18 +288,19 @@ def place_labels(labels: list[Label], frame: MapFrame, seed: int = SEED, weights
 
     def optimize(passes: int) -> None:
         for pass_no in range(passes):
-            moved = [move_to_best(i, grid=pass_no < GRID_PASSES, stay_bias=STAY_BIAS) for i in rng.permutation(p.n)]
+            moved = [move_to_best(i, grid=pass_no < GRID_PASSES, stay_bias=STAY_BIAS) for i in fixed + rng.permutation(p.n - fixed)]
             if not any(moved):
                 break
 
     # Seed 'out' labels in largest-first order so they start separated, then descend.
     if start is None:
-        for i in range(p.n):
+        for i in range(fixed, p.n):
             if p.out[i]:
                 move_to_best(i)
     optimize(PASSES)
     for _ in range(SHRINK_ROUNDS):
         bad, water_bad = clashes(p)
+        bad, water_bad = [i for i in bad if i >= fixed], [i for i in water_bad if i >= fixed]
         if not bad and not water_bad:
             break
         for i in bad:
@@ -330,25 +332,38 @@ def water_touching(p: Placement, i: int, x: float, y: float) -> list[int]:
     return sorted({int(j) for j in owners[((ox > 0) & (oy > 0)).any(0)]})
 
 
-def place_with_water(labels: list[Label], water: list[WaterLabel], frame: MapFrame) -> tuple[Placement, list[WaterLabel]]:
+def place_all(labels: list[Label], water: list[WaterLabel], frame: MapFrame) -> tuple[Placement, list[WaterLabel]]:
+    """Country and water labels (place_with_water), then, if there are any, the river names around them: rivers
+    give way to everything else, so they can't push a country's name off it."""
+    rivers = [w for w in water if w.kind == "rivers"]
+    p, kept = place_with_water(labels, [w for w in water if w.kind != "rivers"], frame)
+    if not rivers:
+        return p, kept
+    start = (np.concatenate([p.x, [r.anchor_x for r in rivers]]), np.concatenate([p.y, [r.anchor_y for r in rivers]]))
+    return place_with_water(labels, kept + rivers, frame, start, fixed=p.n)
+
+
+def place_with_water(labels: list[Label], water: list[WaterLabel], frame: MapFrame,
+                     start: tuple[np.ndarray, np.ndarray] | None = None, fixed: int = 0) -> tuple[Placement, list[WaterLabel]]:
     """Place country and water labels together, dropping water labels until none fails, and return the placement
     and the water labels kept. A water label fails when it ends mostly off its body, or still clashes at its
     minimum size (or without having shrunk in that run: so every round drops or shrinks something, and the loop
     ends). Each failing label and the water labels it touches (where it is, or would at its anchor) form a
     group; the least important water label of each group is dropped and the rest re-placed from where they were.
-    Country labels are never dropped, and start each run at their own size."""
+    Country labels are never dropped, and start each run at their own size. `start` and `fixed` are as in
+    place_labels: the fixed labels stay put and are never dropped."""
     sizes = [label.text.get_fontsize() for label in labels]
-    kept, start, dropped = list(water), None, []
+    kept, dropped = list(water), []
     while True:
         for label, size in zip(labels, sizes):
             label.text.set_fontsize(size)
         sizes_before = [w.size for w in kept]
-        p = place_labels(labels, frame, water=kept, start=start)
+        p = place_labels(labels, frame, water=kept, start=start, fixed=fixed)
         if not water:
             return p, kept
         n_country = len(labels)
-        clashing = set(clashes(p)[1])
-        failing = [i for i in range(n_country, p.n)
+        clashing = {i for i in clashes(p)[1] if i >= fixed}
+        failing = [i for i in range(max(n_country, fixed), p.n)
                    if kept[i - n_country].inside_share(p.x[i], p.y[i]) < WATER_MIN_INSIDE
                    or (i in clashing and (kept[i - n_country].size <= kept[i - n_country].min_size * (1 + 1e-9)
                                           or kept[i - n_country].size == sizes_before[i - n_country]))]  # can't or didn't shrink

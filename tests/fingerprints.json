@@ -15,7 +15,7 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "464ff4be15c3ef8582bc2975550dc05f7d5a9a7ab0922b50a63916a509fec6bc"
+    "sha256": "15740dd74f81b7a2d312c04533b48b6d0d2fa485e911d15ea66b723773bc0a76"
   },
   "disputed": {
     "env": {
@@ -52,7 +52,7 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "d4ce5aa6b64ef6803baee628b4e0cd0b030f01f7476d85d47addf583a6f254c0"
+    "sha256": "5b32210ecdb14913b79f27ea230ca9c83efeb4162d66df747aaa372936b3536a"
   },
   "pins": {
     "env": {
@@ -70,7 +70,7 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "b14ba81fa3a57899be5370a5bc763c2351bdbf7847c2962ad06661a83fd1d15c"
+    "sha256": "2dbc97521e94860c77689c9eaa20f015dfe0962a39150a6d8ca7f026441c096a"
   },
   "regions": {
     "env": {
@@ -88,7 +88,26 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "e868ca1582a9089f85bc621ea39c123bbead60c48ded70cdc2f73513c044c6e8"
+    "sha256": "04201b3c8276a5aeb9cc7813dcc69b9b2f10059c069a206bbe52dd06845f5b72"
+  },
+  "rivers": {
+    "env": {
+      "countries": "4930492",
+      "disputed": "215221",
+      "freetype": "2.14.3",
+      "geopandas": "1.2.0",
+      "geos": "3.14.1",
+      "lakes": "2349685",
+      "matplotlib": "3.11.2",
+      "numpy": "2.5.4",
+      "pillow": "12.3.0",
+      "pyproj": "3.8.0",
+      "python": "3.14.10",
+      "rivers": "2079507",
+      "shapely": "2.2.0",
+      "states": "5993148"
+    },
+    "sha256": "57aad24fa4750507b1371a1cfb65aa3d47d04a394d6351b35b5402ae044ac414"
   },
   "topographic": {
     "env": {
@@ -158,10 +177,11 @@
       "pyproj": "3.8.0",
       "python": "3.14.10",
       "rasterio": "1.5.2",
+      "rivers": "2079507",
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "417b5a2ad7acfa1b62a754f76121765db655a425651c38cd4c498de1d67df879"
+    "sha256": "27f12e7a2ce015a0917b2b9ea102656cf142d54f1234fdbb87a198fa419fe0f0"
   },
   "water": {
     "env": {
@@ -177,9 +197,10 @@
       "pillow": "12.3.0",
       "pyproj": "3.8.0",
       "python": "3.14.10",
+      "rivers": "2079507",
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "c88a0939d93f3f0a6d612ece26eb8671fd67bbda95e99dc7d84c00cb372bcaec"
+    "sha256": "b229c729829919f52f0c9458c30fe0c52fb898b2ae4c7787604047c29e8fc658"
   }
 }

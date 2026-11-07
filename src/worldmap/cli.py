@@ -17,16 +17,16 @@ from shapely.geometry import Point
 from worldmap.colorbars import draw_colorbar
 from worldmap.coloring import Coloring, load_or_compute_coloring, make_palette, spot_check
 from worldmap.colorspace import RGB
-from worldmap.data import is_labeled, load_countries, load_disputed, load_lakes, load_states, parent_index, project
+from worldmap.data import is_labeled, load_countries, load_disputed, load_lakes, load_rivers, load_states, parent_index, project
 from worldmap.disputed import DISPUTED_GREY, STRIPE_WIDTH_IN, border_lines, dispute_edges, disputed_label_args, load_disputes
 from worldmap.earth import Fill, build_regions, fill_at
 from worldmap.frame import DPI, MapFrame, make_frame
 from worldmap.labels.label import decide_out_and_wrap, make_labels
-from worldmap.labels.placement import place_with_water
+from worldmap.labels.placement import place_all
 from worldmap.labels.regions import child_regions
 from worldmap.labels.water import WATER_KINDS, kinds_from_labels, load_water_bodies, make_water_labels
 from worldmap.pins import draw_pins, load_pins, pick_pins, pin_sprite
-from worldmap.render import draw_borders, draw_countries, draw_labels, draw_lakes, draw_states, draw_stripes, draw_water_labels, new_figure, subtract_lakes
+from worldmap.render import draw_borders, draw_countries, draw_labels, draw_lakes, draw_rivers, draw_states, draw_stripes, draw_water_labels, new_figure, subtract_lakes
 from worldmap.topographic import ICE, ICE_CONTOURS, LAND, LAND_CONTOURS, SEA, SEA_CONTOURS, draw_topography
 
 
@@ -71,9 +71,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--label", metavar="LIST", type=label_kinds, default={"countries"},
                    help="what to label, comma-separated, or none: countries (default); territories = dependencies and "
                         "outlying regions (Alaska, Greenland, Kaliningrad...) with their parent country; oceans, seas "
-                        "(and gulfs, bays...), lakes; water = oceans, seas, lakes, straits and channels")
+                        "(and gulfs, bays...), lakes, straits (and channels), rivers (draws them too); water = all of these")
     p.add_argument("--disputed", action="store_true",
                    help="stripe disputed areas in the colours of the countries involved and dash their borders")
+    p.add_argument("--rivers", action="store_true", help="draw the major rivers")
     p.add_argument("--pins", metavar="FILE", help="draw the pins listed in FILE (one lon,lat per line)")
     p.add_argument("--pin-size", metavar="INCHES", type=float, default=DEFAULT_PIN_SIZE_IN,
                    help="pin diameter in inches on the 36 in poster (default %(default)s)")
@@ -85,9 +86,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return p.parse_args(argv)
 
 
+def draws_rivers(args: argparse.Namespace) -> bool:
+    """--rivers, or --label rivers or water (a name needs its river)."""
+    return bool(args.rivers or "rivers" in kinds_from_labels(args.label))
+
+
 def graph_fills(countries: gpd.GeoDataFrame, coloring: Coloring) -> dict[int, RGB]:
     """Each country's fill from its colour class. Baikonur (Kazakh land leased to Russia) takes Russia's fill;
-    render.draw_countries hatches it in Kazakhstan's."""
+    render.draw_stripes stripes it with Kazakhstan's."""
     palette = make_palette(coloring.k, coloring.class_pairs)
     color_class = dict(zip(countries.index, coloring.color_class))
     index_of = dict(zip(countries.NAME_EN, countries.index))
@@ -126,11 +132,14 @@ def main(argv: list[str] | None = None) -> None:
 
     fig, ax = new_figure(frame)
     draw_countries(ax, countries_p, fill_of, regions, args.disputed)
+    if regions is None:  # natural colours don't stand for countries, so no stripes with --color earth
+        striped = disputes if args.disputed else [d for d in disputes if d.name == "Baikonur"]
+        draw_stripes(ax, striped, fill_of, STRIPE_WIDTH_IN * frame.units_per_in)
     if args.disputed:
-        if regions is None:  # natural colours don't stand for countries, so no stripes with --color earth
-            draw_stripes(ax, disputes, fill_of, STRIPE_WIDTH_IN * DPI / frame.px_per_unit)
         draw_borders(ax, *border_lines(countries_p, disputes, parent_index(countries)))
     draw_states(ax, states_p, args.disputed)
+    if draws_rivers(args):
+        draw_rivers(ax, project(load_rivers()))
     draw_lakes(ax, lakes_p)
     countries_p = subtract_lakes(countries_p, lakes_p)
     ax.set_xlim(frame.xmin, frame.xmax)
@@ -144,7 +153,7 @@ def main(argv: list[str] | None = None) -> None:
     labels = make_labels(countries_p, frame, ax, renderer, fill_of, children, "countries" in args.label, relabel, extra)
     decide_out_and_wrap(labels, renderer)
     water = make_water_labels(load_water_bodies(kinds_from_labels(args.label), lakes_p), frame) if kinds_from_labels(args.label) else []
-    placement, water = place_with_water(labels, water, frame)
+    placement, water = place_all(labels, water, frame)
     draw_labels(ax, labels, placement, frame)
     draw_water_labels(ax, water, placement, frame)
 
@@ -168,14 +177,14 @@ def draw_topographic(args: argparse.Namespace, out: str, frame: MapFrame) -> Non
     """--type topographic: heights (and sea depths with --ocean), colour bars in the corners, pins; nothing political."""
     start = time.perf_counter()
     fig, ax = new_figure(frame)
-    draw_topography(ax, frame, args.dpi, args.ocean)
+    draw_topography(ax, frame, args.dpi, args.ocean, project(load_rivers()) if draws_rivers(args) else None)
     draw_colorbar(ax, frame, "br", LAND, "Height", LAND_CONTOURS)
     if args.ocean:
         draw_colorbar(ax, frame, "tr", SEA, "Depth", SEA_CONTOURS)
     draw_colorbar(ax, frame, "bl", ICE, "Ice", ICE_CONTOURS)
     kinds = kinds_from_labels(args.label)
     if kinds:  # without water kinds no label stage runs
-        placement, water = place_with_water([], make_water_labels(load_water_bodies(kinds, project(load_lakes())), frame), frame)
+        placement, water = place_all([], make_water_labels(load_water_bodies(kinds, project(load_lakes())), frame), frame)
         draw_water_labels(ax, water, placement, frame)
     ax.set_xlim(frame.xmin, frame.xmax)
     ax.set_ylim(frame.ymin, frame.ymax)

@@ -3,12 +3,14 @@ import numpy as np
 import pytest
 import shapely
 import shapely.affinity
-from shapely.geometry import Point
+from shapely.geometry import LineString, Point
 
 from worldmap.curves import arc_lengths, bend
 from worldmap.data import load_lakes, project
 from worldmap.frame import MapFrame, make_frame
-from worldmap.labels.water import OCEAN_MIN_PT, OCEAN_PT, SEA_MAX_PT, WATER_MIN_INSIDE, WATER_MIN_PT, WATER_TEXT, classify, fit_curve, kinds_from_labels, load_water_bodies, make_water_labels
+from worldmap.labels.water import (OCEAN_MIN_PT, OCEAN_PT, RIVER_MAX_PT, RIVER_MIN_PT, SEA_MAX_PT, WATER_MIN_INSIDE, WATER_MIN_PT,
+                                   WATER_TEXT, best_stretch, classify, fit_curve, kinds_from_labels, load_water_bodies,
+                                   longest_paths, make_water_labels, river_name, river_size)
 
 
 @pytest.fixture(scope="module")
@@ -26,7 +28,8 @@ def test_classify() -> None:
 def test_kinds_from_labels() -> None:
     assert kinds_from_labels({"countries"}) == set()
     assert kinds_from_labels({"seas", "countries"}) == {"seas"}
-    assert kinds_from_labels({"water"}) == {"oceans", "seas", "lakes", "straits"}
+    assert kinds_from_labels({"straits"}) == {"straits"}
+    assert kinds_from_labels({"water"}) == {"oceans", "seas", "lakes", "straits", "rivers"}
 
 
 def test_oceans(lakes_projected: gpd.GeoDataFrame) -> None:
@@ -144,3 +147,41 @@ def test_fit_curve_steep_and_bent_never_tips_past_vertical() -> None:
     arch = shapely.affinity.rotate(ring.intersection(shapely.box(-10, 2, 10, 10)), 80, origin=(0, 0))  # chord at ~80 degrees
     c = fit_curve(arch, 90)
     assert (np.diff(c[:, 0]) >= -1e-9).all()  # every step still goes right: no glyph leans upside down
+
+
+def test_river_name() -> None:
+    assert river_name("Amazon") == "Amazon"
+    assert river_name("Paraná River") == "Paraná"
+    assert river_name("Grande") == "Rio Grande"
+    assert river_name("Sulina branch") is None and river_name("Suez Canal") is None
+    assert river_name(None) is None and river_name(float("nan")) is None
+
+
+def test_river_size() -> None:
+    assert river_size(0) == river_size(1) == RIVER_MAX_PT
+    assert river_size(6) == RIVER_MIN_PT == river_size(9)
+    assert river_size(2) > river_size(4)
+
+
+def test_longest_paths_joins_gaps_and_takes_the_trunk() -> None:
+    trunk = [LineString([(0, 0), (10, 0)]), LineString([(10.5, 0), (20, 0)])]  # a 0.5 gap (a lake)
+    tributary = LineString([(10, 0), (10, 3)])
+    far = LineString([(100, 0), (104, 0)])
+    paths = longest_paths([*trunk, tributary, far], join=1.0)
+    assert len(paths) == 2
+    assert paths[0].length == pytest.approx(20)  # 0..10, bridged to 10.5..20
+    assert paths[1].length == pytest.approx(4)
+
+
+def test_longest_paths_survives_loops() -> None:
+    braid = [LineString([(0, 0), (5, 1), (10, 0)]), LineString([(0, 0), (5, -1), (10, 0)]), LineString([(10, 0), (30, 0)])]
+    ring = LineString([(50, 0), (51, 1), (52, 0), (50, 0)])
+    paths = longest_paths([*braid, ring], join=0.1)
+    assert paths[0].length > 30 and len(paths) == 2
+
+
+def test_best_stretch_prefers_straight_and_level() -> None:
+    zigzag = [(x, 5 * (x % 2)) for x in range(0, 50)]  # wiggly first half...
+    straight = [(x, 0.0) for x in range(50, 100)]  # ...level second half
+    stretch = best_stretch(np.array(zigzag + straight, float), 30)
+    assert stretch[:, 0].min() >= 49 and np.ptp(stretch[:, 1]) < 1e-9

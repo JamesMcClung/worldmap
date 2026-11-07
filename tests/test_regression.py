@@ -34,6 +34,10 @@ def test_render_water(tmp_path: Path) -> None:
     check_fingerprint("water", render(tmp_path, "--label", "countries,water"))
 
 
+def test_render_rivers(tmp_path: Path) -> None:
+    check_fingerprint("rivers", render(tmp_path, "--rivers"))
+
+
 def test_render_failure_shows_stderr(tmp_path: Path) -> None:
     with pytest.raises(pytest.fail.Exception, match="unrecognized arguments"):
         render(tmp_path, "--no-such-flag")
@@ -44,6 +48,7 @@ def test_environment_includes_map_data() -> None:
     assert {"countries", "states", "lakes", "raster"} <= env.keys()
     assert "raster" not in environment("default")
     assert "marine" in environment("water") and "marine" not in environment("default")
+    assert "rivers" in environment("rivers") and "rivers" not in environment("default")
 
 
 def tiny_png(tmp_path: Path) -> Path:

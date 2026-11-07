@@ -3,7 +3,6 @@
 from collections.abc import Callable, Iterator
 
 import geopandas as gpd
-import matplotlib
 import matplotlib.patheffects as pe
 import numpy as np
 import shapely
@@ -18,25 +17,28 @@ from shapely.geometry.polygon import orient
 from shapely.ops import unary_union
 
 from worldmap.coloring import OCEAN
+from worldmap.data import RIVER_MAX_RANK
 from worldmap.disputed import Dispute, dispute_fills, stripe_parts
 from worldmap.earth import Fill, Regions
 from worldmap.frame import DPI, POSTER_WIDTH_IN, MapFrame
 from worldmap.labels.label import Label
 from worldmap.labels.label import LABEL_ZORDER
 from worldmap.labels.placement import Placement, leader_ends
-from worldmap.labels.water import WATER_HALO, WATER_HALO_PX, WATER_TEXT, WaterLabel
+from worldmap.labels.water import RIVER_HALO, RIVER_TEXT, WATER_HALO, WATER_HALO_PX, WATER_TEXT, WaterLabel
 
 BORDER, STATE_LINE = "#3a3a3a", "#7d7d7d"
 ANTARCTICA_FILL = "#ffffff"  # Antarctica is drawn white and left unlabelled
 GLOBE_STROKE = 2.2
 BORDER_WIDTH = 0.6
 STATE_LINE_WIDTH = 0.35
-BAIKONUR_HATCH_WIDTH = 1.6
 LEADER_WIDTH = 0.7
 LEADER_DOT_SIZE = 1.3
+RIVER = "#2d76a3"  # OKLCH (0.54, 0.10, 240): near the ocean's hue, dark enough to show on every fill
+RIVER_WIDTH_MAX, RIVER_WIDTH_MIN = 1.6, 0.3  # line widths (pt) at scalerank 0 and RIVER_MAX_RANK
 BORDER_DASH = (0, (2.5, 1.5))  # --disputed: borders between a disputed area and the countries involved
 # Drawing order, bottom to top (pins are at 10, labels at 6). Borders sit below the lakes so they don't cross them.
-Z_OCEAN, Z_COUNTRY, Z_BAIKONUR, Z_STRIPES, Z_BAIKONUR_EDGE, Z_BORDERS, Z_STATES, Z_LAKES, Z_GLOBE, Z_LEADERS = 0, 1, 1.5, 1.5, 1.6, 1.7, 2, 2.5, 3, 4
+Z_OCEAN, Z_COUNTRY, Z_STRIPES, Z_BAIKONUR_EDGE, Z_BORDERS, Z_STATES, Z_LAKES, Z_GLOBE, Z_LEADERS = 0, 1, 1.5, 1.6, 1.7, 2, 2.5, 3, 4
+Z_RIVERS = 2.2  # above the state lines, below the lakes (which hide the lake centrelines)
 Z_STATES_UNDER_BORDERS = 1.65  # --disputed: state lines above the stripes, below the (dashed) borders
 
 
@@ -74,10 +76,9 @@ def new_figure(frame: MapFrame) -> tuple[Figure, Axes]:
 
 
 def draw_countries(ax: Axes, countries_projected: gpd.GeoDataFrame, fill_of: Callable[[int, Point | None], Fill], regions: Regions | None, disputed: bool = False) -> None:
-    """Country fills with borders. With `regions` (--color earth), each polygon gets its own fill; otherwise Baikonur
-    (Kazakh land leased to Russia) is hatched in Kazakhstan's colour. With `disputed`, fills only: draw_borders draws
-    the borders and draw_stripes stripes Baikonur with the other disputed areas."""
-    kazakhstan = countries_projected.index[countries_projected.NAME_EN == "Kazakhstan"][0]
+    """Country fills with borders. With `regions` (--color earth), each polygon gets its own fill. Baikonur (Kazakh
+    land leased to Russia) is striped by draw_stripes, so its border is drawn again above the stripes. With `disputed`,
+    fills only: draw_borders draws the borders."""
     ec = "none" if disputed else BORDER
     for i, row in countries_projected.iterrows():
         if row.NAME_EN == "Antarctica":
@@ -86,11 +87,7 @@ def draw_countries(ax: Axes, countries_projected: gpd.GeoDataFrame, fill_of: Cal
             for poly, fill in regions[i]:
                 ax.add_collection(PatchCollection(list(patches(poly)), fc=fill, ec=ec, lw=BORDER_WIDTH, zorder=Z_COUNTRY))
         elif row.NAME_EN == "Baikonur" and not disputed:
-            # Hatched in Kazakhstan's colour, with its border drawn above the hatching.
             ax.add_collection(PatchCollection(list(patches(row.geometry)), fc=fill_of(i, None), ec="none", zorder=Z_COUNTRY))
-            matplotlib.rcParams["hatch.linewidth"] = BAIKONUR_HATCH_WIDTH
-            stripe = fill_of(kazakhstan, None)
-            ax.add_collection(PatchCollection(list(patches(row.geometry)), fc="none", ec=stripe, lw=0, hatch="////", zorder=Z_BAIKONUR))
             ax.add_collection(PatchCollection(list(patches(row.geometry)), fc="none", ec=BORDER, lw=BORDER_WIDTH, zorder=Z_BAIKONUR_EDGE))
         else:
             ax.add_collection(PatchCollection(list(patches(row.geometry)), fc=fill_of(i, None), ec=ec, lw=BORDER_WIDTH, zorder=Z_COUNTRY))
@@ -128,6 +125,23 @@ def draw_lakes(ax: Axes, lakes_projected: gpd.GeoDataFrame) -> None:
         ax.add_collection(PatchCollection(list(holed_patches(g)), fc=OCEAN, ec=BORDER, lw=BORDER_WIDTH, zorder=Z_LAKES))
 
 
+def river_width(rank: int) -> float:
+    """Line width (pt) of a river of Natural Earth scalerank `rank`, thinning linearly to RIVER_MAX_RANK."""
+    t = min(max(rank, 0), RIVER_MAX_RANK) / RIVER_MAX_RANK
+    return RIVER_WIDTH_MAX + t * (RIVER_WIDTH_MIN - RIVER_WIDTH_MAX)
+
+
+def draw_rivers(ax: Axes, rivers_projected: gpd.GeoDataFrame) -> None:
+    """--rivers: centrelines, widest for the most important. Thin ones go first, so big rivers run over their tributaries."""
+    rivers = rivers_projected.sort_values("scalerank", ascending=False, kind="stable")
+    lines, widths = [], []
+    for rank, geom in zip(rivers.scalerank, rivers.geometry):
+        for line in line_coords(geom):
+            lines.append(line)
+            widths.append(river_width(rank))
+    ax.add_collection(LineCollection(lines, colors=RIVER, linewidths=widths, capstyle="round", joinstyle="round", zorder=Z_RIVERS))
+
+
 def subtract_lakes(countries_projected: gpd.GeoDataFrame, lakes_projected: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     """Countries minus the drawn lakes, so label placement treats the lakes as water."""
     out = countries_projected.copy()
@@ -150,11 +164,15 @@ def draw_labels(ax: Axes, labels: list[Label], placement: Placement, frame: MapF
 
 def draw_water_labels(ax: Axes, water: list[WaterLabel], placement: Placement, frame: MapFrame) -> None:
     """Each water label's bent glyphs at its placed position (the water labels come after the country labels in
-    `placement`), blue with a water-coloured halo, just under the country labels."""
+    `placement`), blue with a water-coloured halo (rivers: darker, with the country labels' halo), just under the
+    country labels."""
     first = placement.n - len(water)
     halo = [pe.withStroke(linewidth=WATER_HALO_PX * 72 / DPI, foreground=WATER_HALO)]
+    river_halo = [pe.withStroke(linewidth=WATER_HALO_PX * 72 / DPI, foreground=RIVER_HALO)]
     for k, label in enumerate(water):
+        river = label.kind == "rivers"
         vertices = np.asarray(label.glyphs.vertices) + [placement.x[first + k], placement.y[first + k]]
         x, y = frame.px_to_map(vertices[:, 0], vertices[:, 1])
         path = Path(np.stack([x, y], -1), label.glyphs.codes)
-        ax.add_patch(PathPatch(path, fc=WATER_TEXT, ec="none", lw=0, zorder=LABEL_ZORDER - 0.1, path_effects=halo))
+        ax.add_patch(PathPatch(path, fc=RIVER_TEXT if river else WATER_TEXT, ec="none", lw=0, zorder=LABEL_ZORDER - 0.1,
+                               path_effects=river_halo if river else halo))

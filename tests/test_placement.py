@@ -5,7 +5,7 @@ from matplotlib.path import Path
 
 from worldmap.frame import MapFrame, make_frame
 from worldmap.labels.label import Label, new_label
-from worldmap.labels.placement import clashes, place_labels, place_with_water
+from worldmap.labels.placement import clashes, place_all, place_labels, place_with_water
 from worldmap.labels import placement
 from worldmap.labels.water import OCEAN_MIN_PT, WATER_MIN_PT, WaterLabel
 from worldmap.render import new_figure
@@ -138,3 +138,18 @@ def test_drop_loop_ends_when_nothing_can_shrink(frame: MapFrame, monkeypatch: py
     worker.join(timeout=30)
     assert not worker.is_alive(), "place_with_water went round forever"
     assert result[0][1] == []
+
+
+def test_fixed_labels_stay_put(frame: MapFrame, one_label: list[Label], water_on_top_of_it: WaterLabel) -> None:
+    start = (np.array([one_label[0].anchor_x, water_on_top_of_it.anchor_x]), np.array([one_label[0].anchor_y, water_on_top_of_it.anchor_y]))
+    p = place_labels(one_label, frame, water=[water_on_top_of_it], start=start, fixed=1)
+    assert p.x[0] == start[0][0] and p.y[0] == start[1][0]
+    assert (p.x[1], p.y[1]) != (start[0][1], start[1][1])  # the water label made way instead
+
+
+def test_rivers_give_way_to_countries(frame: MapFrame, one_label: list[Label], water_on_top_of_it: WaterLabel) -> None:
+    alone = place_labels([country_label(frame, "Atlantis", -35, 30, 500)], frame)
+    w = water_on_top_of_it
+    river = water_label("River", (w.anchor_x, w.anchor_y), w.geom, w.parts, 10, "rivers")
+    p, _ = place_all(one_label, [river], frame)
+    assert (p.x[0], p.y[0]) == (alone.x[0], alone.y[0])
