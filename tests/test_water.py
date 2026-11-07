@@ -29,8 +29,8 @@ def test_classify() -> None:
 def test_kinds_from_labels() -> None:
     assert kinds_from_labels({"countries"}) == set()
     assert kinds_from_labels({"seas", "countries"}) == {"seas"}
-    assert kinds_from_labels({"water"}) == {"oceans", "seas", "lakes", "straits"}
-    assert kinds_from_labels({"water", "rivers"}) == {"oceans", "seas", "lakes", "straits", "rivers"}
+    assert kinds_from_labels({"straits"}) == {"straits"}
+    assert kinds_from_labels({"water"}) == {"oceans", "seas", "lakes", "straits", "rivers"}
 
 
 def test_oceans(lakes_projected: gpd.GeoDataFrame) -> None:

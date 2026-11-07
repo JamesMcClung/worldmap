@@ -38,10 +38,6 @@ def test_render_rivers(tmp_path: Path) -> None:
     check_fingerprint("rivers", render(tmp_path, "--rivers"))
 
 
-def test_render_river_labels(tmp_path: Path) -> None:
-    check_fingerprint("river_labels", render(tmp_path, "--label", "countries,rivers"))
-
-
 def test_render_failure_shows_stderr(tmp_path: Path) -> None:
     with pytest.raises(pytest.fail.Exception, match="unrecognized arguments"):
         render(tmp_path, "--no-such-flag")

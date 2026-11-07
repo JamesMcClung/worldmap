@@ -20,9 +20,9 @@ from worldmap.curves import arc_lengths, bend
 from worldmap.data import load_marine, load_rivers, project
 from worldmap.frame import DPI, MapFrame
 
-WATER_KINDS = ("oceans", "seas", "lakes", "water", "rivers")  # the --label values; water = the first three plus straits
+WATER_KINDS = ("oceans", "seas", "lakes", "straits", "rivers", "water")  # the --label values; water = all the others
 Kind = Literal["oceans", "seas", "lakes", "straits", "rivers"]
-ALL_KINDS: set[Kind] = {"oceans", "seas", "lakes", "straits"}  # what water means: rivers only when asked for
+ALL_KINDS: set[Kind] = {"oceans", "seas", "lakes", "straits", "rivers"}
 SEA: Kind = "seas"
 CLASSES: dict[str, Kind] = {"ocean": "oceans", "strait": "straits", "channel": "straits"}
 CLASSES |= {c: SEA for c in ("sea", "gulf", "bay", "sound", "fjord", "lagoon", "inlet")}  # reefs, river mouths and the unnamed 'generic' areas are never labelled
@@ -62,10 +62,7 @@ OCEAN_TEXT = {"Atlantic": "ATLANTIC OCEAN", "Pacific": "PACIFIC OCEAN", "Indian"
 
 def kinds_from_labels(label: set[str]) -> set[Kind]:
     """The water kinds asked for in --label (countries and territories are not water)."""
-    kinds = set(ALL_KINDS) if "water" in label else {k for k in ALL_KINDS if k in label}
-    if "rivers" in label:
-        kinds.add("rivers")
-    return kinds
+    return set(ALL_KINDS) if "water" in label else {k for k in ALL_KINDS if k in label}
 
 
 def classify(featurecla: str) -> Kind | None:

@@ -79,7 +79,7 @@ def environment(mode: str = "default") -> dict[str, str]:
         "disputed": str(os.path.getsize(fetch(DISPUTED))),  # the colouring keeps 2-country disputes apart
         **({"raster": str(os.path.getsize(fetch(RASTER)))} if mode == "earth" else {}),
         **({"marine": str(os.path.getsize(fetch(MARINE)))} if "water" in mode else {}),  # only modes with water labels
-        **({"rivers": str(os.path.getsize(fetch(RIVERS)))} if "river" in mode else {}),
+        **({"rivers": str(os.path.getsize(fetch(RIVERS)))} if "river" in mode or "water" in mode else {}),
         **(topographic_environment() if mode.startswith("topographic") else {}),
     }
 

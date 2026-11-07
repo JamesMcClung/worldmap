@@ -71,7 +71,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--label", metavar="LIST", type=label_kinds, default={"countries"},
                    help="what to label, comma-separated, or none: countries (default); territories = dependencies and "
                         "outlying regions (Alaska, Greenland, Kaliningrad...) with their parent country; oceans, seas "
-                        "(and gulfs, bays...), lakes; water = oceans, seas, lakes, straits and channels; rivers (draws them too)")
+                        "(and gulfs, bays...), lakes, straits (and channels), rivers (draws them too); water = all of these")
     p.add_argument("--disputed", action="store_true",
                    help="stripe disputed areas in the colours of the countries involved and dash their borders")
     p.add_argument("--rivers", action="store_true", help="draw the major rivers")
@@ -87,8 +87,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def draws_rivers(args: argparse.Namespace) -> bool:
-    """--rivers, or --label rivers (a name needs its river)."""
-    return bool(args.rivers or "rivers" in args.label)
+    """--rivers, or --label rivers or water (a name needs its river)."""
+    return bool(args.rivers or "rivers" in kinds_from_labels(args.label))
 
 
 def graph_fills(countries: gpd.GeoDataFrame, coloring: Coloring) -> dict[int, RGB]:
