@@ -26,6 +26,7 @@ make_map --color earth        # natural colours (sand to green) from Natural Ear
 make_map --label countries,territories  # also label dependencies and outlying regions, e.g. "Alaska (US)"
 make_map --label countries,water  # also name the oceans, seas, lakes and straits
 make_map --disputed           # stripe disputed areas (Kashmir, Crimea, Taiwan...) in their claimants' colours
+make_map --rivers             # draw the major rivers (also with --type topographic)
 make_map --type topographic --ocean  # heights and sea depths instead of countries
 make_map --pick pins.txt      # click on the rendered map to add pins to pins.txt
 make_map --pins pins.txt      # draw the pins; writes worldmap_pins.png
@@ -37,6 +38,7 @@ make_map --pins pins.txt      # draw the pins; writes worldmap_pins.png
 | `--ocean` | With `--type topographic`, colour the sea by depth, with depth contours and a depth colour bar. Ignored with `--type political`. |
 | `--color NAME` | How countries are filled. `colorblind` (default): distinct colours that red/green colour-blind viewers can tell apart. `earth`: each region coloured by what it looks like from space; the first run downloads a ~75 MB raster. |
 | `--label LIST` | What to label: a comma-separated list, or `none`. `countries` (default): sovereign countries. `territories`: dependencies (Greenland, Bermuda, Guam...) and outlying parts of countries (Alaska, Tasmania, Kaliningrad...), in italics with the parent country in parentheses. `oceans`, `seas` (with gulfs, bays, sounds...), `lakes`: water names in blue, curved along each body; `water` = all three plus straits and channels. Water names that don't fit are left out, never the country names. The list replaces the default, so `--label territories` labels territories only. |
+| `--rivers` | Draw the major rivers (Natural Earth's river and lake centrelines), wider for the more important ones. Works with both map types. |
 | `--disputed` | Draw disputed areas (from Natural Earth's disputed-areas data) in equal stripes of the colours of every country involved: the one running it and its claimants. Areas with 3 or more countries are plain grey; self-governing areas with no country of their own (Abkhazia, Transnistria...) alternate their parent's colour with grey. Borders between a disputed area and the countries involved are dashed. Self-governing areas (Taiwan, Somaliland, Northern Cyprus, Abkhazia...) get labels; the rest don't. With `--color earth`, only the dashed borders and labels. |
 | `--pins FILE` | Draw pins from `FILE`, one `lon,lat` per line (`#` starts a comment). |
 | `--pin-size IN` | Pin diameter in inches on the 36 in poster (default 0.24). |
@@ -112,7 +114,7 @@ A pin file has one `lon,lat` per line, and `#` starts a comment:
 
 ```
 pip install -e '.[dev]'
-pytest           # ~135 s: unit tests plus pixel-exact renders of the default, --color earth, --pins, --label countries,territories, --label countries,water, --disputed and three topographic maps
+pytest           # ~135 s: unit tests plus pixel-exact renders of the default, --color earth, --pins, --label countries,territories, --label countries,water, --disputed, --rivers and three topographic maps
 mypy src
 ```
 

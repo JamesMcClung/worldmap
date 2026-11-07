@@ -7,7 +7,7 @@ large countries, non-overlapping country labels), or with `--type topographic` a
 
 ```
 python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'   # deps in pyproject.toml; [dev] adds pytest, mypy
-.venv/bin/make_map [out.png] [--type political|topographic] [--ocean] [--recolor] [--color colorblind|earth] [--label LIST] [--disputed] [--pins FILE] [--pin-size IN] [--dpi DPI] [--pick FILE]
+.venv/bin/make_map [out.png] [--type political|topographic] [--ocean] [--recolor] [--color colorblind|earth] [--label LIST] [--disputed] [--rivers] [--pins FILE] [--pin-size IN] [--dpi DPI] [--pick FILE]
 ```
 
 `--dpi` only changes the `savefig` dpi (and the pin sprite's pixel size): layout is always measured at
@@ -24,7 +24,7 @@ relative to `data.py` (`CACHE`), so the package must be installed editable (`-e`
 
 `.venv/bin/pytest` (~135 s). Unit tests cover the pure pieces (colour maths, `color_graph`, pin parsing and sprite, label geometry,
 CLI errors), and `test_import_has_no_pyplot` guards that importing any module doesn't pick a matplotlib backend (`--pick` needs to).
-`test_regression.py` renders the default, `--color earth`, `--pins`, `--label countries,territories`, `--label countries,water` (`water`), `--disputed`, `--type topographic`, `--type topographic --ocean` and `--type topographic --label water` (`topographic_water`) maps in a subprocess and compares a SHA-256 of the decoded pixels
+`test_regression.py` renders the default, `--color earth`, `--pins`, `--label countries,territories`, `--label countries,water` (`water`), `--disputed`, `--rivers`, `--type topographic`, `--type topographic --ocean` and `--type topographic --label water` (`topographic_water`) maps in a subprocess and compares a SHA-256 of the decoded pixels
 with `tests/fingerprints.json`:
 - A commit that changes the output on purpose re-records with `UPDATE_REFERENCE=1 .venv/bin/pytest` and commits `fingerprints.json`
   in the same commit, saying in the body what changed visually. Refactors must leave the fingerprints unchanged.
@@ -35,7 +35,7 @@ with `tests/fingerprints.json`:
   (or deleting `earth.json`) to be exercised.
 - `conftest.private_caches` (session, autouse) points the in-process tests' `coloring.json`/`earth.json` at a temp copy, so a
   test with other inputs can't overwrite the real caches; the render subprocesses still read the real ones.
-- `conftest.environment(mode)` keys data files per mode (`raster` for earth, ETOPO etc. for topographic*, `marine` for *water*):
+- `conftest.environment(mode)` keys data files per mode (`raster` for earth, ETOPO etc. for topographic*, `marine` for *water*, `rivers` for *rivers*):
   a new key on an existing mode would make it skip, so add keys only for the modes that use them.
 
 `.venv/bin/mypy src` should report no issues (default mode, missing stubs ignored).
@@ -47,7 +47,7 @@ Importing any module has no side effects; only `cli.main` (after choosing the ba
 | Module | Contents |
 |---|---|
 | `cli.py` | `parse_args` (`--label`: `label_kinds`, a list that replaces the default `countries`; `none` = no labels), `graph_fills` (palette + Baikonur), `main()`: the pipeline as a sequence of stage calls |
-| `data.py` | `fetch`, file names (`MARINE`: the marine label areas), `CRS`, `STATE_COUNTRIES`, lakes filter, `is_dependency`, `parent_index`, `is_labeled`, `load_*`, `project` |
+| `data.py` | `fetch`, file names (`MARINE`: the marine label areas; `RIVERS`), `CRS`, `STATE_COUNTRIES`, lakes filter, `is_dependency`, `parent_index`, `is_labeled`, `load_*` (`load_rivers`: scalerank <= `RIVER_MAX_RANK`, no canals), `project` |
 | `frame.py` | `MapFrame` (transformers, globe outline, extent, `px_per_unit`, `units_per_in`, `to_px`, `px_to_map`), `make_frame`, `DPI`, `POSTER_WIDTH_IN` |
 | `colorspace.py` | OKLab/OKLCH conversions, `fit_gamut`, `darken` |
 | `coloring.py` | `merge_into_parents`, `adjacency`, `add_proximity_edges`, `color_graph`, `make_palette`, `load_or_compute_coloring` (cache), `spot_check`, `OCEAN` |
@@ -62,7 +62,7 @@ Importing any module has no side effects; only `cli.main` (after choosing the ba
 | `labels/placement.py` | `CostWeights`, `Placement` (per-label arrays, water glyph boxes), `cost_batch`/`water_cost`, `candidates`, `clashes`, `place_labels`, `place_with_water` (drop loop), `leader_ends` |
 | `labels/geometry.py` | `rect`, `nearest_point_on_rect`, `segment_hits_rects`, `segments_cross`, `two_line` |
 | `curves.py` | `arc_lengths`, `bend` (points along a polyline + its left normal): text bending for `colorbars.curved_title` and water labels |
-| `render.py` | `new_figure`, `draw_countries`, `draw_stripes`, `draw_borders`, `draw_states`, `draw_lakes`, `subtract_lakes`, `draw_labels`, `draw_water_labels`, line widths and z-orders |
+| `render.py` | `new_figure`, `draw_countries`, `draw_stripes`, `draw_borders`, `draw_states`, `draw_rivers`, `draw_lakes`, `subtract_lakes`, `draw_labels`, `draw_water_labels`, line widths and z-orders |
 
 Pipeline (`cli.main`):
 1. **Colouring** of all country features. Dependencies (`is_dependency`: `SOVEREIGNT != ADMIN`, not a lease or
@@ -219,6 +219,15 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
   touches where it is or at its anchor, so the solver pushing a random rival off its water can't drop the wrong one.
 - Drawing: `PathPatch` in `WATER_TEXT` (OKLCH L 0.50 in the ocean hue) with an `OCEAN`-coloured halo, under the country
   labels. `--label countries,water` takes ~28 s (vs ~10 s), mostly the country labels' extra passes.
+
+## `--rivers`
+
+Natural Earth `ne_10m_rivers_lake_centerlines` (`data.RIVERS`), scalerank 0 (biggest) to `RIVER_MAX_RANK` = 8;
+9+ are short tributaries, canals are dropped. `render.draw_rivers` draws them in `RIVER` (OKLCH 0.54/0.10/240, darker
+than the ocean so it shows on every fill), `river_width` thinning linearly from `RIVER_WIDTH_MAX` to `RIVER_WIDTH_MIN`,
+thin ones first. `Z_RIVERS` = 2.2: above the state lines, below the lakes, which hide the centrelines through them.
+Political maps draw them before the lakes; `--type topographic` after `draw_topography` (same z-order). Labels
+ignore them.
 
 ## Gotchas
 
