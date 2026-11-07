@@ -2,7 +2,6 @@
 
 import json
 import os
-from collections import Counter, deque
 from dataclasses import dataclass
 
 import geopandas as gpd
@@ -12,12 +11,11 @@ from matplotlib.collections import LineCollection
 from matplotlib.colors import LinearSegmentedColormap, to_rgb
 from matplotlib.patches import Polygon as MplPolygon
 import shapely
-from shapely.geometry import LineString
 
 from worldmap.coloring import OCEAN
 from worldmap.data import CACHE, ETOPO, fetch, load_ice, load_lakes, load_land, project
 from worldmap.frame import DPI, POSTER_WIDTH_IN, MapFrame
-from worldmap.render import BORDER, BORDER_WIDTH, Z_BORDERS, Z_COUNTRY, draw_lakes, draw_rivers
+from worldmap.render import BORDER, BORDER_WIDTH, Z_BORDERS, Z_COUNTRY, draw_lakes
 
 GRID_STEP_DEG = 0.05  # 3 arc-minutes: about one poster pixel at 200 dpi
 ELEVATION_RULE = "etopo2022-60s-mean-3min/v1"  # bump when the reduction changes, to rebuild the cached grid
@@ -62,8 +60,8 @@ SEA_CONTOURS = Contours(2000, "#1f4466", 0.5, "dashed")
 CONTOUR_WIDTH = 0.3
 SAMPLE_BLOCK = 1 << 17  # points per block in sample() and colorize()
 VERT_EXAG = 6.0  # hill-shading exaggeration of heights (z and pixel size both in metres); tuned on crops
-MOUTH_REACH_PX = 40  # a river mouth buried in filled-in estuary is followed this far (px at DPI) to the sea
-SPECK_PX = 4  # land or water patches smaller than this many pixels (at DPI) are filled in: islets, rivers
+SLIVER_M2 = 1.0  # outline parts smaller than this (m^2) are slivers left by the union; the smallest islet is ~2,300
+SLIVER_HOLE_M2 = 1e8  # holes smaller than this are gaps between ice shelves and land (up to ~1 km^2); the Caspian stays
 
 
 @dataclass
@@ -215,40 +213,15 @@ def polygon_mask(projected: gpd.GeoDataFrame, frame: MapFrame, pg: PosterGrid) -
     return rasterize(shapes, out_shape=(rows, cols), transform=transform, fill=0, default_value=1, dtype="uint8").astype(bool)
 
 
-def smoothed(mask: np.ndarray) -> np.ndarray:
-    """A boolean mask blurred with a 3 x 3 binomial kernel (float32), so its 0.5 contour runs smoothly between in
-    and out pixels instead of in stair steps."""
-    m = mask.astype(np.float32)
-    for axis in (0, 1):
-        before, after = np.roll(m, 1, axis), np.roll(m, -1, axis)
-        m *= 2
-        m += before
-        m += after
-        m /= 4
-        del before, after
-    return m
-
-
-def despeckle(mask: np.ndarray, dpi: float) -> np.ndarray:
-    """`mask` with its patches (4-connected) smaller than SPECK_PX pixels at DPI flipped to their surroundings: islands
-    too small to get a coastline, and specks of water inland."""
-    from rasterio.features import sieve
-
-    size = max(2, round(SPECK_PX * (min(dpi, DPI) / DPI) ** 2))
-    return sieve(mask.astype(np.uint8), size, connectivity=4).astype(bool)
-
-
-def solid_field(solid: np.ndarray, dpi: float) -> np.ndarray:
-    """The land-or-ice mask despeckled and smoothed: land and ice are coloured where it is > 0.5, and the coastline
-    is its 0.5 contour, so every coloured island has a coastline and no coastline is left empty."""
-    return smoothed(despeckle(solid, dpi))
-
-
-def coast_lines(field: np.ndarray, pg: PosterGrid) -> list[np.ndarray]:
-    """The coastline: the 0.5 contour of `field` (smoothed land or ice), so it sits where the colours change from land
-    to water. (Natural Earth's land, glacier and ice-shelf outlines don't quite agree around Antarctica, and drawing
-    them left stray dashes in the slivers between them.)"""
-    return contour_lines(pg.x, pg.y, np.ma.masked_array(field), np.array([0.5]))
+def coastline(land: gpd.GeoDataFrame, ice: gpd.GeoDataFrame) -> list[np.ndarray]:
+    """The outline of the (projected) land and ice together, minus the slivers the union leaves where ice shelves
+    meet land."""
+    union = shapely.union_all(np.concatenate([land.geometry.values, ice.geometry.values]))
+    rings = []
+    for part in shapely.get_parts(union):
+        if part.area >= SLIVER_M2:
+            rings += [part.exterior, *(r for r in part.interiors if shapely.Polygon(r).area >= SLIVER_HOLE_M2)]
+    return [np.asarray(r.coords) for r in rings]
 
 
 def contour_lines(x: np.ndarray, y: np.ndarray, z: np.ma.MaskedArray, levels: np.ndarray) -> list[np.ndarray]:
@@ -263,107 +236,17 @@ def contour_lines(x: np.ndarray, y: np.ndarray, z: np.ma.MaskedArray, levels: np
     return lines
 
 
-def surfaces(land: np.ndarray, ice: np.ndarray, pg: PosterGrid, dpi: float) -> tuple[np.ndarray, np.ndarray, list[np.ndarray]]:
-    """The land and ice masks (ice wins), and the coastline, from Natural Earth's land and ice masks, with specks
-    cleaned up (`solid_field`). A filled-in speck of water takes the land or ice around it."""
-    raw = land | ice
-    field = solid_field(raw, dpi)
-    solid = field > 0.5
-    coast = coast_lines(field, pg)
-    del field
-    filled = solid & ~raw
-    ice = solid & (ice | (filled & (smoothed(ice) > smoothed(land))))
-    return solid & ~ice, ice, coast
-
-
-def grow(mask: np.ndarray) -> np.ndarray:
-    """`mask` and its 8 neighbours: joins up narrow channels that rasterising by pixel centre left broken."""
-    out = mask.copy()
-    for dr in (-1, 0, 1):
-        for dc in (-1, 0, 1):
-            if dr or dc:
-                out[max(dr, 0):out.shape[0] + min(dr, 0), max(dc, 0):out.shape[1] + min(dc, 0)] |= \
-                    mask[max(-dr, 0):mask.shape[0] + min(-dr, 0), max(-dc, 0):mask.shape[1] + min(-dc, 0)]
-    return out
-
-
-NEIGHBOURS = [(0, 1), (1, 0), (0, -1), (-1, 0), (1, 1), (1, -1), (-1, 1), (-1, -1)]  # straight steps first
-
-
-def estuary_path(mouth: tuple[float, float], estuary: np.ndarray, sea: np.ndarray, pg: PosterGrid, reach: int) -> list[tuple[float, float]]:
-    """From a river `mouth` (map units) to the sea through `estuary` pixels (water in Natural Earth, land on the map):
-    the pixel centres of a shortest 8-connected path, starting next to the mouth and ending on a `sea` pixel. Empty
-    if the mouth already touches the sea, or no such path is within `reach` pixels."""
-    pw, ph = pg.x[1] - pg.x[0], pg.y[0] - pg.y[1]
-    col, row = int(round((mouth[0] - pg.x[0]) / pw)), int(round((pg.y[0] - mouth[1]) / ph))
-    rows, cols = sea.shape
-    near = [(r, c) for r in range(row - 1, row + 2) for c in range(col - 1, col + 2) if 0 <= r < rows and 0 <= c < cols]
-    if not near or any(sea[r, c] for r, c in near):
-        return []
-    parent: dict[tuple[int, int], tuple[int, int] | None] = {p: None for p in near if estuary[p]}
-    todo = deque(parent)
-    while todo:
-        r, c = todo.popleft()
-        for dr, dc in NEIGHBOURS:
-            nr, nc = n = (r + dr, c + dc)
-            if n in parent or not (0 <= nr < rows and 0 <= nc < cols) or max(abs(nr - row), abs(nc - col)) > reach:
-                continue
-            if sea[n]:
-                path = [n]
-                at: tuple[int, int] | None = (r, c)
-                while at is not None:
-                    path.append(at)
-                    at = parent[at]
-                return [(float(pg.x[pc]), float(pg.y[pr])) for pr, pc in reversed(path)]
-            if estuary[n]:
-                parent[n] = (r, c)
-                todo.append(n)
-    return []
-
-
-def extend_to_sea(rivers: gpd.GeoDataFrame, estuary: np.ndarray, sea: np.ndarray, pg: PosterGrid, dpi: float) -> gpd.GeoDataFrame:
-    """The rivers, with each mouth that the map's coastline leaves inland (smoothing fills in estuaries a pixel or two
-    wide, so the river would stop short of the sea) continued along its estuary to the sea (estuary_path)."""
-    reach = max(2, round(MOUTH_REACH_PX * min(dpi, DPI) / DPI))
-    pw = float(pg.x[1] - pg.x[0])
-    parts = [list(shapely.get_parts(g)) for g in rivers.geometry]
-    ends = Counter((round(x), round(y)) for lines in parts for line in lines for x, y in (line.coords[0], line.coords[-1]))
-    geoms = []
-    for lines in parts:
-        out = []
-        for line in lines:
-            coords = list(line.coords)
-            for at_end in (False, True):
-                mouth = coords[-1] if at_end else coords[0]
-                if ends[(round(mouth[0]), round(mouth[1]))] != 1:  # where rivers meet: not a mouth (or a source)
-                    continue
-                path = estuary_path(mouth, estuary, sea, pg, reach)
-                if path:
-                    tail = list(LineString([mouth, *path]).simplify(pw).coords)[1:]
-                    coords = coords + tail if at_end else tail[::-1] + coords
-            out.append(LineString(coords))
-        geoms.append(shapely.multilinestrings(out) if len(out) > 1 else out[0])
-    extended = rivers.copy()
-    extended["geometry"] = geoms
-    return extended
-
-
-def draw_topography(ax: Axes, frame: MapFrame, dpi: float, ocean: bool, rivers: gpd.GeoDataFrame | None = None) -> None:
+def draw_topography(ax: Axes, frame: MapFrame, dpi: float, ocean: bool) -> None:
     """Everything on the globe for --type topographic: the coloured, hill-shaded heights (sea depths with `ocean`),
-    contours, the coastline, the lakes and, if given, the (projected) rivers, carried down estuaries the coastline
-    has filled in (extend_to_sea)."""
+    contours, the coastline and the lakes."""
     pg = poster_grid(frame, dpi)
     z = sample(elevation_grid(), pg.lon, pg.lat)
     z[~pg.inside] = 0
     pg.lon = pg.lat = np.empty((0, 0), np.float32)  # done with them; ~200 MB at 200 dpi
-    raw = polygon_mask(project(load_land()), frame, pg) & pg.inside, polygon_mask(project(load_ice()), frame, pg) & pg.inside
-    land, ice, coast = surfaces(*raw, pg, dpi)
+    land_shapes, ice_shapes = project(load_land()), project(load_ice())
+    ice = polygon_mask(ice_shapes, frame, pg) & pg.inside  # ice wins: the shelves
+    land = polygon_mask(land_shapes, frame, pg) & pg.inside & ~ice
     sea = ~land & ~ice & pg.inside
-    if rivers is not None:
-        estuary = (land | ice) & grow(~(raw[0] | raw[1])) & pg.inside
-        draw_rivers(ax, extend_to_sea(rivers, estuary, sea, pg, dpi))
-        del estuary
-    del raw
     shaded = shade(colorize(z, land, ice, ocean), z, frame.width / len(pg.x), sea, ocean)
     rgba = np.empty(z.shape + (4,), np.float32)  # allocated after shading, so the two peaks don't add up
     rgba[..., :3] = shaded
@@ -383,5 +266,5 @@ def draw_topography(ax: Axes, frame: MapFrame, dpi: float, ocean: bool, rivers: 
     contours(ice, np.arange(ICE_CONTOURS.step, z.max() + 1, ICE_CONTOURS.step), ICE_CONTOURS)
     if ocean:
         contours(sea, -np.arange(SEA_CONTOURS.step, -z.min() + 1, SEA_CONTOURS.step)[::-1], SEA_CONTOURS)
-    ax.add_collection(LineCollection(coast, colors=BORDER, linewidths=BORDER_WIDTH, zorder=Z_BORDERS))
+    ax.add_collection(LineCollection(coastline(land_shapes, ice_shapes), colors=BORDER, linewidths=BORDER_WIDTH, zorder=Z_BORDERS))
     draw_lakes(ax, project(load_lakes()))

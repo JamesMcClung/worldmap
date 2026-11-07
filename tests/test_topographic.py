@@ -1,4 +1,3 @@
-import geopandas as gpd
 import numpy as np
 import pytest
 import shapely
@@ -7,9 +6,8 @@ from matplotlib.colors import to_rgb
 from worldmap.coloring import OCEAN
 from worldmap.data import load_ice, load_lakes, load_land, project
 from worldmap.frame import make_frame
-from worldmap.topographic import (LAND_BELOW_SEA, Grid, PosterGrid, coast_lines, colorize, draw_topography, elevation_grid,
-                                  estuary_path, extend_to_sea, grow,
-                                  polygon_mask, poster_grid, relief, sample, shade, smoothed, solid_field, surfaces)
+from worldmap.topographic import (LAND_BELOW_SEA, Grid, PosterGrid, coastline, colorize, draw_topography, elevation_grid,
+                                  polygon_mask, poster_grid, relief, sample, shade)
 
 
 @pytest.fixture(scope="module")
@@ -140,13 +138,11 @@ def test_polygon_mask_covers_exactly_its_pixels(pg: PosterGrid) -> None:
 
 
 @pytest.fixture(scope="module")
-def coast(pg: PosterGrid):
-    """The coastline at 50 dpi, as one geometry in map units."""
+def coast():
+    """The coastline, as one geometry in map units."""
     from shapely.geometry import MultiLineString
 
-    f = make_frame()
-    solid = (polygon_mask(project(load_land()), f, pg) | polygon_mask(project(load_ice()), f, pg)) & pg.inside
-    return MultiLineString([line for line in coast_lines(solid_field(solid, 50), pg) if len(line) > 1])
+    return MultiLineString(coastline(project(load_land()), project(load_ice())))
 
 
 def test_coastline_follows_land_and_ice(coast) -> None:
@@ -157,31 +153,14 @@ def test_coastline_follows_land_and_ice(coast) -> None:
     assert coast.distance(at(27.5, 29.8)) > 100_000  # Qattara is inland
     assert coast.distance(at(-175, -81)) > 100_000  # mid Ross Ice Shelf: no grounding line drawn through the ice
     assert coast.distance(at(-175, -78.2)) < 60_000  # the Ross Ice Shelf front is coast
-    assert coast.distance(at(12.25, 41.73)) < 25_000  # the Italian coast at Ostia (50 dpi: ~22 km pixels)
+    assert coast.distance(at(12.25, 41.73)) < 2_000  # the Italian coast at Ostia
+    assert coast.distance(at(51.0, 42.0)) < 150_000  # the Caspian, a hole in the land, keeps its shore
 
 
-def test_coast_lines_trace_the_mask_edge(pg: PosterGrid) -> None:
-    solid = np.zeros(pg.inside.shape, bool)
-    solid[100:120, 300:340] = True
-    (line,) = coast_lines(smoothed(solid), pg)
-    cols = (line[:, 0] - pg.x[0]) / (pg.x[1] - pg.x[0])
-    rows = (pg.y[0] - line[:, 1]) / (pg.y[0] - pg.y[1])
-    assert abs(cols.min() - 299.5) < 0.6 and abs(cols.max() - 339.5) < 0.6  # half-way between in and out pixels
-    assert abs(rows.min() - 99.5) < 0.6 and abs(rows.max() - 119.5) < 0.6
-
-
-def test_surfaces_clean_up_specks(pg: PosterGrid) -> None:
-    land = np.zeros(pg.inside.shape, bool)
-    land[100:140, 300:330] = True
-    land[120, 315] = False  # a speck of water inland
-    land[50, 50] = land[50, 51] = True  # an islet
-    ice = np.zeros_like(land)
-    ice[100:140, 330:360] = True
-    ice[110, 345] = False  # a speck of water in the ice
-    land_out, ice_out, coast = surfaces(land, ice, pg, 200)
-    assert land_out[120, 315] and ice_out[110, 345] and not land_out[110, 345]
-    assert not land_out[50, 50] and not land_out[50, 51]
-    assert len(coast) == 1 and not (land_out & ice_out).any()
+def test_coastline_drops_slivers(coast) -> None:
+    rings = [shapely.Polygon(line) for line in shapely.get_parts(coast)]
+    assert min(r.area for r in rings) > 2_000  # the smallest islet is ~2,300 m^2; slivers are under 1 m^2
+    assert len(rings) < 7_000  # ~3,700 slivers between ice shelves and land are dropped
 
 
 def test_relief_lights_north_west_slopes() -> None:
@@ -241,48 +220,3 @@ def test_draw_topography_holds_little_memory() -> None:
     plt.close(fig)
     pixels = 1800 * 923
     assert held < 40 * pixels  # the RGBA image is 16 bytes a pixel; the rest is lines and patches
-
-
-def small_grid(rows: int = 20, cols: int = 30) -> PosterGrid:
-    """Pixel centres at integer map coordinates: x = column, y = rows - 1 - row."""
-    return PosterGrid(np.arange(cols, dtype=float), np.arange(rows - 1, -1, -1, dtype=float), np.empty((0, 0)), np.empty((0, 0)), np.ones((rows, cols), bool))
-
-
-def estuary_scene() -> tuple[PosterGrid, np.ndarray, np.ndarray]:
-    """Sea in the right-hand 5 columns; a filled-in estuary along row 10 from column 10 to the sea."""
-    grid = small_grid()
-    sea = np.zeros((20, 30), bool)
-    sea[:, 25:] = True
-    estuary = np.zeros((20, 30), bool)
-    estuary[10, 10:25] = True
-    return grid, estuary, sea
-
-
-def test_grow() -> None:
-    m = np.zeros((5, 5), bool)
-    m[2, 2] = True
-    assert grow(m).sum() == 9 and grow(m)[1:4, 1:4].all()
-
-
-def test_estuary_path_follows_the_estuary_to_the_sea() -> None:
-    grid, estuary, sea = estuary_scene()
-    path = estuary_path((9.0, 9.0), estuary, sea, grid, reach=40)  # row 10 is y = 9
-    assert path[0] == (10.0, 9.0) and path[-1] == (25.0, 9.0)
-    assert all(y == 9.0 for _, y in path)
-
-
-def test_estuary_path_none_needed_or_found() -> None:
-    grid, estuary, sea = estuary_scene()
-    assert estuary_path((24.0, 9.0), estuary, sea, grid, reach=40) == []  # already at the sea
-    assert estuary_path((9.0, 2.0), estuary, sea, grid, reach=40) == []  # no estuary next to it
-    assert estuary_path((9.0, 9.0), estuary, sea, grid, reach=5) == []  # the sea is out of reach
-
-
-def test_extend_to_sea_extends_mouths_only() -> None:
-    grid, estuary, sea = estuary_scene()
-    main = shapely.LineString([(0, 9), (5, 9), (9, 9)])  # flows east into the estuary
-    tributary = shapely.LineString([(5, 0), (5, 9)])  # joins it: that end is no mouth
-    rivers = gpd.GeoDataFrame({"scalerank": [1, 5]}, geometry=[main, tributary])
-    out = extend_to_sea(rivers, estuary, sea, grid, 200)
-    assert list(out.geometry[0].coords) == [(0, 9), (5, 9), (9, 9), (25, 9)]
-    assert out.geometry[1].equals(tributary)

@@ -52,7 +52,7 @@ Importing any module has no side effects; only `cli.main` (after choosing the ba
 | `colorspace.py` | OKLab/OKLCH conversions, `fit_gamut`, `darken` |
 | `coloring.py` | `merge_into_parents`, `adjacency`, `add_proximity_edges`, `color_graph`, `make_palette`, `load_or_compute_coloring` (cache), `spot_check`, `OCEAN` |
 | `disputed.py` | `--disputed`: `parse_note`, `ALIASES`, `HAND_CLAIMS`, `LABEL_TEXT`, `Dispute`, `load_disputes`, `dispute_edges`, `dispute_fills`, `stripe_parts`, `border_lines`, `disputed_label_args` |
-| `topographic.py` | `--type topographic`: `elevation_grid` (ETOPO -> cached 3' grid), `sample`, `Scale` (`LAND`, `SEA`, `ICE`), `Contours`, `colorize`, `relief`, `shade`, `poster_grid`, `polygon_mask`, `despeckle`, `solid_field`, `surfaces`, `coast_lines`, `grow`, `estuary_path`, `extend_to_sea`, `draw_topography` |
+| `topographic.py` | `--type topographic`: `elevation_grid` (ETOPO -> cached 3' grid), `sample`, `Scale` (`LAND`, `SEA`, `ICE`), `Contours`, `colorize`, `relief`, `shade`, `poster_grid`, `polygon_mask`, `coastline`, `draw_topography` |
 | `colorbars.py` | `--type topographic`: `bar_region`, `globe_side`, `curved_title`, `draw_colorbar` (right-triangle bars in the canvas corners) |
 | `earth.py` | `--color earth`: `earth_values` (raster sampling, cache), `earth_fill`, `build_regions`, `fill_at` |
 | `pins.py` | `load_pins`, `PinStyle` (every sprite shading constant), `pin_sprite`, `draw_pins`, `pick_pins` |
@@ -153,13 +153,10 @@ or country labels run. `--color`, `--disputed`, `--recolor` and `--label countri
   `VERT_EXAG`, `LAND_SHADE`, `SEA_SHADE`.
 - Layers: raster at `Z_COUNTRY` clipped to the outline, contours just above (`LAND_CONTOURS`, `ICE_CONTOURS`,
   `SEA_CONTOURS`, dashed), coastline at `Z_BORDERS`, lakes at `Z_LAKES`, colour bars at `Z_GLOBE`. The coastline
-  (`coast_lines`) is the 0.5 contour of the smoothed land-or-ice mask, not Natural Earth's outlines: those disagree
-  around Antarctica and left stray dashes.
-- Land/water specks (`surfaces`): patches under `SPECK_PX` = 4 pixels at 200 dpi (islets, river bits) are flipped by
-  rasterio's `sieve` (`despeckle`), then land/ice is coloured where `solid_field` (despeckled + smoothed) is > 0.5,
-  the same field whose 0.5 contour is the coastline, so no land shows without a coast. Filled water specks take
-  the land or ice around them. 8+ px starts deleting visible Aegean islands.
-- Memory: a 200 dpi run peaks around 3.5 GB. Work in blocks or in place on the whole-poster arrays; don't use
+  (`coastline`) is the outline of the union of the land and ice polygons, as in the political map, minus the
+  slivers the union leaves where ice shelves meet land (`SLIVER_M2`, `SLIVER_HOLE_M2`; they drew stray dashes).
+  It takes ~3 s. Tracing it from the smoothed pixel mask instead rounded the coast and left river mouths inland.
+- Memory: a 200 dpi run peaks around 3 GB. Work in blocks or in place on the whole-poster arrays; don't use
   `ax.contour` (its ContourSet keeps a float64 copy of the grid per call, ~665 MB each), use `contour_lines` (contourpy).
 - Colour bars (`colorbars.py`): height bottom-right, depth top-right (`--ocean` only), ice bottom-left. Each is its
   corner quadrant minus the globe grown by `BAR_GAP_IN`, minus `BAR_MARGIN_IN`; signed labels in the gap with a white
@@ -228,11 +225,7 @@ than the ocean so it shows on every fill), `river_width` thinning linearly from 
 thin ones first. `Z_RIVERS` = 2.2: above the state lines, below the lakes, which hide the centrelines through them.
 Labels ignore them.
 
-`--type topographic`: `draw_topography(rivers=)` draws them. Its coastline is smoothed, which fills in estuaries a
-pixel or two wide, so ~140 of ~420 river mouths ended inland (Elbe, Tagus, Hudson, deltas). `extend_to_sea` carries
-each mouth (an end no other river line shares) along a shortest 8-connected path (`estuary_path`, straight steps
-first) through the filled-in pixels, Natural Earth's water `grow`n by a pixel to join broken channels, to the sea,
-within `MOUTH_REACH_PX`; ~14 still end > 2 px inland (fjords, long narrow inlets).
+`--type topographic` draws them too.
 
 ## River labels (`--label rivers`)
 
