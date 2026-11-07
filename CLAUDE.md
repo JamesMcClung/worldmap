@@ -153,12 +153,9 @@ or country labels run. `--color`, `--disputed`, `--recolor` and `--label countri
   `VERT_EXAG`, `LAND_SHADE`, `SEA_SHADE`.
 - Layers: raster at `Z_COUNTRY` clipped to the outline, contours just above (`LAND_CONTOURS`, `ICE_CONTOURS`,
   `SEA_CONTOURS`, dashed), coastline at `Z_BORDERS`, lakes at `Z_LAKES`, colour bars at `Z_GLOBE`. The coastline
-  (`coastline`) is the outline of the union of the land and ice polygons, so it matches the political map's coast
-  and rivers reach it. The union leaves ~3,700 sliver holes (< ~1 km^2) and a few < 1 m^2 pieces where the ice
-  shelves meet the land, which drew stray dashes: holes under `SLIVER_HOLE_M2` (the Caspian is the one real hole)
-  and pieces under `SLIVER_M2` (the smallest islet is ~2,300 m^2) are dropped. The union takes ~3 s.
-  (It used to be the 0.5 contour of the smoothed, despeckled pixel mask: that rounded the coast, dropped islets
-  and filled in estuaries, leaving ~140 river mouths inland.)
+  (`coastline`) is the outline of the union of the land and ice polygons, as in the political map, minus the
+  slivers the union leaves where ice shelves meet land (`SLIVER_M2`, `SLIVER_HOLE_M2`; they drew stray dashes).
+  It takes ~3 s. Tracing it from the smoothed pixel mask instead rounded the coast and left river mouths inland.
 - Memory: a 200 dpi run peaks around 3 GB. Work in blocks or in place on the whole-poster arrays; don't use
   `ax.contour` (its ContourSet keeps a float64 copy of the grid per call, ~665 MB each), use `contour_lines` (contourpy).
 - Colour bars (`colorbars.py`): height bottom-right, depth top-right (`--ocean` only), ice bottom-left. Each is its
