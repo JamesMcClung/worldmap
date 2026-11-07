@@ -3,15 +3,14 @@ import numpy as np
 import pytest
 import shapely
 import shapely.affinity
-from shapely.geometry import Point
+from shapely.geometry import LineString, Point
 
 from worldmap.curves import arc_lengths, bend
 from worldmap.data import load_lakes, project
 from worldmap.frame import MapFrame, make_frame
-from shapely.geometry import LineString
-
-from worldmap.labels.water import RIVER_MAX_PT, RIVER_MIN_PT, best_stretch, longest_paths, river_name, river_size
-from worldmap.labels.water import OCEAN_MIN_PT, OCEAN_PT, SEA_MAX_PT, WATER_MIN_INSIDE, WATER_MIN_PT, WATER_TEXT, classify, fit_curve, kinds_from_labels, load_water_bodies, make_water_labels
+from worldmap.labels.water import (OCEAN_MIN_PT, OCEAN_PT, RIVER_MAX_PT, RIVER_MIN_PT, SEA_MAX_PT, WATER_MIN_INSIDE, WATER_MIN_PT,
+                                   WATER_TEXT, best_stretch, classify, fit_curve, kinds_from_labels, load_water_bodies,
+                                   longest_paths, make_water_labels, river_name, river_size)
 
 
 @pytest.fixture(scope="module")
