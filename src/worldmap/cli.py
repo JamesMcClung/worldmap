@@ -17,7 +17,7 @@ from shapely.geometry import Point
 from worldmap.colorbars import draw_colorbar
 from worldmap.coloring import Coloring, load_or_compute_coloring, make_palette, spot_check
 from worldmap.colorspace import RGB
-from worldmap.data import is_labeled, load_countries, load_disputed, load_lakes, load_states, parent_index, project
+from worldmap.data import is_labeled, load_countries, load_disputed, load_lakes, load_rivers, load_states, parent_index, project
 from worldmap.disputed import DISPUTED_GREY, STRIPE_WIDTH_IN, border_lines, dispute_edges, disputed_label_args, load_disputes
 from worldmap.earth import Fill, build_regions, fill_at
 from worldmap.frame import DPI, MapFrame, make_frame
@@ -26,7 +26,7 @@ from worldmap.labels.placement import place_with_water
 from worldmap.labels.regions import child_regions
 from worldmap.labels.water import WATER_KINDS, kinds_from_labels, load_water_bodies, make_water_labels
 from worldmap.pins import draw_pins, load_pins, pick_pins, pin_sprite
-from worldmap.render import draw_borders, draw_countries, draw_labels, draw_lakes, draw_states, draw_stripes, draw_water_labels, new_figure, subtract_lakes
+from worldmap.render import draw_borders, draw_countries, draw_labels, draw_lakes, draw_rivers, draw_states, draw_stripes, draw_water_labels, new_figure, subtract_lakes
 from worldmap.topographic import ICE, ICE_CONTOURS, LAND, LAND_CONTOURS, SEA, SEA_CONTOURS, draw_topography
 
 
@@ -74,6 +74,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         "(and gulfs, bays...), lakes; water = oceans, seas, lakes, straits and channels")
     p.add_argument("--disputed", action="store_true",
                    help="stripe disputed areas in the colours of the countries involved and dash their borders")
+    p.add_argument("--rivers", action="store_true", help="draw the major rivers")
     p.add_argument("--pins", metavar="FILE", help="draw the pins listed in FILE (one lon,lat per line)")
     p.add_argument("--pin-size", metavar="INCHES", type=float, default=DEFAULT_PIN_SIZE_IN,
                    help="pin diameter in inches on the 36 in poster (default %(default)s)")
@@ -132,6 +133,8 @@ def main(argv: list[str] | None = None) -> None:
     if args.disputed:
         draw_borders(ax, *border_lines(countries_p, disputes, parent_index(countries)))
     draw_states(ax, states_p, args.disputed)
+    if args.rivers:
+        draw_rivers(ax, project(load_rivers()))
     draw_lakes(ax, lakes_p)
     countries_p = subtract_lakes(countries_p, lakes_p)
     ax.set_xlim(frame.xmin, frame.xmax)
@@ -170,6 +173,8 @@ def draw_topographic(args: argparse.Namespace, out: str, frame: MapFrame) -> Non
     start = time.perf_counter()
     fig, ax = new_figure(frame)
     draw_topography(ax, frame, args.dpi, args.ocean)
+    if args.rivers:
+        draw_rivers(ax, project(load_rivers()))
     draw_colorbar(ax, frame, "br", LAND, "Height", LAND_CONTOURS)
     if args.ocean:
         draw_colorbar(ax, frame, "tr", SEA, "Depth", SEA_CONTOURS)

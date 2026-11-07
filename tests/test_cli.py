@@ -51,3 +51,8 @@ def test_type_flag() -> None:
     with pytest.raises(SystemExit) as e:
         parse_args(["--type", "sky"])
     assert e.value.code == 2
+
+
+def test_rivers_flag() -> None:
+    assert not parse_args([]).rivers
+    assert parse_args(["--rivers"]).rivers
