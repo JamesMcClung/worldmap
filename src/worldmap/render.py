@@ -17,6 +17,7 @@ from shapely.geometry.polygon import orient
 from shapely.ops import unary_union
 
 from worldmap.coloring import OCEAN
+from worldmap.data import RIVER_MAX_RANK
 from worldmap.disputed import Dispute, dispute_fills, stripe_parts
 from worldmap.earth import Fill, Regions
 from worldmap.frame import DPI, POSTER_WIDTH_IN, MapFrame
@@ -32,9 +33,12 @@ BORDER_WIDTH = 0.6
 STATE_LINE_WIDTH = 0.35
 LEADER_WIDTH = 0.7
 LEADER_DOT_SIZE = 1.3
+RIVER = "#2d76a3"  # OKLCH (0.54, 0.10, 240): near the ocean's hue, dark enough to show on every fill
+RIVER_WIDTH_MAX, RIVER_WIDTH_MIN = 1.6, 0.3  # line widths (pt) at scalerank 0 and RIVER_MAX_RANK
 BORDER_DASH = (0, (2.5, 1.5))  # --disputed: borders between a disputed area and the countries involved
 # Drawing order, bottom to top (pins are at 10, labels at 6). Borders sit below the lakes so they don't cross them.
 Z_OCEAN, Z_COUNTRY, Z_STRIPES, Z_BAIKONUR_EDGE, Z_BORDERS, Z_STATES, Z_LAKES, Z_GLOBE, Z_LEADERS = 0, 1, 1.5, 1.6, 1.7, 2, 2.5, 3, 4
+Z_RIVERS = 2.2  # above the state lines, below the lakes (which hide the lake centrelines)
 Z_STATES_UNDER_BORDERS = 1.65  # --disputed: state lines above the stripes, below the (dashed) borders
 
 
@@ -119,6 +123,23 @@ def draw_lakes(ax: Axes, lakes_projected: gpd.GeoDataFrame) -> None:
     the shore), above the state lines, which also cross them."""
     for g in lakes_projected.geometry:
         ax.add_collection(PatchCollection(list(holed_patches(g)), fc=OCEAN, ec=BORDER, lw=BORDER_WIDTH, zorder=Z_LAKES))
+
+
+def river_width(rank: int) -> float:
+    """Line width (pt) of a river of Natural Earth scalerank `rank`, thinning linearly to RIVER_MAX_RANK."""
+    t = min(max(rank, 0), RIVER_MAX_RANK) / RIVER_MAX_RANK
+    return RIVER_WIDTH_MAX + t * (RIVER_WIDTH_MIN - RIVER_WIDTH_MAX)
+
+
+def draw_rivers(ax: Axes, rivers_projected: gpd.GeoDataFrame) -> None:
+    """--rivers: centrelines, widest for the most important. Thin ones go first, so big rivers run over their tributaries."""
+    rivers = rivers_projected.sort_values("scalerank", ascending=False, kind="stable")
+    lines, widths = [], []
+    for rank, geom in zip(rivers.scalerank, rivers.geometry):
+        for line in line_coords(geom):
+            lines.append(line)
+            widths.append(river_width(rank))
+    ax.add_collection(LineCollection(lines, colors=RIVER, linewidths=widths, capstyle="round", joinstyle="round", zorder=Z_RIVERS))
 
 
 def subtract_lakes(countries_projected: gpd.GeoDataFrame, lakes_projected: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
