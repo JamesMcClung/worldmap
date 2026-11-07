@@ -22,7 +22,7 @@ relative to `data.py` (`CACHE`), so the package must be installed editable (`-e`
 
 ## Tests
 
-`.venv/bin/pytest` (~135 s). Unit tests cover the pure pieces (colour maths, `color_graph`, pin parsing and sprite, label geometry,
+`.venv/bin/pytest` (~155 s). Unit tests cover the pure pieces (colour maths, `color_graph`, pin parsing and sprite, label geometry,
 CLI errors), and `test_import_has_no_pyplot` guards that importing any module doesn't pick a matplotlib backend (`--pick` needs to).
 `test_regression.py` renders the default, `--color earth`, `--pins`, `--label countries,territories`, `--label countries,water` (`water`), `--disputed`, `--rivers`, `--type topographic`, `--type topographic --ocean` and `--type topographic --label water` (`topographic_water`) maps in a subprocess and compares a SHA-256 of the decoded pixels
 with `tests/fingerprints.json`:
@@ -35,7 +35,7 @@ with `tests/fingerprints.json`:
   (or deleting `earth.json`) to be exercised.
 - `conftest.private_caches` (session, autouse) points the in-process tests' `coloring.json`/`earth.json` at a temp copy, so a
   test with other inputs can't overwrite the real caches; the render subprocesses still read the real ones.
-- `conftest.environment(mode)` keys data files per mode (`raster` for earth, ETOPO etc. for topographic*, `marine` for *water*, `rivers` for *rivers*):
+- `conftest.environment(mode)` keys data files per mode (`raster` for earth, ETOPO etc. for topographic*, `marine` for *water*, `rivers` for *river* and *water*):
   a new key on an existing mode would make it skip, so add keys only for the modes that use them.
 
 `.venv/bin/mypy src` should report no issues (default mode, missing stubs ignored).
@@ -52,14 +52,14 @@ Importing any module has no side effects; only `cli.main` (after choosing the ba
 | `colorspace.py` | OKLab/OKLCH conversions, `fit_gamut`, `darken` |
 | `coloring.py` | `merge_into_parents`, `adjacency`, `add_proximity_edges`, `color_graph`, `make_palette`, `load_or_compute_coloring` (cache), `spot_check`, `OCEAN` |
 | `disputed.py` | `--disputed`: `parse_note`, `ALIASES`, `HAND_CLAIMS`, `LABEL_TEXT`, `Dispute`, `load_disputes`, `dispute_edges`, `dispute_fills`, `stripe_parts`, `border_lines`, `disputed_label_args` |
-| `topographic.py` | `--type topographic`: `elevation_grid` (ETOPO -> cached 3' grid), `sample`, `Scale` (`LAND`, `SEA`, `ICE`), `Contours`, `colorize`, `relief`, `shade`, `poster_grid`, `polygon_mask`, `despeckle`, `solid_field`, `surfaces`, `coast_lines`, `draw_topography` |
+| `topographic.py` | `--type topographic`: `elevation_grid` (ETOPO -> cached 3' grid), `sample`, `Scale` (`LAND`, `SEA`, `ICE`), `Contours`, `colorize`, `relief`, `shade`, `poster_grid`, `polygon_mask`, `despeckle`, `solid_field`, `surfaces`, `coast_lines`, `grow`, `estuary_path`, `extend_to_sea`, `draw_topography` |
 | `colorbars.py` | `--type topographic`: `bar_region`, `globe_side`, `curved_title`, `draw_colorbar` (right-triangle bars in the canvas corners) |
 | `earth.py` | `--color earth`: `earth_values` (raster sampling, cache), `earth_fill`, `build_regions`, `fill_at` |
 | `pins.py` | `load_pins`, `PinStyle` (every sprite shading constant), `pin_sprite`, `draw_pins`, `pick_pins` |
 | `labels/label.py` | `Label` dataclass, `make_labels` (anchors, sizes, exclaves), `decide_out_and_wrap` |
 | `labels/regions.py` | `--label territories`: `ChildRegion`, `HAND_PICKED` (parent + lon/lat boxes), `child_regions` |
-| `labels/water.py` | `--label oceans,seas,lakes,water`: `kinds_from_labels`, `classify`, `WaterBody`, `load_water_bodies`, `fit_curve`, `body_curve`, `WaterLabel`, `make_water_labels`, style constants |
-| `labels/placement.py` | `CostWeights`, `Placement` (per-label arrays, water glyph boxes), `cost_batch`/`water_cost`, `candidates`, `clashes`, `place_labels`, `place_with_water` (drop loop), `leader_ends` |
+| `labels/water.py` | `--label oceans,seas,lakes,straits,rivers,water`: `kinds_from_labels`, `classify`, `WaterBody`, `load_water_bodies`, `river_name`, `longest_paths`, `load_river_bodies`, `best_stretch`, `river_label`, `fit_curve`, `body_curve`, `WaterLabel`, `make_water_labels`, style constants |
+| `labels/placement.py` | `CostWeights`, `Placement` (per-label arrays, water glyph boxes), `cost_batch`/`water_cost`, `candidates`, `clashes`, `place_labels` (`fixed`), `place_with_water` (drop loop), `place_all` (rivers last), `leader_ends` |
 | `labels/geometry.py` | `rect`, `nearest_point_on_rect`, `segment_hits_rects`, `segments_cross`, `two_line` |
 | `curves.py` | `arc_lengths`, `along`, `bend` (points along a polyline + its left normal): text bending for `colorbars.curved_title` and water labels |
 | `render.py` | `new_figure`, `draw_countries`, `draw_stripes`, `draw_borders`, `draw_states`, `draw_rivers`, `draw_lakes`, `subtract_lakes`, `draw_labels`, `draw_water_labels`, line widths and z-orders |
@@ -198,7 +198,7 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
 ## Water labels (`labels/water.py`)
 
 - Bodies: Natural Earth `ne_10m_geography_marine_polys` (`data.MARINE`, rough label areas, never drawn) + the drawn lakes.
-  `classify`: ocean -> oceans; sea/gulf/bay/sound/fjord/lagoon/inlet -> seas; strait/channel -> straits (only via `water`);
+  `classify`: ocean -> oceans; sea/gulf/bay/sound/fjord/lagoon/inlet -> seas; strait/channel -> straits;
   reefs, rivers, unnamed `generic` areas and names ending " River" (Saint Lawrence is a 'channel') never. North + South
   Atlantic are one ATLANTIC; the Pacific is split at x = 0 into two bodies. Each body is labelled once, on its largest
   polygon; order = oceans, then scalerank, then area (most important first; the drop loop removes from the end).
@@ -226,13 +226,36 @@ Natural Earth `ne_10m_rivers_lake_centerlines` (`data.RIVERS`), scalerank 0 (big
 9+ are short tributaries, canals are dropped. `render.draw_rivers` draws them in `RIVER` (OKLCH 0.54/0.10/240, darker
 than the ocean so it shows on every fill), `river_width` thinning linearly from `RIVER_WIDTH_MAX` to `RIVER_WIDTH_MIN`,
 thin ones first. `Z_RIVERS` = 2.2: above the state lines, below the lakes, which hide the centrelines through them.
-Political maps draw them before the lakes; `--type topographic` after `draw_topography` (same z-order). Labels
-ignore them.
+Labels ignore them.
+
+`--type topographic`: `draw_topography(rivers=)` draws them. Its coastline is smoothed, which fills in estuaries a
+pixel or two wide, so ~140 of ~420 river mouths ended inland (Elbe, Tagus, Hudson, deltas). `extend_to_sea` carries
+each mouth (an end no other river line shares) along a shortest 8-connected path (`estuary_path`, straight steps
+first) through the filled-in pixels, Natural Earth's water `grow`n by a pixel to join broken channels, to the sea,
+within `MOUTH_REACH_PX`; ~14 still end > 2 px inland (fjords, long narrow inlets).
+
+## River labels (`--label rivers`)
+
+- `rivers` is a water kind; `water` = all kinds (oceans, seas, lakes, straits, rivers). `--label rivers` or `water`
+  also draws the rivers (`cli.draws_rivers`).
+- Bodies (`load_river_bodies`): the drawn rivers grouped by `river_name(name_en)` (English, merges Rhein/Rhin; drops
+  " River", `NOT_RIVERS` delta channels and canals, `RIVER_NAMES` fixes), scalerank <= `RIVER_LABEL_MAX_RANK`. Natural
+  Earth breaks rivers at lakes, reservoirs and junctions, so `longest_paths` joins ends within `RIVER_JOIN_M` and takes
+  the longest path through each network's maximum spanning tree (an exhaustive search blew up on deltas). Same-named
+  networks `RIVER_REPEAT_M` apart are labelled separately (Colorado US/Argentina). `WaterBody.geom` is the line.
+- `river_label`: italic, `river_size` by rank; `best_stretch` picks the straightest, most level stretch near the middle
+  for the name + an em; `fit_curve` on it; `lay_out(rise=)` puts the baseline `RIVER_GAP_EM` above the curve plus
+  however far the river wiggles above it (`height_above`). Its `geom` is a `RIVER_CORRIDOR_EM` buffer of the whole river.
+- Placement: `place_all` places countries + other water first, then the rivers with all of those `fixed` (so a river
+  name can't push a country label off its country: it once moved Czech Republic to Denmark). Rivers come last, so the drop loop drops them first. Drawn in `RIVER_TEXT` with the country labels' white halo.
+- `--label countries,rivers` takes ~13 s; ~180 river names kept.
 
 ## Gotchas
 
 - macOS BSD `sed -i` needs `sed -i ''`; prefer python/Edit for file edits.
 - Keep scratch files (previews, crops, simulations) in the session scratchpad, not the project dir.
+- Leave `README.md` and `examples/` alone until the branch's work is done, and ask before updating them: every
+  re-rendered PNG adds 0.5-2.5 MB to the repo history.
 - Natural Earth `TYPE` includes odd features (Baikonur, Bir Tawil, Siachen, UN buffer zone...) that are drawn but
   deliberately not labelled. `NAME_EN` is used as the country key.
 - The antimeridian: projection is centred on lon 0 and clipped to +-180; across-water adjacency uses a +-world-width

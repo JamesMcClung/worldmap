@@ -24,7 +24,8 @@ make_map                      # writes worldmap.png
 make_map out.png              # choose the output file
 make_map --color earth        # natural colours (sand to green) from Natural Earth land-cover imagery
 make_map --label countries,territories  # also label dependencies and outlying regions, e.g. "Alaska (US)"
-make_map --label countries,water  # also name the oceans, seas, lakes and straits
+make_map --label countries,water  # also name the oceans, seas, lakes, straits and rivers
+make_map --label countries,rivers  # draw the major rivers and name them
 make_map --disputed           # stripe disputed areas (Kashmir, Crimea, Taiwan...) in their claimants' colours
 make_map --rivers             # draw the major rivers (also with --type topographic)
 make_map --type topographic --ocean  # heights and sea depths instead of countries
@@ -37,7 +38,7 @@ make_map --pins pins.txt      # draw the pins; writes worldmap_pins.png
 | `--type TYPE` | `political` (default): countries, borders and labels. `topographic`: heights with hill shading and contours (land below sea level, like the Dead Sea shore, stays land), ice sheets and glaciers on their own scale, colour bars in the corners, no borders, and only water labels if `--label` asks for them (`--color`, `--disputed`, `--recolor` and the `countries`/`territories` labels are ignored). The first run downloads ~470 MB of elevation data (ETOPO 2022). |
 | `--ocean` | With `--type topographic`, colour the sea by depth, with depth contours and a depth colour bar. Ignored with `--type political`. |
 | `--color NAME` | How countries are filled. `colorblind` (default): distinct colours that red/green colour-blind viewers can tell apart. `earth`: each region coloured by what it looks like from space; the first run downloads a ~75 MB raster. |
-| `--label LIST` | What to label: a comma-separated list, or `none`. `countries` (default): sovereign countries. `territories`: dependencies (Greenland, Bermuda, Guam...) and outlying parts of countries (Alaska, Tasmania, Kaliningrad...), in italics with the parent country in parentheses. `oceans`, `seas` (with gulfs, bays, sounds...), `lakes`: water names in blue, curved along each body; `water` = all three plus straits and channels. Water names that don't fit are left out, never the country names. The list replaces the default, so `--label territories` labels territories only. |
+| `--label LIST` | What to label: a comma-separated list, or `none`. `countries` (default): sovereign countries. `territories`: dependencies (Greenland, Bermuda, Guam...) and outlying parts of countries (Alaska, Tasmania, Kaliningrad...), in italics with the parent country in parentheses. `oceans`, `seas` (with gulfs, bays, sounds...), `lakes`, `straits` (with channels): water names in blue, curved along each body. `rivers`: river names in italic blue along each river (draws the rivers too, as `--rivers`; works with `--type topographic`). `water`: all of these. Water and river names that don't fit are left out, never the country names. The list replaces the default, so `--label territories` labels territories only. |
 | `--rivers` | Draw the major rivers (Natural Earth's river and lake centrelines), wider for the more important ones. Works with both map types. |
 | `--disputed` | Draw disputed areas (from Natural Earth's disputed-areas data) in equal stripes of the colours of every country involved: the one running it and its claimants. Areas with 3 or more countries are plain grey; self-governing areas with no country of their own (Abkhazia, Transnistria...) alternate their parent's colour with grey. Borders between a disputed area and the countries involved are dashed. Self-governing areas (Taiwan, Somaliland, Northern Cyprus, Abkhazia...) get labels; the rest don't. With `--color earth`, only the dashed borders and labels. |
 | `--pins FILE` | Draw pins from `FILE`, one `lon,lat` per line (`#` starts a comment). |
@@ -62,13 +63,14 @@ make_map examples/colorblind.png --dpi 50
 
 ![World map in colour-blind-friendly colours](examples/colorblind.png)
 
-Natural colours with `--color earth`:
+Natural colours with `--color earth`, and the oceans, seas, lakes, straits and rivers named instead of the countries
+(`--label water`):
 
 ```
-make_map examples/earth.png --color earth --dpi 50
+make_map examples/earth.png --color earth --label water --dpi 50
 ```
 
-![World map in natural colours](examples/earth.png)
+![World map in natural colours with water names](examples/earth.png)
 
 Disputed areas with `--disputed`:
 
@@ -85,14 +87,6 @@ make_map examples/topographic.png --type topographic --ocean --dpi 50
 ```
 
 ![Topographic world map with sea depths](examples/topographic.png)
-
-Oceans, seas, lakes and straits named, `--label countries,water`:
-
-```
-make_map examples/water.png --label countries,water --dpi 50
-```
-
-![World map with ocean, sea and lake names](examples/water.png)
 
 Pins from [`examples/pins.txt`](examples/pins.txt), a list of 23 large cities:
 
@@ -114,7 +108,7 @@ A pin file has one `lon,lat` per line, and `#` starts a comment:
 
 ```
 pip install -e '.[dev]'
-pytest           # ~135 s: unit tests plus pixel-exact renders of the default, --color earth, --pins, --label countries,territories, --label countries,water, --disputed, --rivers and three topographic maps
+pytest           # ~155 s: unit tests plus pixel-exact renders of the default, --color earth, --pins, --label countries,territories, --label countries,water, --disputed, --rivers and three topographic maps
 mypy src
 ```
 
