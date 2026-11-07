@@ -16,7 +16,7 @@ from shapely.geometry.base import BaseGeometry
 
 from worldmap.coloring import OCEAN
 from worldmap.colorspace import RGB, fit_gamut, srgb_to_oklch
-from worldmap.curves import arc_lengths, bend
+from worldmap.curves import along, arc_lengths, bend
 from worldmap.data import load_marine, load_rivers, project
 from worldmap.frame import DPI, MapFrame
 
@@ -371,11 +371,6 @@ def river_size(rank: int) -> float:
     """A river name's size (pt) from its scalerank."""
     t = min(max(rank - 1, 0), RIVER_LABEL_MAX_RANK - 1) / (RIVER_LABEL_MAX_RANK - 1)
     return RIVER_MAX_PT + t * (RIVER_MIN_PT - RIVER_MAX_PT)
-
-
-def along(pts: np.ndarray, s: np.ndarray, u: np.ndarray) -> np.ndarray:
-    """The points at distances `u` along the polyline `pts` (cumulative lengths `s`)."""
-    return np.stack([np.interp(u, s, pts[:, 0]), np.interp(u, s, pts[:, 1])], axis=-1)
 
 
 def best_stretch(pts: np.ndarray, length: float) -> np.ndarray:

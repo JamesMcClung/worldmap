@@ -61,7 +61,7 @@ Importing any module has no side effects; only `cli.main` (after choosing the ba
 | `labels/water.py` | `--label oceans,seas,lakes,water`: `kinds_from_labels`, `classify`, `WaterBody`, `load_water_bodies`, `fit_curve`, `body_curve`, `WaterLabel`, `make_water_labels`, style constants |
 | `labels/placement.py` | `CostWeights`, `Placement` (per-label arrays, water glyph boxes), `cost_batch`/`water_cost`, `candidates`, `clashes`, `place_labels`, `place_with_water` (drop loop), `leader_ends` |
 | `labels/geometry.py` | `rect`, `nearest_point_on_rect`, `segment_hits_rects`, `segments_cross`, `two_line` |
-| `curves.py` | `arc_lengths`, `bend` (points along a polyline + its left normal): text bending for `colorbars.curved_title` and water labels |
+| `curves.py` | `arc_lengths`, `along`, `bend` (points along a polyline + its left normal): text bending for `colorbars.curved_title` and water labels |
 | `render.py` | `new_figure`, `draw_countries`, `draw_stripes`, `draw_borders`, `draw_states`, `draw_rivers`, `draw_lakes`, `subtract_lakes`, `draw_labels`, `draw_water_labels`, line widths and z-orders |
 
 Pipeline (`cli.main`):
