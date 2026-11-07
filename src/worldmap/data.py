@@ -128,7 +128,7 @@ def load_lakes() -> gpd.GeoDataFrame:
 
 def load_rivers() -> gpd.GeoDataFrame:
     """Rivers (and their centrelines through lakes) of scalerank <= RIVER_MAX_RANK; canals left out."""
-    rivers = gpd.read_file(fetch(RIVERS))[["name", "featurecla", "scalerank", "geometry"]]
+    rivers = gpd.read_file(fetch(RIVERS))[["name", "name_en", "featurecla", "scalerank", "geometry"]]
     return rivers[(rivers.scalerank <= RIVER_MAX_RANK) & (rivers.featurecla != "Canal")]
 
 
