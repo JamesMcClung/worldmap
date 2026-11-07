@@ -1,4 +1,4 @@
-from worldmap.data import is_labeled, load_countries, load_marine, parent_index
+from worldmap.data import RIVER_MAX_RANK, is_labeled, load_countries, load_marine, load_rivers, parent_index
 
 
 def test_dependencies_and_parents() -> None:
@@ -25,3 +25,10 @@ def test_load_marine() -> None:
     assert {"name", "featurecla", "scalerank"} <= set(marine.columns)
     assert (marine.featurecla == "ocean").sum() == 7
     assert "Mediterranean Sea" in set(marine.name)
+
+
+def test_load_rivers() -> None:
+    rivers = load_rivers()
+    assert rivers.scalerank.max() <= RIVER_MAX_RANK
+    assert "Canal" not in set(rivers.featurecla)
+    assert {"Amazonas", "Nile", "Mississippi", "Danube"} <= set(rivers.name)

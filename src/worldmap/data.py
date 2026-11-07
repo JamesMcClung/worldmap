@@ -22,13 +22,15 @@ GLACIERS = "ne_10m_glaciated_areas.zip"
 ICE_SHELVES = "ne_10m_antarctic_ice_shelves_polys.zip"
 LAND_OUTLINE = "ne_10m_land.zip"  # --type topographic: decides land vs water (heights alone get the Dead Sea wrong)
 MARINE = "ne_10m_geography_marine_polys.zip"  # named oceans, seas, bays, straits... (label areas, not coastlines)
-PHYSICAL = {LAKES, GLACIERS, ICE_SHELVES, LAND_OUTLINE, MARINE}  # under physical/ rather than cultural/
+RIVERS = "ne_10m_rivers_lake_centerlines.zip"  # --rivers: centrelines, joined up through the lakes they cross
+PHYSICAL = {LAKES, GLACIERS, ICE_SHELVES, LAND_OUTLINE, MARINE, RIVERS}  # under physical/ rather than cultural/
 # ETOPO 2022 (NOAA, public domain): land heights and sea depths in metres, 60 arc-second grid, top of the ice.
 ETOPO = "ETOPO_2022_v1_60s_N90W180_surface.tif"
 ETOPO_URL = "https://www.ngdc.noaa.gov/mgg/global/relief/ETOPO2022/data/60s/60s_surface_elev_gtif/" + ETOPO
 
 LAKE_MIN_KM2 = 2000  # lakes at least this big are drawn as water (~8 px across on the poster)
 DRY_LAKES = {"Lake Eyre North", "Lake Torrens", "Lake Gairdner", "Lake Mackay", "Lake Frome", "Lake Barlee"}  # Australian salt pans, usually dry
+RIVER_MAX_RANK = 8  # rivers of scalerank (0 = biggest) up to this are drawn; 9+ are short tributaries
 EQUAL_AREA_CRS = "+proj=eqearth"  # for lake areas
 
 CRS = "+proj=robin +lon_0=0 +datum=WGS84"  # the map's projection
@@ -122,6 +124,12 @@ def load_lakes() -> gpd.GeoDataFrame:
     lakes = gpd.read_file(fetch(LAKES))
     big = lakes.to_crs(EQUAL_AREA_CRS).area >= LAKE_MIN_KM2 * 1e6
     return lakes[big & ~lakes.name.isin(DRY_LAKES)]
+
+
+def load_rivers() -> gpd.GeoDataFrame:
+    """Rivers (and their centrelines through lakes) of scalerank <= RIVER_MAX_RANK; canals left out."""
+    rivers = gpd.read_file(fetch(RIVERS))[["name", "featurecla", "scalerank", "geometry"]]
+    return rivers[(rivers.scalerank <= RIVER_MAX_RANK) & (rivers.featurecla != "Canal")]
 
 
 def load_marine() -> gpd.GeoDataFrame:
