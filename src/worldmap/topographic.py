@@ -214,9 +214,8 @@ def polygon_mask(projected: gpd.GeoDataFrame, frame: MapFrame, pg: PosterGrid) -
 
 
 def coastline(land: gpd.GeoDataFrame, ice: gpd.GeoDataFrame) -> list[np.ndarray]:
-    """The coastline: the outline of Natural Earth's (projected) land and ice together, the political map's coast, with
-    glacier and ice-shelf edges on land left out. The union leaves thousands of slivers where the ice shelves meet
-    the land, which drew stray dashes; they are dropped."""
+    """The outline of the (projected) land and ice together, minus the slivers the union leaves where ice shelves
+    meet land."""
     union = shapely.union_all(np.concatenate([land.geometry.values, ice.geometry.values]))
     rings = []
     for part in shapely.get_parts(union):
