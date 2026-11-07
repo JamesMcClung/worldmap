@@ -22,7 +22,7 @@ from worldmap.disputed import DISPUTED_GREY, STRIPE_WIDTH_IN, border_lines, disp
 from worldmap.earth import Fill, build_regions, fill_at
 from worldmap.frame import DPI, MapFrame, make_frame
 from worldmap.labels.label import decide_out_and_wrap, make_labels
-from worldmap.labels.placement import place_with_water
+from worldmap.labels.placement import place_all
 from worldmap.labels.regions import child_regions
 from worldmap.labels.water import WATER_KINDS, kinds_from_labels, load_water_bodies, make_water_labels
 from worldmap.pins import draw_pins, load_pins, pick_pins, pin_sprite
@@ -148,7 +148,7 @@ def main(argv: list[str] | None = None) -> None:
     labels = make_labels(countries_p, frame, ax, renderer, fill_of, children, "countries" in args.label, relabel, extra)
     decide_out_and_wrap(labels, renderer)
     water = make_water_labels(load_water_bodies(kinds_from_labels(args.label), lakes_p), frame) if kinds_from_labels(args.label) else []
-    placement, water = place_with_water(labels, water, frame)
+    placement, water = place_all(labels, water, frame)
     draw_labels(ax, labels, placement, frame)
     draw_water_labels(ax, water, placement, frame)
 
@@ -181,7 +181,7 @@ def draw_topographic(args: argparse.Namespace, out: str, frame: MapFrame) -> Non
     draw_colorbar(ax, frame, "bl", ICE, "Ice", ICE_CONTOURS)
     kinds = kinds_from_labels(args.label)
     if kinds:  # without water kinds no label stage runs
-        placement, water = place_with_water([], make_water_labels(load_water_bodies(kinds, project(load_lakes())), frame), frame)
+        placement, water = place_all([], make_water_labels(load_water_bodies(kinds, project(load_lakes())), frame), frame)
         draw_water_labels(ax, water, placement, frame)
     ax.set_xlim(frame.xmin, frame.xmax)
     ax.set_ylim(frame.ymin, frame.ymax)
