@@ -177,9 +177,7 @@ def draw_topographic(args: argparse.Namespace, out: str, frame: MapFrame) -> Non
     """--type topographic: heights (and sea depths with --ocean), colour bars in the corners, pins; nothing political."""
     start = time.perf_counter()
     fig, ax = new_figure(frame)
-    draw_topography(ax, frame, args.dpi, args.ocean)
-    if draws_rivers(args):
-        draw_rivers(ax, project(load_rivers()))
+    draw_topography(ax, frame, args.dpi, args.ocean, project(load_rivers()) if draws_rivers(args) else None)
     draw_colorbar(ax, frame, "br", LAND, "Height", LAND_CONTOURS)
     if args.ocean:
         draw_colorbar(ax, frame, "tr", SEA, "Depth", SEA_CONTOURS)
