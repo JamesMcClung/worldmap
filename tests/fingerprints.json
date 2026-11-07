@@ -90,6 +90,25 @@
     },
     "sha256": "04201b3c8276a5aeb9cc7813dcc69b9b2f10059c069a206bbe52dd06845f5b72"
   },
+  "river_labels": {
+    "env": {
+      "countries": "4930492",
+      "disputed": "215221",
+      "freetype": "2.14.3",
+      "geopandas": "1.2.0",
+      "geos": "3.14.1",
+      "lakes": "2349685",
+      "matplotlib": "3.11.2",
+      "numpy": "2.5.4",
+      "pillow": "12.3.0",
+      "pyproj": "3.8.0",
+      "python": "3.14.10",
+      "rivers": "2079507",
+      "shapely": "2.2.0",
+      "states": "5993148"
+    },
+    "sha256": "10b43b6a6104e5f0a6b57b899f85280bf0a2d3880a2322c1b0c84994de59173a"
+  },
   "rivers": {
     "env": {
       "countries": "4930492",
