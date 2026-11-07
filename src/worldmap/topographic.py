@@ -15,7 +15,7 @@ import shapely
 from worldmap.coloring import OCEAN
 from worldmap.data import CACHE, ETOPO, fetch, load_ice, load_lakes, load_land, project
 from worldmap.frame import DPI, POSTER_WIDTH_IN, MapFrame
-from worldmap.render import BORDER, BORDER_WIDTH, Z_BORDERS, Z_COUNTRY, draw_lakes, draw_rivers
+from worldmap.render import BORDER, BORDER_WIDTH, Z_BORDERS, Z_COUNTRY, draw_lakes
 
 GRID_STEP_DEG = 0.05  # 3 arc-minutes: about one poster pixel at 200 dpi
 ELEVATION_RULE = "etopo2022-60s-mean-3min/v1"  # bump when the reduction changes, to rebuild the cached grid
@@ -237,9 +237,9 @@ def contour_lines(x: np.ndarray, y: np.ndarray, z: np.ma.MaskedArray, levels: np
     return lines
 
 
-def draw_topography(ax: Axes, frame: MapFrame, dpi: float, ocean: bool, rivers: gpd.GeoDataFrame | None = None) -> None:
+def draw_topography(ax: Axes, frame: MapFrame, dpi: float, ocean: bool) -> None:
     """Everything on the globe for --type topographic: the coloured, hill-shaded heights (sea depths with `ocean`),
-    contours, the coastline, the lakes and, if given, the (projected) rivers."""
+    contours, the coastline and the lakes."""
     pg = poster_grid(frame, dpi)
     z = sample(elevation_grid(), pg.lon, pg.lat)
     z[~pg.inside] = 0
@@ -248,8 +248,6 @@ def draw_topography(ax: Axes, frame: MapFrame, dpi: float, ocean: bool, rivers: 
     ice = polygon_mask(ice_shapes, frame, pg) & pg.inside  # ice wins: the shelves
     land = polygon_mask(land_shapes, frame, pg) & pg.inside & ~ice
     sea = ~land & ~ice & pg.inside
-    if rivers is not None:
-        draw_rivers(ax, rivers)
     shaded = shade(colorize(z, land, ice, ocean), z, frame.width / len(pg.x), sea, ocean)
     rgba = np.empty(z.shape + (4,), np.float32)  # allocated after shading, so the two peaks don't add up
     rgba[..., :3] = shaded

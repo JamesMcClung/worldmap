@@ -228,7 +228,7 @@ than the ocean so it shows on every fill), `river_width` thinning linearly from 
 thin ones first. `Z_RIVERS` = 2.2: above the state lines, below the lakes, which hide the centrelines through them.
 Labels ignore them.
 
-`--type topographic`: `draw_topography(rivers=)` draws them.
+`--type topographic` draws them too.
 
 ## River labels (`--label rivers`)
 
