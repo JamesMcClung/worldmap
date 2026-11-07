@@ -24,7 +24,7 @@ from worldmap.frame import DPI, POSTER_WIDTH_IN, MapFrame
 from worldmap.labels.label import Label
 from worldmap.labels.label import LABEL_ZORDER
 from worldmap.labels.placement import Placement, leader_ends
-from worldmap.labels.water import WATER_HALO, WATER_HALO_PX, WATER_TEXT, WaterLabel
+from worldmap.labels.water import RIVER_HALO, RIVER_TEXT, WATER_HALO, WATER_HALO_PX, WATER_TEXT, WaterLabel
 
 BORDER, STATE_LINE = "#3a3a3a", "#7d7d7d"
 ANTARCTICA_FILL = "#ffffff"  # Antarctica is drawn white and left unlabelled
@@ -164,11 +164,15 @@ def draw_labels(ax: Axes, labels: list[Label], placement: Placement, frame: MapF
 
 def draw_water_labels(ax: Axes, water: list[WaterLabel], placement: Placement, frame: MapFrame) -> None:
     """Each water label's bent glyphs at its placed position (the water labels come after the country labels in
-    `placement`), blue with a water-coloured halo, just under the country labels."""
+    `placement`), blue with a water-coloured halo (rivers: darker, with the country labels' halo), just under the
+    country labels."""
     first = placement.n - len(water)
     halo = [pe.withStroke(linewidth=WATER_HALO_PX * 72 / DPI, foreground=WATER_HALO)]
+    river_halo = [pe.withStroke(linewidth=WATER_HALO_PX * 72 / DPI, foreground=RIVER_HALO)]
     for k, label in enumerate(water):
+        river = label.kind == "rivers"
         vertices = np.asarray(label.glyphs.vertices) + [placement.x[first + k], placement.y[first + k]]
         x, y = frame.px_to_map(vertices[:, 0], vertices[:, 1])
         path = Path(np.stack([x, y], -1), label.glyphs.codes)
-        ax.add_patch(PathPatch(path, fc=WATER_TEXT, ec="none", lw=0, zorder=LABEL_ZORDER - 0.1, path_effects=halo))
+        ax.add_patch(PathPatch(path, fc=RIVER_TEXT if river else WATER_TEXT, ec="none", lw=0, zorder=LABEL_ZORDER - 0.1,
+                               path_effects=river_halo if river else halo))
