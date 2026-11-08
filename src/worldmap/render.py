@@ -20,7 +20,7 @@ from worldmap.coloring import OCEAN
 from worldmap.data import RIVER_MAX_RANK
 from worldmap.disputed import Dispute, dispute_fills, stripe_parts
 from worldmap.earth import Fill, Regions
-from worldmap.frame import DPI, POSTER_WIDTH_IN, MapFrame
+from worldmap.frame import DPI, MapFrame
 from worldmap.labels.label import Label
 from worldmap.labels.label import LABEL_ZORDER
 from worldmap.labels.placement import Placement, leader_ends
@@ -63,7 +63,7 @@ def new_figure(frame: MapFrame) -> tuple[Figure, Axes]:
     """Poster-sized figure, transparent outside the globe, with the ocean and the globe's outline drawn."""
     import matplotlib.pyplot as plt
 
-    fig = plt.figure(figsize=(POSTER_WIDTH_IN, POSTER_WIDTH_IN * frame.height / frame.width), dpi=DPI)
+    fig = plt.figure(figsize=(frame.width_in, frame.height_in), dpi=DPI)
     ax = fig.add_axes((0, 0, 1, 1))
     ax.set_xlim(frame.xmin, frame.xmax)
     ax.set_ylim(frame.ymin, frame.ymax)

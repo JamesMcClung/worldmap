@@ -36,9 +36,18 @@ class MapFrame:
         return self.ymax - self.ymin
 
     @property
+    def width_in(self) -> float:
+        """Poster width in inches: the long side is POSTER_WIDTH_IN."""
+        return POSTER_WIDTH_IN if self.width >= self.height else POSTER_WIDTH_IN * self.width / self.height
+
+    @property
+    def height_in(self) -> float:
+        return POSTER_WIDTH_IN * self.height / self.width if self.width >= self.height else POSTER_WIDTH_IN
+
+    @property
     def px_per_unit(self) -> float:
         """Poster pixels per map unit."""
-        return POSTER_WIDTH_IN * DPI / self.width
+        return self.width_in * DPI / self.width
 
     @property
     def units_per_in(self) -> float:

@@ -10,7 +10,7 @@ import numpy as np
 from matplotlib.axes import Axes
 from matplotlib.image import AxesImage
 
-from worldmap.frame import POSTER_WIDTH_IN, MapFrame
+from worldmap.frame import MapFrame
 
 LonLat = tuple[float, float]
 
@@ -127,7 +127,7 @@ def pin_sprite(diameter_px: float, style: PinStyle = PinStyle()) -> np.ndarray:
 
 def draw_pins(ax: Axes, frame: MapFrame, pins: Sequence[LonLat], sprite: np.ndarray, diameter_in: float, style: PinStyle = PinStyle()) -> list[AxesImage]:
     """Draw pins northernmost first, so southern ones overlap them. Returns the image artists."""
-    half = style.pad * diameter_in / 2 * frame.width / POSTER_WIDTH_IN
+    half = style.pad * diameter_in / 2 * frame.width / frame.width_in
     out = []
     for lon, lat in sorted(pins, key=lambda p: -p[1]):
         x, y = frame.to_map.transform(lon, lat)

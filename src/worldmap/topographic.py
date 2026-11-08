@@ -14,7 +14,7 @@ import shapely
 
 from worldmap.coloring import OCEAN
 from worldmap.data import CACHE, ETOPO, fetch, load_ice, load_lakes, load_land, project
-from worldmap.frame import DPI, POSTER_WIDTH_IN, MapFrame
+from worldmap.frame import DPI, MapFrame
 from worldmap.render import BORDER, BORDER_WIDTH, Z_BORDERS, Z_COUNTRY, draw_lakes
 
 GRID_STEP_DEG = 0.05  # 3 arc-minutes: about one poster pixel at 200 dpi
@@ -183,7 +183,7 @@ class PosterGrid:
 
 def poster_grid(frame: MapFrame, dpi: float) -> PosterGrid:
     """One cell per output pixel at min(dpi, DPI) (the elevation grid has no finer detail), with each cell's lon/lat."""
-    cols = round(POSTER_WIDTH_IN * min(dpi, DPI))
+    cols = round(frame.width_in * min(dpi, DPI))
     rows = round(cols * frame.height / frame.width)
     pw, ph = frame.width / cols, frame.height / rows
     x = frame.xmin + (np.arange(cols) + 0.5) * pw
