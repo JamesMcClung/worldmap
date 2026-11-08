@@ -7,7 +7,7 @@ large countries, non-overlapping country labels), or with `--type topographic` a
 
 ```
 python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'   # deps in pyproject.toml; [dev] adds pytest, mypy
-.venv/bin/make_map [out.png] [--type political|topographic] [--ocean] [--recolor] [--color colorblind|earth] [--label LIST] [--disputed] [--rivers] [--pins FILE] [--pin-size IN] [--dpi DPI] [--pick FILE]
+.venv/bin/make_map [out.png] [--type political|topographic] [--ocean] [--recolor] [--color colorblind|earth] [--label LIST] [--disputed] [--rivers] [--pins FILE] [--pin-size IN] [--dpi DPI] [--crop NAME|lon,lat:lon,lat] [--pick FILE]
 ```
 
 `--dpi` only changes the `savefig` dpi (and the pin sprite's pixel size): layout is always measured at
@@ -24,7 +24,7 @@ relative to `data.py` (`CACHE`), so the package must be installed editable (`-e`
 
 `.venv/bin/pytest` (~155 s). Unit tests cover the pure pieces (colour maths, `color_graph`, pin parsing and sprite, label geometry,
 CLI errors), and `test_import_has_no_pyplot` guards that importing any module doesn't pick a matplotlib backend (`--pick` needs to).
-`test_regression.py` renders the default, `--color earth`, `--pins`, `--label countries,territories`, `--label countries,water` (`water`), `--disputed`, `--rivers`, `--type topographic`, `--type topographic --ocean` and `--type topographic --label water` (`topographic_water`) maps in a subprocess and compares a SHA-256 of the decoded pixels
+`test_regression.py` renders the default, `--color earth`, `--pins`, `--label countries,territories`, `--label countries,water` (`water`), `--disputed`, `--rivers`, `--type topographic`, `--type topographic --ocean`, `--type topographic --label water` (`topographic_water`), `--crop France` (`crop`), a Bering Strait box crop with territories, water and `--disputed` (`crop_water`) and an Alps box crop with `--type topographic --ocean` (`topographic_crop`) maps in a subprocess and compares a SHA-256 of the decoded pixels
 with `tests/fingerprints.json`:
 - A commit that changes the output on purpose re-records with `UPDATE_REFERENCE=1 .venv/bin/pytest` and commits `fingerprints.json`
   in the same commit, saying in the body what changed visually. Refactors must leave the fingerprints unchanged.
@@ -47,13 +47,14 @@ Importing any module has no side effects; only `cli.main` (after choosing the ba
 | Module | Contents |
 |---|---|
 | `cli.py` | `parse_args` (`--label`: `label_kinds`, a list that replaces the default `countries`; `none` = no labels), `graph_fills` (palette + Baikonur), `main()`: the pipeline as a sequence of stage calls |
-| `data.py` | `fetch`, file names (`MARINE`: the marine label areas; `RIVERS`), `CRS`, `STATE_COUNTRIES`, lakes filter, `is_dependency`, `parent_index`, `is_labeled`, `load_*` (`load_rivers`: scalerank <= `RIVER_MAX_RANK`, no canals), `project` |
-| `frame.py` | `MapFrame` (transformers, globe outline, extent, `px_per_unit`, `units_per_in`, `to_px`, `px_to_map`), `make_frame`, `DPI`, `POSTER_WIDTH_IN` |
+| `data.py` | `fetch`, file names (`MARINE`: the marine label areas; `RIVERS`), `CRS`, `STATE_COUNTRIES`, lakes filter, `is_dependency`, `parent_index`, `is_labeled`, `load_*` (`load_rivers`: scalerank <= `RIVER_MAX_RANK`, no canals) |
+| `frame.py` | `MapFrame` (transformers, outline, extent, `crs`, `globe`, `clip`, `width_in`/`height_in`, `px_per_unit`, `units_per_in`, `canvas`, `project`, `visible`, `to_px`, `px_to_map`), `make_frame`, `cut`, `join_at_antimeridian`, `DPI`, `POSTER_WIDTH_IN` |
+| `crop.py` | `--crop`: `parse_box`, `box_region`, `sphere_centre`, `clip_boxes`, `crop_frame`, `Candidate`, `candidates`, `matches`, `describe`, `choose` |
 | `colorspace.py` | OKLab/OKLCH conversions, `fit_gamut`, `darken` |
 | `coloring.py` | `merge_into_parents`, `adjacency`, `add_proximity_edges`, `color_graph`, `make_palette`, `load_or_compute_coloring` (cache), `spot_check`, `OCEAN` |
 | `disputed.py` | `--disputed`: `parse_note`, `ALIASES`, `HAND_CLAIMS`, `LABEL_TEXT`, `Dispute`, `load_disputes`, `dispute_edges`, `dispute_fills`, `stripe_parts`, `border_lines`, `disputed_label_args` |
-| `topographic.py` | `--type topographic`: `elevation_grid` (ETOPO -> cached 3' grid), `sample`, `Scale` (`LAND`, `SEA`, `ICE`), `Contours`, `colorize`, `relief`, `shade`, `poster_grid`, `polygon_mask`, `coastline`, `draw_topography` |
-| `colorbars.py` | `--type topographic`: `bar_region`, `globe_side`, `curved_title`, `draw_colorbar` (right-triangle bars in the canvas corners) |
+| `topographic.py` | `--type topographic`: `elevation_grid` (ETOPO -> cached 3' grid), `sample`, `Scale` (`LAND`, `SEA`, `ICE`), `Contours`, `colorize`, `relief`, `shade`, `soften`, `poster_grid`, `polygon_mask`, `coastline`, `draw_topography` |
+| `colorbars.py` | `--type topographic`: `bar_region`, `globe_side`, `inner_side`, `curved_title`, `draw_colorbar` (right-triangle bars in the canvas corners; rectangles in a crop) |
 | `earth.py` | `--color earth`: `earth_values` (raster sampling, cache), `earth_fill`, `build_regions`, `fill_at` |
 | `pins.py` | `load_pins`, `PinStyle` (every sprite shading constant), `pin_sprite`, `draw_pins`, `pick_pins` |
 | `labels/label.py` | `Label` dataclass, `make_labels` (anchors, sizes, exclaves), `decide_out_and_wrap` |
@@ -163,6 +164,30 @@ or country labels run. `--color`, `--disputed`, `--recolor` and `--label countri
   halo (ends marked `≥`/`≤`), the map's contour lines across the bar, and sea level in the coastline's style.
   The title (`curved_title`, `TITLE_SIZE` bold) is a `TextPath` warped onto the bar's globe-side curve
   (`globe_side`), centred on it, inside the bar `TITLE_INSET_IN` from it (descenders clear the curve in the top-right bar).
+
+## `--crop`
+
+A zoomed map of one region, redrawn in a Lambert azimuthal equal-area projection centred on it (`crop.crop_frame`).
+- Every stage projects through the frame: `frame.project(gdf)` (there is no `data.project`). The world frame
+  (`globe=True`) clips to the +-180/90 box and projects to Robinson exactly as before. A crop frame (`globe=False`)
+  first clips to lon/lat `clip` boxes (`clip_boxes`: the canvas's lon/lat extent + `CLIP_PAD_DEG`; LAEA is singular
+  at the antipode), joins pieces Natural Earth splits at +-180 when the crop crosses it (`join_at_antimeridian`,
+  snapped to `SEAM_GRID_DEG`, or the cut shows as a border through Chukotka), then `cut`s to the canvas grown by
+  `PROJECT_PAD` (repairing invalid input: the marine areas). `frame.visible` cuts to the canvas itself: labels use it,
+  so a neighbour cut by the edge is labelled on its visible part.
+- Size: the long side is `POSTER_WIDTH_IN` (`width_in`/`height_in`); the world map is unchanged.
+- `--crop lon,lat:lon,lat`: corners in any order, the narrower longitude span wins (so a box can cross +-180); no
+  margin. `--crop NAME`: substring of a label's text, ignoring case and accents (`fold`), among the `--label` kinds
+  only (`candidates`, built in the world frame, then lon/lat). A country's extent leaves out what territories label
+  separately (`HAND_PICKED`, which also has the far-flung islands for this). Several matches: a `questionary`
+  checklist (exact first, `describe` = text, kind, coordinates); the crop covers all checked; without a tty, exit
+  with the list. Margin `CROP_MARGIN` = 10%.
+- Drawing: ocean fills the canvas, no globe stroke; `child_regions` skips hand-picked regions out of frame (it
+  raises only on the globe); out-of-frame disputes are dropped after the colouring; the Pacific is one body.
+  `--color earth`: `build_regions(countries, frame)` projects polygon by polygon so each keeps its value.
+- Topographic: `soften` blurs heights over about a 3' cell when a cell spans > 2 pixels (bilinear heights shaded
+  as flat facets); colour bars are rectangles (`BAR_RECT_WIDTH_IN`, `BAR_RECT_LENGTH`) titled along `inner_side`.
+- `--pick` with the same `--crop` inverts the crop's projection.
 
 ## Pins (`--pick`, `--pins`)
 
