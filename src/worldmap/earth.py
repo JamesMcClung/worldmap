@@ -10,11 +10,13 @@ import os
 
 import geopandas as gpd
 import numpy as np
+import shapely
 from matplotlib.colors import to_rgb
 from shapely.geometry import MultiPolygon, Point, Polygon, box
 
 from worldmap.colorspace import RGB, fit_gamut
 from worldmap.data import CACHE, COUNTRIES, RASTER, fetch
+from worldmap.frame import WORLD, MapFrame
 
 GR_DESERT, GR_LUSH = -12.0, 20.0  # mean (G - R) mapped to pure sand and pure green
 MIN_PIX = 6  # polygons with fewer raster pixels borrow from a window around their centroid, then from their country
@@ -104,14 +106,23 @@ def earth_fill(green_minus_red: float, ice_fraction: float) -> RGB:
     return (r, g, b)
 
 
-def build_regions(countries_projected: gpd.GeoDataFrame, countries: gpd.GeoDataFrame) -> Regions:
-    """Each country's projected polygons with their land-cover fill."""
-    regions: Regions = {}
-    for (i, row), values in zip(countries_projected.iterrows(), earth_values(countries)):
-        geom = row.geometry
-        polys = list(geom.geoms) if isinstance(geom, MultiPolygon) else [geom]
-        regions[i] = [(p, earth_fill(*v)) for p, v in zip(polys, values) if not p.is_empty]
-        if not regions[i]:
+def build_regions(countries: gpd.GeoDataFrame, frame: MapFrame) -> Regions:
+    """Each country's projected polygons with their land-cover fill. The polygons are projected one by one, so each
+    keeps its own value when a crop cuts some away or in two."""
+    owner, polys, values = [], [], []
+    for i, geom, vals in zip(countries.index, countries.geometry.intersection(box(*WORLD)), earth_values(countries)):
+        parts = list(geom.geoms) if isinstance(geom, MultiPolygon) else [geom]
+        for p, v in zip(parts, vals):
+            owner.append(i)
+            polys.append(p)
+            values.append(v)
+    projected = frame.project(gpd.GeoDataFrame(geometry=polys, crs=countries.crs)).geometry
+    regions: Regions = {i: [] for i in countries.index}
+    for i, geom, v in zip(owner, projected, values):
+        fill = earth_fill(*v)
+        regions[i] += [(p, fill) for p in shapely.get_parts(geom) if p.geom_type == "Polygon" and not p.is_empty]
+    for i, regs in regions.items():
+        if not regs:
             regions[i] = [(Polygon(), "#ffffff")]
     return regions
 

@@ -124,7 +124,7 @@ def main(argv: list[str] | None = None) -> None:
     fills = graph_fills(countries, load_or_compute_coloring(countries, major, args.recolor, parent_index(countries), dispute_edges(disputes)))
     states, lakes = load_states(), load_lakes()
     countries_p, states_p, lakes_p = frame.project(countries), frame.project(states), frame.project(lakes)
-    regions = build_regions(countries_p, countries) if args.color == "earth" else None
+    regions = build_regions(countries, frame) if args.color == "earth" else None
 
     def fill_of(i: int, pt: Point | None = None) -> Fill:
         """Country i's fill; with --color earth, that of its polygon containing (or nearest) `pt`, else its largest."""
