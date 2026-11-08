@@ -71,7 +71,8 @@ def new_figure(frame: MapFrame) -> tuple[Figure, Axes]:
     ax.axis("off")
     fig.patch.set_alpha(0)
     ax.add_patch(MplPolygon(frame.outline, closed=True, fc=OCEAN, ec="none", zorder=Z_OCEAN))
-    ax.add_patch(MplPolygon(frame.outline, closed=True, fc="none", ec=BORDER, lw=GLOBE_STROKE, zorder=Z_GLOBE))
+    if frame.globe:  # a crop is filled to its edges
+        ax.add_patch(MplPolygon(frame.outline, closed=True, fc="none", ec=BORDER, lw=GLOBE_STROKE, zorder=Z_GLOBE))
     return fig, ax
 
 

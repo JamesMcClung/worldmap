@@ -1,4 +1,24 @@
 {
+  "crop_water": {
+    "env": {
+      "countries": "4930492",
+      "disputed": "215221",
+      "freetype": "2.14.3",
+      "geopandas": "1.2.0",
+      "geos": "3.14.1",
+      "lakes": "2349685",
+      "marine": "940563",
+      "matplotlib": "3.11.2",
+      "numpy": "2.5.4",
+      "pillow": "12.3.0",
+      "pyproj": "3.8.0",
+      "python": "3.14.10",
+      "rivers": "2079507",
+      "shapely": "2.2.0",
+      "states": "5993148"
+    },
+    "sha256": "7e4a457f59f13a1befc8c41861dcf05f8600d500ff8bb7ddd2676c4aa3c938be"
+  },
   "default": {
     "env": {
       "countries": "4930492",

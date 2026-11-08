@@ -88,9 +88,11 @@ def ocean_word(name: str) -> str:
 
 def load_water_bodies(kinds: set[Kind], lakes_projected: gpd.GeoDataFrame, frame: MapFrame) -> list[WaterBody]:
     """The water bodies of `kinds`, most important first: oceans, then by scalerank, then by area. North and South
-    Atlantic are one ATLANTIC; the Pacific, cut by the antimeridian, is labelled twice (left and right of x = 0).
+    Atlantic are one ATLANTIC; on the world map the Pacific, cut by the antimeridian, is labelled twice (left and right of x = 0).
     Every other body is labelled once, on its largest polygon."""
-    marine = frame.project(load_marine())
+    marine = frame.visible(frame.project(load_marine()))
+    marine = marine[~marine.geometry.is_empty]
+    lakes_projected = frame.visible(lakes_projected)
     marine = marine[marine.name.notna() & ~marine.name.str.endswith(" River")]  # rivers come later, with river drawing
     marine["geometry"] = shapely.make_valid(marine.geometry.values)  # some are self-intersecting rough areas
     marine = marine[[classify(c) in kinds for c in marine.featurecla]]
@@ -98,7 +100,7 @@ def load_water_bodies(kinds: set[Kind], lakes_projected: gpd.GeoDataFrame, frame
     oceans = marine[marine.featurecla == "ocean"]
     for word, group in oceans.groupby(oceans.name.map(ocean_word)):
         whole = shapely.union_all(group.geometry.values)
-        if word == "Pacific":
+        if word == "Pacific" and frame.globe:
             x0, y0, x1, y1 = whole.bounds
             halves = [whole.intersection(shapely.box(x0, y0, 0, y1)), whole.intersection(shapely.box(0, y0, x1, y1))]
         else:
@@ -109,7 +111,7 @@ def load_water_bodies(kinds: set[Kind], lakes_projected: gpd.GeoDataFrame, frame
         assert kind is not None
         bodies.append(WaterBody(row.name, kind, int(row.scalerank), largest(row.geometry)))
     if "lakes" in kinds:
-        bodies += [WaterBody(r.name, "lakes", int(r.scalerank), largest(r.geometry)) for r in lakes_projected.itertuples() if isinstance(r.name, str)]
+        bodies += [WaterBody(r.name, "lakes", int(r.scalerank), largest(r.geometry)) for r in lakes_projected.itertuples() if isinstance(r.name, str) and not r.geometry.is_empty]
     if "rivers" in kinds:
         bodies += load_river_bodies(frame)
     bodies.sort(key=lambda b: (b.kind != "oceans", b.rank, b.kind == "rivers", -(b.geom.length if b.kind == "rivers" else b.geom.area)))
@@ -189,7 +191,8 @@ def load_river_bodies(frame: MapFrame) -> list[WaterBody]:
     """One body per river name of scalerank <= RIVER_LABEL_MAX_RANK: the longest path through its features
     (longest_paths), plus any other path at least RIVER_REPEAT_M from those kept (two rivers with one name). Rank =
     the path's most important feature."""
-    rivers = frame.project(load_rivers())
+    rivers = frame.visible(frame.project(load_rivers()))
+    rivers = rivers[~rivers.geometry.is_empty]
     rivers["text"] = rivers.name_en.map(river_name)
     bodies = []
     for text, group in rivers[rivers.text.notna()].groupby("text"):

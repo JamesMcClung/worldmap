@@ -5,6 +5,7 @@ Pins: --pick pins.txt (click the rendered map to add pins) and --pins pins.txt [
 """
 
 import argparse
+import dataclasses
 import os
 import sys
 import time
@@ -19,6 +20,7 @@ from worldmap.coloring import Coloring, load_or_compute_coloring, make_palette, 
 from worldmap.colorspace import RGB
 from worldmap.data import is_labeled, load_countries, load_disputed, load_lakes, load_rivers, load_states, parent_index
 from worldmap.disputed import DISPUTED_GREY, STRIPE_WIDTH_IN, border_lines, dispute_edges, disputed_label_args, load_disputes
+from worldmap.crop import box_region, crop_frame, parse_box
 from worldmap.earth import Fill, build_regions, fill_at
 from worldmap.frame import DPI, MapFrame, make_frame
 from worldmap.labels.label import decide_out_and_wrap, make_labels
@@ -81,6 +83,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--dpi", metavar="DPI", type=positive_float, default=DPI,
                    help="output dots per inch on the 36 in poster (default %(default)s); "
                         "the layout is the same at any resolution, only the pixel count changes")
+    p.add_argument("--crop", metavar="SPEC",
+                   help="zoom in on a region, redrawn in a projection centred on it: lon,lat:lon,lat (two opposite corners)")
     p.add_argument("--pick", metavar="FILE",
                    help="click the rendered map to add pins; they are appended to FILE when the window closes")
     return p.parse_args(argv)
@@ -89,6 +93,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def draws_rivers(args: argparse.Namespace) -> bool:
     """--rivers, or --label rivers or water (a name needs its river)."""
     return bool(args.rivers or "rivers" in kinds_from_labels(args.label))
+
+
+def make_map_frame(args: argparse.Namespace) -> MapFrame:
+    """The whole globe, or the --crop region."""
+    if not args.crop:
+        return make_frame()
+    try:
+        crop = parse_box(args.crop)
+        if crop is None:
+            sys.exit(f"make_map: --crop {args.crop}: expected lon,lat:lon,lat")
+        return crop_frame(box_region(crop), 0)
+    except ValueError as e:
+        sys.exit(f"make_map: {e}")
 
 
 def graph_fills(countries: gpd.GeoDataFrame, coloring: Coloring) -> dict[int, RGB]:
@@ -110,7 +127,7 @@ def main(argv: list[str] | None = None) -> None:
     if args.pick and not os.path.exists(out):
         sys.exit("--pick shows the rendered map: run make_map first to create %s" % out)
 
-    frame = make_frame()
+    frame = make_map_frame(args)
     if args.pick:
         pick_pins(args.pick, out, frame, args.pin_size, DPI)
         return
@@ -122,6 +139,7 @@ def main(argv: list[str] | None = None) -> None:
     major = [is_labeled(row) for _, row in countries.iterrows()]
     disputes = load_disputes(countries, frame.project(load_disputed()))
     fills = graph_fills(countries, load_or_compute_coloring(countries, major, args.recolor, parent_index(countries), dispute_edges(disputes)))
+    disputes = [d for d in disputes if not d.geometry.is_empty]  # a crop leaves out those it doesn't show
     states, lakes = load_states(), load_lakes()
     countries_p, states_p, lakes_p = frame.project(countries), frame.project(states), frame.project(lakes)
     regions = build_regions(countries, frame) if args.color == "earth" else None
@@ -148,9 +166,12 @@ def main(argv: list[str] | None = None) -> None:
     # Labels are measured in rendered pixels, so draw once first.
     fig.canvas.draw()
     renderer = fig.canvas.get_renderer()  # type: ignore[attr-defined]  # Agg canvas
-    children = child_regions(countries, countries_p, frame) if "territories" in args.label else []
+    shown = frame.visible(countries_p)  # labels go on what the frame shows
+    children = child_regions(countries, shown, frame) if "territories" in args.label else []
+    if not frame.globe:
+        disputes = [dataclasses.replace(d, geometry=d.geometry.intersection(frame.canvas)) for d in disputes]
     relabel, extra = disputed_label_args(disputes, lambda i, pt: fill_of(i, pt) if regions else DISPUTED_GREY) if args.disputed else ({}, [])
-    labels = make_labels(countries_p, frame, ax, renderer, fill_of, children, "countries" in args.label, relabel, extra)
+    labels = make_labels(shown, frame, ax, renderer, fill_of, children, "countries" in args.label, relabel, extra)
     decide_out_and_wrap(labels, renderer)
     water = make_water_labels(load_water_bodies(kinds_from_labels(args.label), lakes_p, frame), frame) if kinds_from_labels(args.label) else []
     placement, water = place_all(labels, water, frame)
