@@ -52,3 +52,16 @@ def test_type_flag() -> None:
     with pytest.raises(SystemExit) as e:
         parse_args(["--type", "sky"])
     assert e.value.code == 2
+
+
+def test_pick_uses_crop_frame(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    from PIL import Image
+
+    from worldmap import cli
+
+    png = tmp_path / "crop.png"
+    Image.new("RGBA", (4, 4)).save(png)
+    seen = []
+    monkeypatch.setattr(cli, "pick_pins", lambda path, out, frame, *rest: seen.append(frame))
+    cli.main(["--pick", str(tmp_path / "p.txt"), "--crop", "5,43:17,49", str(png)])
+    assert len(seen) == 1 and not seen[0].globe and "+proj=laea" in seen[0].crs
