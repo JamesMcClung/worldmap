@@ -4,7 +4,7 @@ import shapely
 from matplotlib.colors import to_rgb
 
 from worldmap.coloring import OCEAN
-from worldmap.data import load_ice, load_lakes, load_land, project
+from worldmap.data import load_ice, load_lakes, load_land
 from worldmap.frame import make_frame
 from worldmap.topographic import (LAND_BELOW_SEA, Grid, PosterGrid, coastline, colorize, draw_topography, elevation_grid,
                                   polygon_mask, poster_grid, relief, sample, shade)
@@ -106,7 +106,7 @@ def test_inside_mask(pg: PosterGrid) -> None:
 
 
 def test_ice_mask(pg: PosterGrid) -> None:
-    ice = polygon_mask(project(load_ice()), make_frame(), pg)
+    ice = polygon_mask(make_frame().project(load_ice()), make_frame(), pg)
     assert ice[px(pg, -40, 75)] and ice[px(pg, 0, -85)]  # Greenland, Antarctica
     assert ice[px(pg, -170, -80)]  # Ross Ice Shelf: ice over sea
     assert not ice[px(pg, 10, 25)] and not ice[px(pg, -30, 0)]  # Sahara, Atlantic
@@ -114,12 +114,12 @@ def test_ice_mask(pg: PosterGrid) -> None:
 
 def test_islands_in_ice_shelves_are_ice(pg: PosterGrid) -> None:
     """Natural Earth cuts the islands out of the ice shelves, but they are ice-covered too (Roosevelt, Berkner)."""
-    ice = polygon_mask(project(load_ice()), make_frame(), pg)
+    ice = polygon_mask(make_frame().project(load_ice()), make_frame(), pg)
     assert ice[px(pg, -162.22, -79.28)] and ice[px(pg, -60.55, -80.31)]
 
 
 def test_land_mask(pg: PosterGrid) -> None:
-    land = polygon_mask(project(load_land()), make_frame(), pg)
+    land = polygon_mask(make_frame().project(load_land()), make_frame(), pg)
     assert land[px(pg, 27.5, 29.8)] and land[px(pg, -116.85, 36.25)] and land[px(pg, 5.5, 52.5)]  # Qattara, Death Valley, polders
     assert not land[px(pg, 51, 42)] and not land[px(pg, -30, 0)]  # Caspian, Atlantic
 
@@ -142,7 +142,7 @@ def coast():
     """The coastline, as one geometry in map units."""
     from shapely.geometry import MultiLineString
 
-    return MultiLineString(coastline(project(load_land()), project(load_ice())))
+    return MultiLineString(coastline(make_frame().project(load_land()), make_frame().project(load_ice())))
 
 
 def test_coastline_follows_land_and_ice(coast) -> None:

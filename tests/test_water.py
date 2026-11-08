@@ -6,7 +6,7 @@ import shapely.affinity
 from shapely.geometry import LineString, Point
 
 from worldmap.curves import arc_lengths, bend
-from worldmap.data import load_lakes, project
+from worldmap.data import load_lakes
 from worldmap.frame import MapFrame, make_frame
 from worldmap.labels.water import (OCEAN_MIN_PT, OCEAN_PT, RIVER_MAX_PT, RIVER_MIN_PT, SEA_MAX_PT, WATER_MIN_INSIDE, WATER_MIN_PT,
                                    WATER_TEXT, best_stretch, classify, fit_curve, kinds_from_labels, load_water_bodies,
@@ -15,7 +15,7 @@ from worldmap.labels.water import (OCEAN_MIN_PT, OCEAN_PT, RIVER_MAX_PT, RIVER_M
 
 @pytest.fixture(scope="module")
 def lakes_projected() -> gpd.GeoDataFrame:
-    return project(load_lakes())
+    return make_frame().project(load_lakes())
 
 
 def test_classify() -> None:
@@ -33,7 +33,7 @@ def test_kinds_from_labels() -> None:
 
 
 def test_oceans(lakes_projected: gpd.GeoDataFrame) -> None:
-    oceans = load_water_bodies({"oceans"}, lakes_projected)
+    oceans = load_water_bodies({"oceans"}, lakes_projected, make_frame())
     texts = [b.text for b in oceans]
     assert sorted(texts) == sorted(["ATLANTIC OCEAN", "PACIFIC OCEAN", "PACIFIC OCEAN", "INDIAN OCEAN", "ARCTIC OCEAN", "SOUTHERN OCEAN"])
     pacific = [b.geom.centroid.x for b in oceans if b.text == "PACIFIC OCEAN"]
@@ -41,10 +41,10 @@ def test_oceans(lakes_projected: gpd.GeoDataFrame) -> None:
 
 
 def test_seas_lakes_and_straits(lakes_projected: gpd.GeoDataFrame) -> None:
-    seas = {b.text for b in load_water_bodies({"seas"}, lakes_projected)}
+    seas = {b.text for b in load_water_bodies({"seas"}, lakes_projected, make_frame())}
     assert {"Mediterranean Sea", "Caspian Sea", "Bay of Bengal", "Skagerrak"} <= seas
     assert not seas & {"Great Barrier Reef", "Amazon River", "Strait of Gibraltar"}
-    everything = load_water_bodies({"oceans", "seas", "lakes", "straits"}, lakes_projected)
+    everything = load_water_bodies({"oceans", "seas", "lakes", "straits"}, lakes_projected, make_frame())
     names = [b.text for b in everything]
     assert "Strait of Gibraltar" in names and "Lake Victoria" in names
     assert "Saint Lawrence River" not in names  # a 'channel' in Natural Earth, but a river: not labelled yet
@@ -102,7 +102,7 @@ def frame() -> MapFrame:
 
 
 def test_water_label_layout(frame: MapFrame, lakes_projected: gpd.GeoDataFrame) -> None:
-    bodies = load_water_bodies({"oceans", "seas"}, lakes_projected)
+    bodies = load_water_bodies({"oceans", "seas"}, lakes_projected, make_frame())
     labels = make_water_labels(bodies, frame)
     med = next(l for l in labels if l.text == "Mediterranean Sea")
     atlantic = next(l for l in labels if l.text == "ATLANTIC OCEAN")
@@ -115,7 +115,7 @@ def test_water_label_layout(frame: MapFrame, lakes_projected: gpd.GeoDataFrame) 
 
 
 def test_hopeless_bodies_left_out(frame: MapFrame, lakes_projected: gpd.GeoDataFrame) -> None:
-    bodies = load_water_bodies({"oceans", "seas", "lakes", "straits"}, lakes_projected)
+    bodies = load_water_bodies({"oceans", "seas", "lakes", "straits"}, lakes_projected, make_frame())
     labels = make_water_labels(bodies, frame)
     assert 0 < len(labels) < len(bodies)
     assert all(l.inside_share(l.anchor_x, l.anchor_y) >= WATER_MIN_INSIDE for l in labels)
@@ -127,7 +127,7 @@ def test_draw_water_labels(frame: MapFrame, lakes_projected: gpd.GeoDataFrame) -
     from worldmap.labels.placement import place_labels
     from worldmap.render import draw_water_labels, new_figure
 
-    med = [l for l in make_water_labels(load_water_bodies({"seas"}, lakes_projected), frame) if l.text == "Mediterranean Sea"]
+    med = [l for l in make_water_labels(load_water_bodies({"seas"}, lakes_projected, make_frame()), frame) if l.text == "Mediterranean Sea"]
     p = place_labels([], frame, water=med)
     p.x[0] += 100  # somewhere other than its anchor
     fig, ax = new_figure(frame)

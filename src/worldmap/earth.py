@@ -41,7 +41,7 @@ def pixel_stats(pixels: np.ndarray) -> PixelStats | None:
 
 
 def earth_values(countries: gpd.GeoDataFrame) -> list[list[list[float]]]:
-    """[[(mean G-R, icy fraction) per polygon] per country], in the polygon order of `project(countries)`. Cached in earth.json."""
+    """[[(mean G-R, icy fraction) per polygon] per country], in the polygon order of `frame.project(countries)`. Cached in earth.json."""
     cache = CACHE / "earth.json"
     raster = fetch(RASTER)
     key = {"raster": os.path.getsize(raster), "countries": os.path.getsize(fetch(COUNTRIES)), "rule": EARTH_RULE, "min_pix": MIN_PIX}

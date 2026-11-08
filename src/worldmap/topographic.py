@@ -13,7 +13,7 @@ from matplotlib.patches import Polygon as MplPolygon
 import shapely
 
 from worldmap.coloring import OCEAN
-from worldmap.data import CACHE, ETOPO, fetch, load_ice, load_lakes, load_land, project
+from worldmap.data import CACHE, ETOPO, fetch, load_ice, load_lakes, load_land
 from worldmap.frame import DPI, MapFrame
 from worldmap.render import BORDER, BORDER_WIDTH, Z_BORDERS, Z_COUNTRY, draw_lakes
 
@@ -243,7 +243,7 @@ def draw_topography(ax: Axes, frame: MapFrame, dpi: float, ocean: bool) -> None:
     z = sample(elevation_grid(), pg.lon, pg.lat)
     z[~pg.inside] = 0
     pg.lon = pg.lat = np.empty((0, 0), np.float32)  # done with them; ~200 MB at 200 dpi
-    land_shapes, ice_shapes = project(load_land()), project(load_ice())
+    land_shapes, ice_shapes = frame.project(load_land()), frame.project(load_ice())
     ice = polygon_mask(ice_shapes, frame, pg) & pg.inside  # ice wins: the shelves
     land = polygon_mask(land_shapes, frame, pg) & pg.inside & ~ice
     sea = ~land & ~ice & pg.inside
@@ -267,4 +267,4 @@ def draw_topography(ax: Axes, frame: MapFrame, dpi: float, ocean: bool) -> None:
     if ocean:
         contours(sea, -np.arange(SEA_CONTOURS.step, -z.min() + 1, SEA_CONTOURS.step)[::-1], SEA_CONTOURS)
     ax.add_collection(LineCollection(coastline(land_shapes, ice_shapes), colors=BORDER, linewidths=BORDER_WIDTH, zorder=Z_BORDERS))
-    draw_lakes(ax, project(load_lakes()))
+    draw_lakes(ax, frame.project(load_lakes()))

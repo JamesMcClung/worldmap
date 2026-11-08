@@ -8,7 +8,6 @@ from pathlib import Path
 import geopandas as gpd
 import pandas as pd
 import shapely
-from shapely.geometry import box
 
 # Data files and caches live in the repo's .cache/ (found from this file, so it needs an editable install).
 CACHE = Path(__file__).resolve().parent.parent.parent / ".cache"
@@ -154,10 +153,3 @@ def load_ice() -> gpd.GeoDataFrame:
 def load_land() -> gpd.GeoDataFrame:
     """Natural Earth's land polygons (no lakes cut out; the Caspian is water)."""
     return gpd.read_file(fetch(LAND_OUTLINE))[["geometry"]]
-
-
-def project(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
-    """Clip to the +-180/90 lon/lat box and project to CRS."""
-    gdf = gdf.copy()
-    gdf["geometry"] = gdf.geometry.intersection(box(-180, -90, 180, 90))
-    return gdf.to_crs(CRS)

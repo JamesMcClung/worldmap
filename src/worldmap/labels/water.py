@@ -17,7 +17,7 @@ from shapely.geometry.base import BaseGeometry
 from worldmap.coloring import OCEAN
 from worldmap.colorspace import RGB, fit_gamut, srgb_to_oklch
 from worldmap.curves import along, arc_lengths, bend
-from worldmap.data import load_marine, load_rivers, project
+from worldmap.data import load_marine, load_rivers
 from worldmap.frame import DPI, MapFrame
 
 WATER_KINDS = ("oceans", "seas", "lakes", "straits", "rivers", "water")  # the --label values; water = all the others
@@ -86,11 +86,11 @@ def ocean_word(name: str) -> str:
     return next(w for w in OCEAN_TEXT if w.lower() in name.lower())
 
 
-def load_water_bodies(kinds: set[Kind], lakes_projected: gpd.GeoDataFrame) -> list[WaterBody]:
+def load_water_bodies(kinds: set[Kind], lakes_projected: gpd.GeoDataFrame, frame: MapFrame) -> list[WaterBody]:
     """The water bodies of `kinds`, most important first: oceans, then by scalerank, then by area. North and South
     Atlantic are one ATLANTIC; the Pacific, cut by the antimeridian, is labelled twice (left and right of x = 0).
     Every other body is labelled once, on its largest polygon."""
-    marine = project(load_marine())
+    marine = frame.project(load_marine())
     marine = marine[marine.name.notna() & ~marine.name.str.endswith(" River")]  # rivers come later, with river drawing
     marine["geometry"] = shapely.make_valid(marine.geometry.values)  # some are self-intersecting rough areas
     marine = marine[[classify(c) in kinds for c in marine.featurecla]]
@@ -111,7 +111,7 @@ def load_water_bodies(kinds: set[Kind], lakes_projected: gpd.GeoDataFrame) -> li
     if "lakes" in kinds:
         bodies += [WaterBody(r.name, "lakes", int(r.scalerank), largest(r.geometry)) for r in lakes_projected.itertuples() if isinstance(r.name, str)]
     if "rivers" in kinds:
-        bodies += load_river_bodies()
+        bodies += load_river_bodies(frame)
     bodies.sort(key=lambda b: (b.kind != "oceans", b.rank, b.kind == "rivers", -(b.geom.length if b.kind == "rivers" else b.geom.area)))
     seen: set[str] = set()
     unique = []
@@ -185,11 +185,11 @@ def longest_paths(lines: list[LineString], join: float) -> list[LineString]:
     return sorted(paths, key=lambda g: -g.length)
 
 
-def load_river_bodies() -> list[WaterBody]:
+def load_river_bodies(frame: MapFrame) -> list[WaterBody]:
     """One body per river name of scalerank <= RIVER_LABEL_MAX_RANK: the longest path through its features
     (longest_paths), plus any other path at least RIVER_REPEAT_M from those kept (two rivers with one name). Rank =
     the path's most important feature."""
-    rivers = project(load_rivers())
+    rivers = frame.project(load_rivers())
     rivers["text"] = rivers.name_en.map(river_name)
     bodies = []
     for text, group in rivers[rivers.text.notna()].groupby("text"):

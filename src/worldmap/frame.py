@@ -2,9 +2,12 @@
 
 from dataclasses import dataclass
 
+import geopandas as gpd
 import numpy as np
+import shapely
 from pyproj import Transformer
 from shapely import affinity
+from shapely.geometry import Polygon, box
 from shapely.geometry.base import BaseGeometry
 
 from worldmap.data import CRS
@@ -15,6 +18,10 @@ OUTLINE_POINTS = 200  # points along each side (meridian +-180) of the globe out
 ANTIMERIDIAN_EPS = 1e-6  # degrees inside +-180, so the outline doesn't wrap
 CANVAS_PAD = 0.006  # canvas margin around the outline, as a fraction of its width (room for the stroke)
 PX_SIMPLIFY = 2.0  # default simplification tolerance (px) for geometry converted to pixels
+PROJECT_PAD = 0.05  # a crop keeps projected data this far (fraction of its width/height) outside the canvas
+
+LonLatBox = tuple[float, float, float, float]  # lon0, lat0, lon1, lat1 with lon0 <= lon1, within +-180 / +-90
+WORLD: LonLatBox = (-180, -90, 180, 90)
 
 
 @dataclass(frozen=True)
@@ -26,6 +33,9 @@ class MapFrame:
     ymin: float
     xmax: float
     ymax: float
+    crs: str = CRS
+    globe: bool = True  # the whole globe; False for a --crop, whose outline is the canvas rectangle
+    clip: tuple[LonLatBox, ...] = (WORLD,)  # lon/lat data is clipped to these boxes before projecting
 
     @property
     def width(self) -> float:
@@ -53,6 +63,30 @@ class MapFrame:
     def units_per_in(self) -> float:
         """Map units per poster inch."""
         return DPI / self.px_per_unit
+
+    @property
+    def canvas(self) -> Polygon:
+        return box(self.xmin, self.ymin, self.xmax, self.ymax)
+
+    def project(self, gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+        """Clip lon/lat data to the frame's boxes and project it. A crop also cuts it a little outside the canvas, so
+        the cut edges are never seen."""
+        gdf = gdf.copy()
+        clip = box(*self.clip[0]) if len(self.clip) == 1 else shapely.union_all([box(*b) for b in self.clip])
+        gdf["geometry"] = gdf.geometry.intersection(clip)
+        gdf = gdf.to_crs(self.crs)
+        if not self.globe:
+            px, py = PROJECT_PAD * self.width, PROJECT_PAD * self.height
+            gdf["geometry"] = gdf.geometry.intersection(box(self.xmin - px, self.ymin - py, self.xmax + px, self.ymax + py))
+        return gdf
+
+    def visible(self, gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+        """Projected data cut to the canvas (what labels may use); the whole globe is all visible."""
+        if self.globe:
+            return gdf
+        gdf = gdf.copy()
+        gdf["geometry"] = gdf.geometry.intersection(self.canvas)
+        return gdf
 
     def to_px(self, geom: BaseGeometry, simplify: float = PX_SIMPLIFY) -> BaseGeometry:
         """Geometry in map units -> poster pixels (origin bottom left), simplified by `simplify` px."""

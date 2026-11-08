@@ -17,7 +17,7 @@ from shapely.geometry import Point
 from worldmap.colorbars import draw_colorbar
 from worldmap.coloring import Coloring, load_or_compute_coloring, make_palette, spot_check
 from worldmap.colorspace import RGB
-from worldmap.data import is_labeled, load_countries, load_disputed, load_lakes, load_rivers, load_states, parent_index, project
+from worldmap.data import is_labeled, load_countries, load_disputed, load_lakes, load_rivers, load_states, parent_index
 from worldmap.disputed import DISPUTED_GREY, STRIPE_WIDTH_IN, border_lines, dispute_edges, disputed_label_args, load_disputes
 from worldmap.earth import Fill, build_regions, fill_at
 from worldmap.frame import DPI, MapFrame, make_frame
@@ -120,10 +120,10 @@ def main(argv: list[str] | None = None) -> None:
 
     countries = load_countries()
     major = [is_labeled(row) for _, row in countries.iterrows()]
-    disputes = load_disputes(countries, project(load_disputed()))
+    disputes = load_disputes(countries, frame.project(load_disputed()))
     fills = graph_fills(countries, load_or_compute_coloring(countries, major, args.recolor, parent_index(countries), dispute_edges(disputes)))
     states, lakes = load_states(), load_lakes()
-    countries_p, states_p, lakes_p = project(countries), project(states), project(lakes)
+    countries_p, states_p, lakes_p = frame.project(countries), frame.project(states), frame.project(lakes)
     regions = build_regions(countries_p, countries) if args.color == "earth" else None
 
     def fill_of(i: int, pt: Point | None = None) -> Fill:
@@ -139,7 +139,7 @@ def main(argv: list[str] | None = None) -> None:
         draw_borders(ax, *border_lines(countries_p, disputes, parent_index(countries)))
     draw_states(ax, states_p, args.disputed)
     if draws_rivers(args):
-        draw_rivers(ax, project(load_rivers()))
+        draw_rivers(ax, frame.project(load_rivers()))
     draw_lakes(ax, lakes_p)
     countries_p = subtract_lakes(countries_p, lakes_p)
     ax.set_xlim(frame.xmin, frame.xmax)
@@ -152,7 +152,7 @@ def main(argv: list[str] | None = None) -> None:
     relabel, extra = disputed_label_args(disputes, lambda i, pt: fill_of(i, pt) if regions else DISPUTED_GREY) if args.disputed else ({}, [])
     labels = make_labels(countries_p, frame, ax, renderer, fill_of, children, "countries" in args.label, relabel, extra)
     decide_out_and_wrap(labels, renderer)
-    water = make_water_labels(load_water_bodies(kinds_from_labels(args.label), lakes_p), frame) if kinds_from_labels(args.label) else []
+    water = make_water_labels(load_water_bodies(kinds_from_labels(args.label), lakes_p, frame), frame) if kinds_from_labels(args.label) else []
     placement, water = place_all(labels, water, frame)
     draw_labels(ax, labels, placement, frame)
     draw_water_labels(ax, water, placement, frame)
@@ -179,14 +179,14 @@ def draw_topographic(args: argparse.Namespace, out: str, frame: MapFrame) -> Non
     fig, ax = new_figure(frame)
     draw_topography(ax, frame, args.dpi, args.ocean)
     if draws_rivers(args):
-        draw_rivers(ax, project(load_rivers()))
+        draw_rivers(ax, frame.project(load_rivers()))
     draw_colorbar(ax, frame, "br", LAND, "Height", LAND_CONTOURS)
     if args.ocean:
         draw_colorbar(ax, frame, "tr", SEA, "Depth", SEA_CONTOURS)
     draw_colorbar(ax, frame, "bl", ICE, "Ice", ICE_CONTOURS)
     kinds = kinds_from_labels(args.label)
     if kinds:  # without water kinds no label stage runs
-        placement, water = place_all([], make_water_labels(load_water_bodies(kinds, project(load_lakes())), frame), frame)
+        placement, water = place_all([], make_water_labels(load_water_bodies(kinds, frame.project(load_lakes()), frame), frame), frame)
         draw_water_labels(ax, water, placement, frame)
     ax.set_xlim(frame.xmin, frame.xmax)
     ax.set_ylim(frame.ymin, frame.ymax)

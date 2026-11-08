@@ -5,7 +5,7 @@ import matplotlib
 import pytest
 from shapely.geometry import Point
 
-from worldmap.data import CACHE, RASTER, is_labeled, load_countries, load_lakes, project
+from worldmap.data import CACHE, RASTER, is_labeled, load_countries, load_lakes
 from worldmap.earth import Fill, build_regions, fill_at
 from worldmap.frame import MapFrame, make_frame
 from worldmap.labels.label import RENAME, Label, make_labels
@@ -22,7 +22,7 @@ def countries() -> gpd.GeoDataFrame:
 @pytest.fixture(scope="module")
 def countries_projected(countries: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     """As cli.main passes it: projected, with the big lakes cut out."""
-    return subtract_lakes(project(countries), project(load_lakes()))
+    return subtract_lakes(make_frame().project(countries), make_frame().project(load_lakes()))
 
 
 @pytest.fixture(scope="module")
