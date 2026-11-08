@@ -173,7 +173,8 @@ A zoomed map of one region, redrawn in a Lambert azimuthal equal-area projection
   first clips to lon/lat `clip` boxes (`clip_boxes`: the canvas's lon/lat extent + `CLIP_PAD_DEG`; LAEA is singular
   at the antipode), joins pieces Natural Earth splits at +-180 when the crop crosses it (`join_at_antimeridian`,
   snapped to `SEAM_GRID_DEG`, or the cut shows as a border through Chukotka), then `cut`s to the canvas grown by
-  `PROJECT_PAD` (repairing invalid input: the marine areas). `frame.visible` cuts to the canvas itself: labels use it,
+  `PROJECT_PAD` (repairing invalid input: the marine areas). Layers whose rows split a feature at +-180 (the land:
+  Wrangel Island) pass `dissolve=True`. `frame.visible` cuts to the canvas itself: labels use it,
   so a neighbour cut by the edge is labelled on its visible part.
 - Size: the long side is `POSTER_WIDTH_IN` (`width_in`/`height_in`); the world map is unchanged.
 - `--crop lon,lat:lon,lat`: corners in any order, the narrower longitude span wins (so a box can cross +-180); no
@@ -181,12 +182,15 @@ A zoomed map of one region, redrawn in a Lambert azimuthal equal-area projection
   only (`candidates`, built in the world frame, then lon/lat). A country's extent leaves out what territories label
   separately (`HAND_PICKED`, which also has the far-flung islands for this). Several matches: a `questionary`
   checklist (exact first, `describe` = text, kind, coordinates); the crop covers all checked; without a tty, exit
-  with the list. Margin `CROP_MARGIN` = 10%.
+  with the list. Margin `CROP_MARGIN` = 10%. Candidates are inverted from the Robinson world frame with x nudged
+  by `EDGE_NUDGE` (points on +-180 don't invert).
 - Drawing: ocean fills the canvas, no globe stroke; `child_regions` skips hand-picked regions out of frame (it
   raises only on the globe); out-of-frame disputes are dropped after the colouring; the Pacific is one body.
   `--color earth`: `build_regions(countries, frame)` projects polygon by polygon so each keeps its value.
 - Topographic: `soften` blurs heights over about a 3' cell when a cell spans > 2 pixels (bilinear heights shaded
-  as flat facets); colour bars are rectangles (`BAR_RECT_WIDTH_IN`, `BAR_RECT_LENGTH`) titled along `inner_side`.
+  as flat facets); colour bars are rectangles (`BAR_RECT_WIDTH_IN`, `BAR_RECT_LENGTH`) titled along `inner_side`,
+  over the map: water labels are placed in `label_outline` (the canvas minus the bar corners), and a crop's water
+  label with a glyph outside the outline is dropped (`placement.outside_outline`).
 - `--pick` with the same `--crop` inverts the crop's projection.
 
 ## Pins (`--pick`, `--pins`)
