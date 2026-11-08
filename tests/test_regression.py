@@ -82,6 +82,10 @@ def test_version_mismatch_skips(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
         check_fingerprint("tiny", png, store=store)
 
 
+def test_render_topographic_crop(tmp_path: Path) -> None:
+    check_fingerprint("topographic_crop", render(tmp_path, "--type", "topographic", "--ocean", "--crop", "5,40:17,49"))
+
+
 def test_render_topographic(tmp_path: Path) -> None:
     check_fingerprint("topographic", render(tmp_path, "--type", "topographic"))
 

@@ -171,6 +171,30 @@
     },
     "sha256": "60677397e89b721f38a8c8bef7fb6d73d69a946fb0f4b60fd0b1537ccfda4cd3"
   },
+  "topographic_crop": {
+    "env": {
+      "countries": "4930492",
+      "disputed": "215221",
+      "etopo": "465969062",
+      "freetype": "2.14.3",
+      "gdal": "3.12.2",
+      "geopandas": "1.2.0",
+      "geos": "3.14.1",
+      "glaciers": "1644604",
+      "ice_shelves": "163651",
+      "lakes": "2349685",
+      "land": "3269070",
+      "matplotlib": "3.11.2",
+      "numpy": "2.5.4",
+      "pillow": "12.3.0",
+      "pyproj": "3.8.0",
+      "python": "3.14.10",
+      "rasterio": "1.5.2",
+      "shapely": "2.2.0",
+      "states": "5993148"
+    },
+    "sha256": "d20ba915b888a6938d01c5b97a1dedba22f4356a1b1327a0383b7b16b0f4003d"
+  },
   "topographic_ocean": {
     "env": {
       "countries": "4930492",
