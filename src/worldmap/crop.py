@@ -5,7 +5,6 @@ import sys
 import unicodedata
 from dataclasses import dataclass
 
-import geopandas as gpd
 import numpy as np
 import shapely
 from pyproj import Transformer
@@ -24,6 +23,7 @@ CropBox = tuple[float, float, float, float]  # west lon, south lat, east lon, no
 CROP_MARGIN = 0.10  # a named crop's margin on each side, as a fraction of the region's projected width/height
 CLIP_PAD_DEG = 5  # lon/lat clip boxes reach this far past what the canvas shows
 SEGMENT_DEG = 0.5  # lon/lat edges are split this finely before projecting (they curve in the crop's projection)
+EDGE_NUDGE = 1e-9  # relative: ~2 cm on the Robinson globe
 CLIP_SAMPLES = 65  # points per side of the grid sampled to find the canvas's lon/lat extent
 
 NUM = r"\s*(-?\d+(?:\.\d*)?)\s*"
@@ -40,7 +40,9 @@ def parse_box(s: str) -> CropBox | None:
     if not all(-180 <= lon <= 180 for lon in (lon_a, lon_b)) or not all(-90 <= lat <= 90 for lat in (lat_a, lat_b)):
         raise ValueError(f"--crop {s}: longitudes must be within +-180 and latitudes within +-90")
     west, east = min(lon_a, lon_b), max(lon_a, lon_b)
-    if east - west > 180:  # narrower the other way round, across the antimeridian
+    if lon_a == lon_b or lat_a == lat_b:
+        raise ValueError(f"--crop {s}: the box has no area")
+    if 180 < east - west < 360:  # narrower the other way round, across the antimeridian (-180..180 is all of it)
         west, east = east, west
     return west, min(lat_a, lat_b), east, max(lat_a, lat_b)
 
@@ -163,8 +165,18 @@ def candidates(label: set[str], disputed: bool) -> list[Candidate]:
     kinds = kinds_from_labels(label)
     if kinds:
         found += [(b.text, WATER_KIND[b.kind], b.geom) for b in load_water_bodies(kinds, frame.project(load_lakes()), frame)]
-    lonlat = gpd.GeoSeries([g for _, _, g in found], crs=frame.crs).to_crs("EPSG:4326")
-    return [Candidate(text, kind, g) for (text, kind, _), g in zip(found, lonlat)]
+    return [Candidate(text, kind, to_lonlat(g, frame)) for text, kind, g in found]
+
+
+def to_lonlat(geom: BaseGeometry, frame: MapFrame) -> BaseGeometry:
+    """World-frame geometry back to lon/lat. Points on the globe's edge (+-180) don't invert, so x is nudged a
+    hair (EDGE_NUDGE) towards the centre first."""
+
+    def inverse(xy: np.ndarray) -> np.ndarray:
+        lon, lat = frame.to_lonlat.transform(xy[:, 0] * (1 - EDGE_NUDGE), xy[:, 1])
+        return np.column_stack([lon, lat])
+
+    return shapely.transform(geom, inverse)
 
 
 def fold(s: str) -> str:

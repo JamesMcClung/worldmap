@@ -99,3 +99,21 @@ def test_topographic_name_crop_searches_countries() -> None:
 def test_name_crop_needs_labels() -> None:
     with pytest.raises(SystemExit, match="--label"):
         make_map_frame(parse_args(["--crop", "France", "--label", "none"]))
+
+
+def test_parse_box_whole_longitude_range_and_degenerate_boxes() -> None:
+    assert parse_box("-180,70:180,90") == (-180, 70, 180, 90)
+    assert not crop_frame(box_region((-180, 70, 180, 90)), 0).globe
+    for flat in ("10,40:10,50", "10,40:20,40"):
+        with pytest.raises(ValueError, match="no area"):
+            parse_box(flat)
+
+
+def test_candidates_across_the_antimeridian_are_finite() -> None:
+    import numpy as np
+
+    cands = candidates({"countries", "oceans", "seas"}, False)
+    assert all(np.isfinite(shapely.get_coordinates(c.geom)).all() for c in cands)
+    for name in ("Fiji", "Gulf of Anadyr'", "SOUTHERN OCEAN"):
+        c = next(c for c in cands if c.text == name)
+        assert not crop_frame(c.geom, 0.1).globe
