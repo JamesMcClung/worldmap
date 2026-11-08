@@ -1,6 +1,7 @@
 """--type topographic: colour bars in the empty canvas corners outside the globe. Each is a right triangle with its
 right angle in the corner and its third side following the globe; tick labels sit in the gap between bar and globe,
-the title inside the bar, curved along that third side."""
+the title inside the bar, curved along that third side. A --crop has no empty corners: its bars are rectangles in
+the corners, over the map, the title along the side facing the map."""
 
 from typing import Literal
 
@@ -24,6 +25,8 @@ from worldmap.topographic import CONTOUR_WIDTH, Contours, Scale
 Corner = Literal["br", "tr", "bl"]  # bottom-right, top-right, bottom-left
 BAR_GAP_IN = 0.7  # gap between the bar and the globe, for the tick labels (poster inches)
 BAR_MARGIN_IN = 0.2  # from the canvas edges
+BAR_RECT_WIDTH_IN = 0.6  # a crop's bars: this wide (poster inches)
+BAR_RECT_LENGTH = 0.35  # and this fraction of the poster's height long
 TICK_STEP = 1000  # metres
 TIP = 0.97  # the top value sits this far along from the canvas edge to the tip; beyond it, the top colour
 TEXT_COLOR = "#3a3a3a"
@@ -37,6 +40,11 @@ def bar_region(frame: MapFrame, corner: Corner) -> Polygon:
     """The corner's quadrant of the canvas, minus the globe grown by the gap, minus a margin from the canvas edges."""
     unit = frame.units_per_in
     m = BAR_MARGIN_IN * unit
+    if not frame.globe:
+        w, length = BAR_RECT_WIDTH_IN * unit, BAR_RECT_LENGTH * frame.height_in * unit
+        x0 = frame.xmin + m if corner == "bl" else frame.xmax - m - w
+        y0 = frame.ymax - m - length if corner == "tr" else frame.ymin + m
+        return box(x0, y0, x0 + w, y0 + length)
     xs = (0, frame.xmax - m) if corner in ("br", "tr") else (frame.xmin + m, 0)
     ys = (frame.ymin + m, 0) if corner in ("br", "bl") else (0, frame.ymax - m)
     region = box(xs[0], ys[0], xs[1], ys[1]).difference(Polygon(frame.outline).buffer(BAR_GAP_IN * unit))
@@ -81,10 +89,18 @@ def globe_side(region: Polygon) -> np.ndarray:
     return xy if xy[0, 0] < xy[-1, 0] else xy[::-1]
 
 
-def curved_title(region: Polygon, title: str, unit: float) -> Path:
-    """`title`'s glyphs bent along the bar's curved side, centred on it, inside the bar TITLE_INSET_IN from it.
-    `unit` is map units per poster inch."""
-    side = globe_side(region)
+def inner_side(region: Polygon, corner: Corner) -> np.ndarray:
+    """A crop's rectangular bar: its long side facing the map, as 2 vertices, bottom to top."""
+    x0, y0, x1, y1 = region.bounds
+    x = x1 if corner == "bl" else x0
+    return np.array([[x, y0], [x, y1]])
+
+
+def curved_title(region: Polygon, title: str, unit: float, side: np.ndarray | None = None) -> Path:
+    """`title`'s glyphs bent along `side` (default: the bar's curved side), centred on it, inside the bar
+    TITLE_INSET_IN from it. `unit` is map units per poster inch."""
+    if side is None:
+        side = globe_side(region)
     s = arc_lengths(side)
     glyphs = TextPath((0, 0), title, size=TITLE_SIZE, prop=FontProperties(weight="bold"))
     scale = unit / 72  # map units per point
@@ -147,5 +163,6 @@ def draw_colorbar(ax: Axes, frame: MapFrame, corner: Corner, scale: Scale, title
                 path_effects=HALO)
         ax.text(x + sign * pad, y, tick_label(v, scale), fontsize=TICK_SIZE, color=TEXT_COLOR, ha="right" if left else "left",
                 va="center", path_effects=HALO, zorder=Z_GLOBE + 0.2)
-    ax.add_patch(PathPatch(curved_title(region, title, unit), fc=TEXT_COLOR, ec="none", path_effects=TITLE_HALO,
+    side = globe_side(region) if frame.globe else inner_side(region, corner)
+    ax.add_patch(PathPatch(curved_title(region, title, unit, side), fc=TEXT_COLOR, ec="none", path_effects=TITLE_HALO,
                            zorder=Z_GLOBE + 0.2))
