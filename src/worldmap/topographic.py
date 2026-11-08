@@ -271,7 +271,7 @@ def draw_topography(ax: Axes, frame: MapFrame, dpi: float, ocean: bool) -> None:
     z[~pg.inside] = 0
     z = soften(z, grid.step * METRES_PER_DEG / (frame.width / len(pg.x)))
     pg.lon = pg.lat = np.empty((0, 0), np.float32)  # done with them; ~200 MB at 200 dpi
-    land_shapes, ice_shapes = frame.project(load_land()), frame.project(load_ice())
+    land_shapes, ice_shapes = frame.project(load_land(), dissolve=True), frame.project(load_ice(), dissolve=True)
     ice = polygon_mask(ice_shapes, frame, pg) & pg.inside  # ice wins: the shelves
     land = polygon_mask(land_shapes, frame, pg) & pg.inside & ~ice
     sea = ~land & ~ice & pg.inside

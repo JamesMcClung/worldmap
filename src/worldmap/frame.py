@@ -91,12 +91,15 @@ class MapFrame:
     def canvas(self) -> Polygon:
         return box(self.xmin, self.ymin, self.xmax, self.ymax)
 
-    def project(self, gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    def project(self, gdf: gpd.GeoDataFrame, dissolve: bool = False) -> gpd.GeoDataFrame:
         """Clip lon/lat data to the frame's boxes and project it. A crop also cuts it a little outside the canvas, so
-        the cut edges are never seen."""
+        the cut edges are never seen. With `dissolve` a crop merges every row into one (layers whose rows split a
+        feature at +-180, like the land, so the halves can be joined); the globe keeps its rows."""
         gdf = gdf.copy()
         clip = box(*self.clip[0]) if len(self.clip) == 1 else shapely.union_all([box(*b) for b in self.clip])
         gdf["geometry"] = gdf.geometry.intersection(clip)
+        if dissolve and not self.globe:
+            gdf = gpd.GeoDataFrame(geometry=[shapely.union_all(gdf.geometry.values)], crs=gdf.crs)
         if len(self.clip) == 2:  # a crop across +-180: join what Natural Earth splits there, or the cut shows as a border
             east_of_seam = self.clip[1][2]
             gdf["geometry"] = [join_at_antimeridian(g, east_of_seam) for g in gdf.geometry]

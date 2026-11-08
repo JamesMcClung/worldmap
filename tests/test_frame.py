@@ -45,3 +45,16 @@ def test_crop_joins_polygons_split_at_the_antimeridian() -> None:
     halves = gpd.GeoDataFrame(geometry=[MultiPolygon([east, west])], crs="EPSG:4326")
     projected = crop_frame(box_region((160, 48, -150, 72)), 0).project(halves)
     assert projected.geometry[0].geom_type == "Polygon"
+
+
+def test_crop_dissolve_joins_rows_split_at_the_antimeridian() -> None:
+    from worldmap.crop import box_region, crop_frame
+
+    east = Polygon([(170, 60), (180, 60), (180, 65), (170, 65)])
+    w = -179.99999999999991
+    west = Polygon([(w, 60), (-170, 60), (-170, 65), (w, 65), (w, 63.7), (w, 61.2)])
+    rows = gpd.GeoDataFrame(geometry=[east, west], crs="EPSG:4326")
+    projected = crop_frame(box_region((160, 48, -150, 72)), 0).project(rows, dissolve=True)
+    assert len(projected) == 1 and projected.geometry.iloc[0].geom_type == "Polygon"
+    world = make_frame()
+    assert len(world.project(rows, dissolve=True)) == 2  # the world map is left as it was
