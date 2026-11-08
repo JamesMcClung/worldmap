@@ -116,7 +116,9 @@ def draw_borders(ax: Axes, solid: BaseGeometry, dashed: BaseGeometry) -> None:
 def draw_states(ax: Axes, states_projected: gpd.GeoDataFrame, disputed: bool = False) -> None:
     """State/province lines. With `disputed` they go under the borders, which would otherwise lose their dashes where
     a disputed area's edge follows a state line (Kashmir and Himachal Pradesh)."""
-    states_projected.plot(ax=ax, color=STATE_LINE, linewidth=STATE_LINE_WIDTH, zorder=Z_STATES_UNDER_BORDERS if disputed else Z_STATES)
+    states_projected = states_projected[~states_projected.geometry.is_empty]  # a crop may show none
+    if len(states_projected):
+        states_projected.plot(ax=ax, color=STATE_LINE, linewidth=STATE_LINE_WIDTH, zorder=Z_STATES_UNDER_BORDERS if disputed else Z_STATES)
 
 
 def draw_lakes(ax: Axes, lakes_projected: gpd.GeoDataFrame) -> None:
