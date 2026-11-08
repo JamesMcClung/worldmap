@@ -18,10 +18,33 @@ OUTLINE_POINTS = 200  # points along each side (meridian +-180) of the globe out
 ANTIMERIDIAN_EPS = 1e-6  # degrees inside +-180, so the outline doesn't wrap
 CANVAS_PAD = 0.006  # canvas margin around the outline, as a fraction of its width (room for the stroke)
 PX_SIMPLIFY = 2.0  # default simplification tolerance (px) for geometry converted to pixels
+SEAM_GRID_DEG = 1e-7  # Natural Earth's pieces meet at 180 and -179.99999999999991: snap to this grid to join them
 PROJECT_PAD = 0.05  # a crop keeps projected data this far (fraction of its width/height) outside the canvas
 
 LonLatBox = tuple[float, float, float, float]  # lon0, lat0, lon1, lat1 with lon0 <= lon1, within +-180 / +-90
 WORLD: LonLatBox = (-180, -90, 180, 90)
+
+
+def join_at_antimeridian(geom: BaseGeometry, east_of_seam: float) -> BaseGeometry:
+    """Parts west of +-180 (lon <= east_of_seam) moved 360 degrees east and unioned with the rest, so pieces split at
+    the antimeridian become one."""
+    if geom.is_empty:
+        return geom
+    parts = [affinity.translate(p, 360) if p.bounds[2] <= east_of_seam else p for p in shapely.get_parts(geom)]
+    return shapely.union_all(parts, grid_size=SEAM_GRID_DEG)
+
+
+def cut(geoms: gpd.GeoSeries, window: Polygon) -> gpd.GeoSeries:
+    """Each geometry intersected with `window`, keeping only the parts of its own dimension (cutting a polygon along
+    an edge can leave stray lines or points beside it)."""
+    dims = shapely.get_dimensions(geoms.values)
+    valid = gpd.GeoSeries(shapely.make_valid(geoms.values), index=geoms.index, crs=geoms.crs)  # Natural Earth's marine areas aren't all
+    out = []
+    for dim, g in zip(dims, valid.intersection(window).values):
+        if g.geom_type == "GeometryCollection" and not g.is_empty:
+            g = shapely.union_all([p for p in shapely.get_parts(g) if shapely.get_dimensions(p) == dim])
+        out.append(g)
+    return gpd.GeoSeries(out, index=geoms.index, crs=geoms.crs)
 
 
 @dataclass(frozen=True)
@@ -74,10 +97,13 @@ class MapFrame:
         gdf = gdf.copy()
         clip = box(*self.clip[0]) if len(self.clip) == 1 else shapely.union_all([box(*b) for b in self.clip])
         gdf["geometry"] = gdf.geometry.intersection(clip)
+        if len(self.clip) == 2:  # a crop across +-180: join what Natural Earth splits there, or the cut shows as a border
+            east_of_seam = self.clip[1][2]
+            gdf["geometry"] = [join_at_antimeridian(g, east_of_seam) for g in gdf.geometry]
         gdf = gdf.to_crs(self.crs)
         if not self.globe:
             px, py = PROJECT_PAD * self.width, PROJECT_PAD * self.height
-            gdf["geometry"] = gdf.geometry.intersection(box(self.xmin - px, self.ymin - py, self.xmax + px, self.ymax + py))
+            gdf["geometry"] = cut(gdf.geometry, box(self.xmin - px, self.ymin - py, self.xmax + px, self.ymax + py))
         return gdf
 
     def visible(self, gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
@@ -85,7 +111,7 @@ class MapFrame:
         if self.globe:
             return gdf
         gdf = gdf.copy()
-        gdf["geometry"] = gdf.geometry.intersection(self.canvas)
+        gdf["geometry"] = cut(gdf.geometry, self.canvas)
         return gdf
 
     def to_px(self, geom: BaseGeometry, simplify: float = PX_SIMPLIFY) -> BaseGeometry:

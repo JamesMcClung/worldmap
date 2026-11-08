@@ -1,7 +1,7 @@
 from dataclasses import replace
 
 import geopandas as gpd
-from shapely.geometry import Point
+from shapely.geometry import MultiPolygon, Point, Polygon, box
 
 from worldmap.frame import DPI, POSTER_WIDTH_IN, make_frame
 
@@ -34,3 +34,14 @@ def test_visible_clips_only_crops() -> None:
     assert world.visible(gdf) is gdf
     crop = replace(world, globe=False, xmin=-1e5, xmax=1e5, ymin=-1e5, ymax=1e5)
     assert list(crop.visible(gdf).geometry.is_empty) == [False, True]
+
+
+def test_crop_joins_polygons_split_at_the_antimeridian() -> None:
+    from worldmap.crop import box_region, crop_frame
+
+    east = Polygon([(170, 60), (180, 60), (180, 65), (170, 65)])
+    w = -179.99999999999991  # as in Natural Earth
+    west = Polygon([(w, 60), (-170, 60), (-170, 65), (w, 65), (w, 63.7), (w, 61.2)])  # other seam vertices
+    halves = gpd.GeoDataFrame(geometry=[MultiPolygon([east, west])], crs="EPSG:4326")
+    projected = crop_frame(box_region((160, 48, -150, 72)), 0).project(halves)
+    assert projected.geometry[0].geom_type == "Polygon"
