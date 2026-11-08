@@ -12,6 +12,7 @@ import time
 
 import geopandas as gpd
 import matplotlib
+import shapely
 from matplotlib.axes import Axes
 from shapely.geometry import Point
 
@@ -20,7 +21,7 @@ from worldmap.coloring import Coloring, load_or_compute_coloring, make_palette, 
 from worldmap.colorspace import RGB
 from worldmap.data import is_labeled, load_countries, load_disputed, load_lakes, load_rivers, load_states, parent_index
 from worldmap.disputed import DISPUTED_GREY, STRIPE_WIDTH_IN, border_lines, dispute_edges, disputed_label_args, load_disputes
-from worldmap.crop import box_region, crop_frame, parse_box
+from worldmap.crop import CROP_MARGIN, box_region, candidates, choose, crop_frame, matches, parse_box
 from worldmap.earth import Fill, build_regions, fill_at
 from worldmap.frame import DPI, MapFrame, make_frame
 from worldmap.labels.label import decide_out_and_wrap, make_labels
@@ -84,7 +85,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                    help="output dots per inch on the 36 in poster (default %(default)s); "
                         "the layout is the same at any resolution, only the pixel count changes")
     p.add_argument("--crop", metavar="SPEC",
-                   help="zoom in on a region, redrawn in a projection centred on it: lon,lat:lon,lat (two opposite corners)")
+                   help="zoom in on a region, redrawn in a projection centred on it: a label's name (or part of it; only the "
+                        "--label kinds are searched) or lon,lat:lon,lat (two opposite corners)")
     p.add_argument("--pick", metavar="FILE",
                    help="click the rendered map to add pins; they are appended to FILE when the window closes")
     return p.parse_args(argv)
@@ -101,9 +103,12 @@ def make_map_frame(args: argparse.Namespace) -> MapFrame:
         return make_frame()
     try:
         crop = parse_box(args.crop)
-        if crop is None:
-            sys.exit(f"make_map: --crop {args.crop}: expected lon,lat:lon,lat")
-        return crop_frame(box_region(crop), 0)
+        if crop is not None:
+            return crop_frame(box_region(crop), 0)
+        if not args.label:
+            sys.exit(f"make_map: --crop {args.crop}: a name is looked up among the labels, but --label is none")
+        chosen = choose(args.crop, matches(args.crop, candidates(args.label, args.disputed)))
+        return crop_frame(shapely.union_all([c.geom for c in chosen]), CROP_MARGIN)
     except ValueError as e:
         sys.exit(f"make_map: {e}")
 

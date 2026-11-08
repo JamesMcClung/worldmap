@@ -38,6 +38,10 @@ def test_render_rivers(tmp_path: Path) -> None:
     check_fingerprint("rivers", render(tmp_path, "--rivers"))
 
 
+def test_render_crop(tmp_path: Path) -> None:
+    check_fingerprint("crop", render(tmp_path, "--crop", "France"))
+
+
 def test_render_crop_water(tmp_path: Path) -> None:
     check_fingerprint("crop_water", render(tmp_path, "--crop", "160,48:-150,72", "--label", "countries,territories,water", "--disputed"))
 

@@ -1,14 +1,24 @@
 """--crop: a zoomed map of one region, in a Lambert azimuthal equal-area projection centred on it."""
 
 import re
+import sys
+import unicodedata
+from dataclasses import dataclass
 
+import geopandas as gpd
 import numpy as np
 import shapely
 from pyproj import Transformer
 from shapely.geometry import Polygon, box
 from shapely.geometry.base import BaseGeometry
 
-from worldmap.frame import PROJECT_PAD, LonLatBox, MapFrame
+from worldmap.data import is_labeled, load_countries, load_disputed, load_lakes
+from worldmap.disputed import disputed_label_args, load_disputes
+from worldmap.earth import Fill
+from worldmap.frame import PROJECT_PAD, LonLatBox, MapFrame, make_frame
+from worldmap.labels.label import RENAME
+from worldmap.labels.regions import child_regions, polygons
+from worldmap.labels.water import kinds_from_labels, load_water_bodies
 
 CropBox = tuple[float, float, float, float]  # west lon, south lat, east lon, north lat; west > east crosses +-180
 CROP_MARGIN = 0.10  # a named crop's margin on each side, as a fraction of the region's projected width/height
@@ -113,3 +123,88 @@ def crop_frame(region: BaseGeometry, margin: float) -> MapFrame:
     clip = clip_boxes(to_lonlat, to_map, box(x0, y0, x1, y1), (lon0, lat0))
     outline = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
     return MapFrame(to_map, to_lonlat, outline, x0, y0, x1, y1, crs=crs, globe=False, clip=clip)
+
+
+KINDS = ("country", "territory", "disputed", "ocean", "sea", "lake", "strait", "river")  # the order a match list is in
+WATER_KIND = {"oceans": "ocean", "seas": "sea", "lakes": "lake", "straits": "strait", "rivers": "river"}
+
+
+@dataclass(frozen=True)
+class Candidate:
+    text: str  # the label's text
+    kind: str  # one of KINDS
+    geom: BaseGeometry  # lon/lat: what the label stands for
+
+
+def candidates(label: set[str], disputed: bool) -> list[Candidate]:
+    """Every label of the `label` kinds (--label) a name crop can match, with the lon/lat geometry it stands for. A
+    country's excludes the parts territories label separately (French Guiana...), whether or not they're labelled."""
+    frame = make_frame()
+    found: list[tuple[str, str, BaseGeometry]] = []
+    if label & {"countries", "territories"}:
+        countries = load_countries()
+        projected = frame.project(countries)
+        children = child_regions(countries, projected, frame)
+        if "countries" in label:
+            relabel: dict[int, str] = {}
+            extra: list[tuple[str, Polygon, Fill]] = []
+            if disputed:  # the colour doesn't matter here
+                relabel, extra = disputed_label_args(load_disputes(countries, frame.project(load_disputed())), lambda i, pt: "#808080")
+            for i, row in projected.iterrows():
+                if not (is_labeled(row) or i in relabel):
+                    continue
+                taken = {p.wkb for c in children if c.feature == i for p in c.polys}
+                own = [p for p in polygons(row.geometry) if p.wkb not in taken]
+                if own:
+                    found.append((relabel.get(i) or RENAME.get(row.NAME_EN, row.NAME_EN), "country", shapely.union_all(own)))
+            found += [(text, "disputed", poly) for text, poly, _ in extra]
+        if "territories" in label:
+            found += [(c.text, "territory", shapely.union_all(c.polys)) for c in children]
+    kinds = kinds_from_labels(label)
+    if kinds:
+        found += [(b.text, WATER_KIND[b.kind], b.geom) for b in load_water_bodies(kinds, frame.project(load_lakes()), frame)]
+    lonlat = gpd.GeoSeries([g for _, _, g in found], crs=frame.crs).to_crs("EPSG:4326")
+    return [Candidate(text, kind, g) for (text, kind, _), g in zip(found, lonlat)]
+
+
+def fold(s: str) -> str:
+    """For matching: no accents, no case."""
+    return "".join(c for c in unicodedata.normalize("NFKD", s) if not unicodedata.combining(c)).casefold()
+
+
+def matches(name: str, cands: list[Candidate]) -> list[Candidate]:
+    """The candidates whose text contains `name` (ignoring case and accents): exact matches first, then the rest,
+    each in KINDS order, then by text."""
+    key = fold(name)
+    found = [c for c in cands if key in fold(c.text)]
+    return sorted(found, key=lambda c: (fold(c.text) != key, KINDS.index(c.kind), c.text))
+
+
+def describe(c: Candidate) -> str:
+    """'Colorado (river) 109.5°W 36.2°N': the text, the kind, and a point on it."""
+    if shapely.get_dimensions(c.geom) == 1:  # a river: the middle of its longest line
+        pt = max(shapely.get_parts(c.geom), key=lambda g: g.length).interpolate(0.5, normalized=True)
+    else:
+        pt = c.geom.representative_point()
+    lon, lat = pt.x, pt.y
+    return f"{c.text} ({c.kind}) {abs(lon):.1f}°{'E' if lon >= 0 else 'W'} {abs(lat):.1f}°{'N' if lat >= 0 else 'S'}"
+
+
+def choose(name: str, found: list[Candidate]) -> list[Candidate]:
+    """The candidate(s) to crop to: the only match, or those the user checks when several match. Without a terminal
+    to ask on, several matches are an error that lists them."""
+    if not found:
+        sys.exit(f"make_map: --crop {name}: no label matches (only the kinds in --label are searched)")
+    if len(found) == 1:
+        return found
+    lines = [describe(c) for c in found]
+    if not sys.stdin.isatty():
+        sys.exit(f"make_map: --crop {name} matches several labels; run in a terminal to choose, or use lon,lat:lon,lat:\n"
+                 + "\n".join(lines))
+    import questionary
+
+    picked = questionary.checkbox(f"--crop {name} matches several labels. Crop to:", choices=lines,
+                                  validate=lambda chosen: bool(chosen) or "choose at least one").ask()
+    if not picked:
+        sys.exit("make_map: --crop: nothing chosen")
+    return [c for c, line in zip(found, lines) if line in picked]
