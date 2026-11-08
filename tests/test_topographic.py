@@ -220,3 +220,21 @@ def test_draw_topography_holds_little_memory() -> None:
     plt.close(fig)
     pixels = 1800 * 923
     assert held < 40 * pixels  # the RGBA image is 16 bytes a pixel; the rest is lines and patches
+
+
+def test_soften_leaves_fine_grids_alone() -> None:
+    from worldmap.topographic import soften
+
+    z = np.arange(20, dtype=np.float32).reshape(4, 5)
+    assert soften(z, 1.5) is z
+
+
+def test_soften_smooths_cell_facets_in_a_crop() -> None:
+    from worldmap.topographic import soften
+
+    z = np.zeros((60, 60), np.float32)
+    z[:, 30:] = 1000  # a cliff
+    out = soften(z, 10)
+    assert np.abs(np.diff(out, axis=1)).max() < 150  # spread over ~ a cell
+    assert out[:, :10].max() == 0 and out[:, -10:].min() == 1000  # flat ground stays flat, to the edges
+    assert out.mean() == pytest.approx(z.mean(), rel=1e-3)

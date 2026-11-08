@@ -58,6 +58,7 @@ LAND_CONTOURS = Contours(1000, "#5a4a3a", 0.6)
 ICE_CONTOURS = Contours(1000, "#7a8fa3", 0.6)
 SEA_CONTOURS = Contours(2000, "#1f4466", 0.5, "dashed")
 CONTOUR_WIDTH = 0.3
+METRES_PER_DEG = 111_195  # along a meridian
 SAMPLE_BLOCK = 1 << 17  # points per block in sample() and colorize()
 VERT_EXAG = 6.0  # hill-shading exaggeration of heights (z and pixel size both in metres); tuned on crops
 SLIVER_M2 = 1.0  # outline parts smaller than this (m^2) are slivers left by the union; the smallest islet is ~2,300
@@ -110,6 +111,31 @@ def sample_block(grid: Grid, lon: np.ndarray, lat: np.ndarray) -> np.ndarray:
     top = z[y0, x0] * (1 - tx) + z[y0, x1] * tx
     bottom = z[y0 + 1, x0] * (1 - tx) + z[y0 + 1, x1] * tx
     return (top * (1 - ty) + bottom * ty).astype(np.float32)
+
+
+def box_blur(z: np.ndarray, radius: int, axis: int) -> None:
+    """Mean over 2 * radius + 1 cells along `axis`, edges extended, in place; in bands, so the float64 running sums
+    stay small on a whole-poster grid."""
+    zt = np.moveaxis(z, axis, 1)
+    for r0 in range(0, zt.shape[0], 256):
+        band = zt[r0:r0 + 256].astype(np.float64)
+        padded = np.concatenate([np.repeat(band[:, :1], radius + 1, 1), band, np.repeat(band[:, -1:], radius, 1)], axis=1)
+        sums = np.cumsum(padded, axis=1)
+        zt[r0:r0 + 256] = (sums[:, 2 * radius + 1:] - sums[:, :-2 * radius - 1]) / (2 * radius + 1)
+
+
+def soften(z: np.ndarray, cell_px: float) -> np.ndarray:
+    """In a crop one elevation cell covers many pixels, and bilinear heights shade as a flat facet per cell: blur
+    them over about a cell (two box passes each way). Grids with cells of <= 2 pixels (the world map) are returned
+    as they are."""
+    if cell_px <= 2:
+        return z
+    radius = max(1, round(cell_px / 2))
+    out = z.astype(np.float32, copy=True)
+    for _ in range(2):
+        box_blur(out, radius, 1)
+        box_blur(out, radius, 0)
+    return out
 
 
 def ramp_colors(cmap: LinearSegmentedColormap, x: np.ndarray) -> np.ndarray:
@@ -240,8 +266,10 @@ def draw_topography(ax: Axes, frame: MapFrame, dpi: float, ocean: bool) -> None:
     """Everything on the globe for --type topographic: the coloured, hill-shaded heights (sea depths with `ocean`),
     contours, the coastline and the lakes."""
     pg = poster_grid(frame, dpi)
-    z = sample(elevation_grid(), pg.lon, pg.lat)
+    grid = elevation_grid()
+    z = sample(grid, pg.lon, pg.lat)
     z[~pg.inside] = 0
+    z = soften(z, grid.step * METRES_PER_DEG / (frame.width / len(pg.x)))
     pg.lon = pg.lat = np.empty((0, 0), np.float32)  # done with them; ~200 MB at 200 dpi
     land_shapes, ice_shapes = frame.project(load_land()), frame.project(load_ice())
     ice = polygon_mask(ice_shapes, frame, pg) & pg.inside  # ice wins: the shelves
