@@ -16,7 +16,7 @@ import shapely
 from matplotlib.axes import Axes
 from shapely.geometry import Point
 
-from worldmap.colorbars import draw_colorbar
+from worldmap.colorbars import Corner, draw_colorbar, label_outline
 from worldmap.coloring import Coloring, load_or_compute_coloring, make_palette, spot_check
 from worldmap.colorspace import RGB
 from worldmap.data import is_labeled, load_countries, load_disputed, load_lakes, load_rivers, load_states, parent_index
@@ -212,7 +212,10 @@ def draw_topographic(args: argparse.Namespace, out: str, frame: MapFrame) -> Non
     draw_colorbar(ax, frame, "bl", ICE, "Ice", ICE_CONTOURS)
     kinds = kinds_from_labels(args.label)
     if kinds:  # without water kinds no label stage runs
-        placement, water = place_all([], make_water_labels(load_water_bodies(kinds, frame.project(load_lakes()), frame), frame), frame)
+        # A crop's bars sit over the map: keep the labels off them.
+        bars: list[Corner] = ["br", "tr", "bl"] if args.ocean else ["br", "bl"]
+        room = frame if frame.globe else dataclasses.replace(frame, outline=label_outline(frame, bars))
+        placement, water = place_all([], make_water_labels(load_water_bodies(kinds, frame.project(load_lakes()), frame), frame), room)
         draw_water_labels(ax, water, placement, frame)
     ax.set_xlim(frame.xmin, frame.xmax)
     ax.set_ylim(frame.ymin, frame.ymax)

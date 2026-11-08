@@ -343,6 +343,14 @@ def place_all(labels: list[Label], water: list[WaterLabel], frame: MapFrame) -> 
     return place_with_water(labels, kept + rivers, frame, start, fixed=p.n)
 
 
+def outside_outline(p: Placement, frame: MapFrame) -> set[int]:
+    """Water labels with a glyph box not wholly inside the frame's outline."""
+    outline_px = frame.to_px(Polygon(frame.outline), simplify=OUTLINE_SIMPLIFY_PX)
+    g = glyph_boxes(p)
+    inside = shapely.contains(outline_px, shapely.box(g[:, 0], g[:, 1], g[:, 2], g[:, 3]))
+    return {int(i) for i in p.owner[~inside]}
+
+
 def place_with_water(labels: list[Label], water: list[WaterLabel], frame: MapFrame,
                      start: tuple[np.ndarray, np.ndarray] | None = None, fixed: int = 0) -> tuple[Placement, list[WaterLabel]]:
     """Place country and water labels together, dropping water labels until none fails, and return the placement
@@ -363,8 +371,9 @@ def place_with_water(labels: list[Label], water: list[WaterLabel], frame: MapFra
             return p, kept
         n_country = len(labels)
         clashing = {i for i in clashes(p)[1] if i >= fixed}
+        outside = set() if frame.globe else outside_outline(p, frame)  # in a crop: under a colour bar
         failing = [i for i in range(max(n_country, fixed), p.n)
-                   if kept[i - n_country].inside_share(p.x[i], p.y[i]) < WATER_MIN_INSIDE
+                   if kept[i - n_country].inside_share(p.x[i], p.y[i]) < WATER_MIN_INSIDE or i in outside
                    or (i in clashing and (kept[i - n_country].size <= kept[i - n_country].min_size * (1 + 1e-9)
                                           or kept[i - n_country].size == sizes_before[i - n_country]))]  # can't or didn't shrink
         if not failing and not clashing:

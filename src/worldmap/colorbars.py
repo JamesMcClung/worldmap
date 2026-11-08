@@ -27,6 +27,7 @@ BAR_GAP_IN = 0.7  # gap between the bar and the globe, for the tick labels (post
 BAR_MARGIN_IN = 0.2  # from the canvas edges
 BAR_RECT_WIDTH_IN = 0.6  # a crop's bars: this wide (poster inches)
 BAR_RECT_LENGTH = 0.35  # and this fraction of the poster's height long
+BAR_LABEL_ROOM_IN = 0.9  # labels keep this far from a crop's bars (room for the tick labels)
 TICK_STEP = 1000  # metres
 TIP = 0.97  # the top value sits this far along from the canvas edge to the tip; beyond it, the top colour
 TEXT_COLOR = "#3a3a3a"
@@ -87,6 +88,23 @@ def globe_side(region: Polygon) -> np.ndarray:
     side = max(shapely.get_parts(curve), key=lambda g: g.length)
     xy = np.asarray(side.coords)
     return xy if xy[0, 0] < xy[-1, 0] else xy[::-1]
+
+
+def label_outline(frame: MapFrame, corners: list[Corner]) -> list[tuple[float, float]]:
+    """Where labels may go in a crop with bars in `corners`: the canvas minus each bar's corner, grown by
+    BAR_LABEL_ROOM_IN (the bars sit over the map there, unlike on the globe)."""
+    room = BAR_LABEL_ROOM_IN * frame.units_per_in
+    keep_out = []
+    for corner in corners:
+        x0, y0, x1, y1 = bar_region(frame, corner).bounds
+        if corner == "bl":
+            keep_out.append(box(frame.xmin, frame.ymin, x1 + room, y1 + room))
+        elif corner == "br":
+            keep_out.append(box(x0 - room, frame.ymin, frame.xmax, y1 + room))
+        else:
+            keep_out.append(box(x0 - room, y0 - room, frame.xmax, frame.ymax))
+    area = frame.canvas.difference(shapely.union_all(keep_out))
+    return [(float(x), float(y)) for x, y in np.asarray(area.exterior.coords)[:-1]]
 
 
 def inner_side(region: Polygon, corner: Corner) -> np.ndarray:

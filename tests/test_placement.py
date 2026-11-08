@@ -153,3 +153,17 @@ def test_rivers_give_way_to_countries(frame: MapFrame, one_label: list[Label], w
     river = water_label("River", (w.anchor_x, w.anchor_y), w.geom, w.parts, 10, "rivers")
     p, _ = place_all(one_label, [river], frame)
     assert (p.x[0], p.y[0]) == (alone.x[0], alone.y[0])
+
+
+def test_crop_drops_water_labels_outside_the_outline(frame: MapFrame) -> None:
+    """A crop's outline can leave water under a colour bar: its name can't go there, so it is dropped."""
+    from dataclasses import replace
+
+    sea, _ = crossing_water_labels(frame)
+    x, y = frame.px_to_map(np.array(mid_atlantic_px(frame)[0]), np.array(mid_atlantic_px(frame)[1]))
+    half = 2000 / frame.px_per_unit  # an outline that leaves out the sea, far off to one side
+    cropped = replace(frame, globe=False, outline=[(x + half, y - half), (x + 3 * half, y - half), (x + 3 * half, y + half), (x + half, y + half)])
+    _, kept = place_with_water([], [sea], cropped)
+    assert kept == []
+    _, kept = place_with_water([], [crossing_water_labels(frame)[0]], frame)
+    assert [w.text for w in kept] == ["Sea"]  # on the globe it stays

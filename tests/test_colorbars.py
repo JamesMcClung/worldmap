@@ -107,3 +107,15 @@ def test_rect_title_inside_the_bar(corner: str) -> None:
     r = bar_region(f, corner)  # type: ignore[arg-type]
     glyphs = MultiPoint(curved_title(r, "Height", f.units_per_in, inner_side(r, corner)).vertices)  # type: ignore[arg-type]
     assert r.contains(glyphs)
+
+
+def test_label_outline_keeps_labels_off_the_bars() -> None:
+    from worldmap.colorbars import BAR_LABEL_ROOM_IN, label_outline
+
+    f = alps()
+    corners = ["br", "tr", "bl"]
+    area = Polygon(label_outline(f, corners))  # type: ignore[arg-type]
+    unit = f.units_per_in
+    assert area.is_valid and area.area > 0.7 * f.canvas.area
+    for corner in corners:
+        assert not area.intersects(bar_region(f, corner).buffer(BAR_LABEL_ROOM_IN * unit * 0.99))  # type: ignore[arg-type]
