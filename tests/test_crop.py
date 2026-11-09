@@ -239,3 +239,12 @@ def test_name_crop_prints_its_box(capsys: pytest.CaptureFixture[str]) -> None:
     spec = out.split("--crop ")[1].split()[0]
     b = parse_box(spec)
     assert b is not None and crop_frame(box_region(b), 0).width == pytest.approx(frame.width, rel=0.01)
+
+
+def test_clip_edges_follow_their_parallels() -> None:
+    from worldmap.data import load_countries
+
+    f = crop_frame(box_region((50.6, 70.1, 172.5, 90.0)), 0)  # clipped at 56.7N right round the pole
+    c = load_countries()
+    russia = f.project(c)[c.NAME_EN == "Russia"].geometry.iloc[0]
+    assert russia.is_valid and russia.contains(Point(*f.to_map.transform(75, 66.5)))  # the Gydan peninsula
