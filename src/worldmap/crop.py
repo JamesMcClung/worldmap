@@ -23,7 +23,8 @@ from worldmap.labels.water import kinds_from_labels, load_water_bodies
 if TYPE_CHECKING:
     import questionary
 
-CropBox = tuple[float, float, float, float]  # west lon, south lat, east lon, north lat; west > east crosses +-180
+CropBox = tuple[float, float, float, float]  # west lon, south lat, east lon, north lat; west > east crosses +-180,
+# -180..180 is all the way round
 CROP_MARGIN = 0.10  # a named crop's margin on each side, as a fraction of the region's projected width/height
 CLIP_PAD_DEG = 5  # lon/lat clip boxes reach this far past what the canvas shows
 SEGMENT_DEG = 0.5  # lon/lat edges are split this finely before projecting (they curve in the crop's projection)
@@ -36,44 +37,39 @@ POLE_DEG = 0.1  # round_pole: reaching this close to a pole counts
 RECENTRE_ROUNDS, RECENTRE_TOLERANCE = 8, 1e-4  # crop_frame: rounds of moving the centre to the map's middle, and how close
 LABEL_SCALE_MAX = 2.5  # a crop's label_scale: the square root of its zoom over the world map, up to this
 
-NUM = r"\s*(-?\d+(?:\.\d*)?)\s*"
-BOX_RE = re.compile(f"^{NUM},{NUM}:{NUM},{NUM}$")
+NUM = r"\s*(-?\d+(?:\.\d*)?)?\s*"  # may be left out
+BOX_RE = re.compile(f"^{NUM}:{NUM},{NUM}:{NUM}$")
 
 
 def parse_box(s: str) -> CropBox | None:
-    """`lon,lat:lon,lat` (two opposite corners, in any order) -> CropBox, or None if `s` isn't of that form (a name).
-    Of the two ways round the globe between the corners' longitudes, the narrower is taken, unless one is written
-    past +-180: then the box runs east from the smaller to the larger (120,0:300,10 is 180 degrees across +-180)."""
+    """`west:east,south:north` -> CropBox, or None if `s` isn't of that form (a name). Any edge may be left out: the
+    globe's (+-180, +-90), so `:,60:` is everything north of 60N. West past east crosses +-180."""
     m = BOX_RE.match(s)
     if not m:
         return None
-    lon_a, lat_a, lon_b, lat_b = (float(v) for v in m.groups())
-    west, east = min(lon_a, lon_b), max(lon_a, lon_b)
-    long_way = west < -180 or east > 180
-    if (long_way and not 0 < east - west <= 360) or not all(-90 <= lat <= 90 for lat in (lat_a, lat_b)):
-        raise ValueError(f"--crop {s}: longitudes must be within +-180 (or one past it, for a box going the long way "
-                         "round, at most 360 degrees across) and latitudes within +-90")
-    if lon_a == lon_b or lat_a == lat_b:
+    west, east, south, north = (None if v is None else float(v) for v in m.groups())
+    if west is None and east is None:
+        west, east = -180.0, 180.0
+    west, east = -180.0 if west is None else west, 180.0 if east is None else east
+    south, north = -90.0 if south is None else south, 90.0 if north is None else north
+    if not all(-180 <= lon <= 180 for lon in (west, east)) or not all(-90 <= lat <= 90 for lat in (south, north)):
+        raise ValueError(f"--crop {s}: longitudes must be within +-180 and latitudes within +-90")
+    if south > north:
+        raise ValueError(f"--crop {s}: the south edge is north of the north edge")
+    if west == east or south == north:
         raise ValueError(f"--crop {s}: the box has no area")
-    if long_way:
-        span = east - west
-        west = (west + 180) % 360 - 180
-        east = west + span - (360 if west + span > 180 else 0)
-        if span == 360:
-            west, east = -180, 180
-    elif 180 < east - west < 360:  # narrower the other way round, across the antimeridian (-180..180 is all of it)
-        west, east = east, west
-    return west, min(lat_a, lat_b), east, max(lat_a, lat_b)
+    return west, south, east, north
 
 
 def box_spec(b: CropBox) -> str:
-    """The box as --crop takes it, a longitude past 180 where it's over 180 degrees wide (so it isn't read the
-    narrow way round)."""
+    """The box as --crop takes it (west:east,south:north), leaving out edges that are the globe's."""
     west, south, east, north = b
-    span = (east - west) % 360 or 360
-    if span > 180 and (west, east) != (-180, 180):
-        west, east = (west, west + span) if west + span > 180 else (west + 360, west + 360 + span)
-    return f"{west:.1f},{south:.1f}:{east:.1f},{north:.1f}"
+
+    def num(v: float, edge: float) -> str:
+        return "" if v == edge else f"{v:.1f}"
+
+    lon = ":" if (west, east) == (-180, 180) else f"{west:.1f}:{east:.1f}"
+    return f"{lon},{num(south, -90)}:{num(north, 90)}"
 
 
 def box_region(b: CropBox) -> BaseGeometry:

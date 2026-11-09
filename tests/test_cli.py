@@ -63,5 +63,5 @@ def test_pick_uses_crop_frame(tmp_path, monkeypatch) -> None:  # type: ignore[no
     Image.new("RGBA", (4, 4)).save(png)
     seen = []
     monkeypatch.setattr(cli, "pick_pins", lambda path, out, frame, *rest: seen.append(frame))
-    cli.main(["--pick", str(tmp_path / "p.txt"), "--crop", "5,43:17,49", str(png)])
+    cli.main(["--pick", str(tmp_path / "p.txt"), "--crop", "5:17,43:49", str(png)])
     assert len(seen) == 1 and not seen[0].globe and "+proj=laea" in seen[0].crs

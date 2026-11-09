@@ -9,20 +9,29 @@ from worldmap.frame import make_frame
 from worldmap.crop import Candidate, box_region, candidates, choose, crop_frame, describe, matches, parse_box, sphere_centre
 
 
-def test_parse_box_any_corner_order() -> None:
-    assert parse_box("5,43:17,49") == parse_box("17,49:5,43") == (5, 43, 17, 49)
+def test_parse_box_edges() -> None:
+    assert parse_box("5:17,43:49") == (5, 43, 17, 49)  # west:east,south:north
+    assert parse_box(" 5 : 17 , 43 : 49 ") == (5, 43, 17, 49)
 
 
-def test_parse_box_crosses_antimeridian_by_narrower_span() -> None:
-    assert parse_box("170,50:-160,70") == parse_box("-160,70:170,50") == (170, 50, -160, 70)
+def test_parse_box_open_edges() -> None:
+    assert parse_box(":,60:") == (-180, 60, 180, 90)  # everything north of 60N
+    assert parse_box(":,:-60") == (-180, -90, 180, -60)
+    assert parse_box("-30:60,:") == (-30, -90, 60, 90)
+    assert parse_box(":20,0:10") == (-180, 0, 20, 10)
+
+
+def test_parse_box_west_past_east_crosses_the_antimeridian() -> None:
+    assert parse_box("170:-160,50:70") == (170, 50, -160, 70)
+    assert parse_box("114.8:-54.3,-81.9:79.6") == (114.8, -81.9, -54.3, 79.6)  # 191 degrees: the Pacific
 
 
 def test_parse_box_names_and_errors() -> None:
     assert parse_box("France") is None
     assert parse_box("Saint Kitts and Nevis") is None
-    with pytest.raises(ValueError):
-        parse_box("5,95:17,49")
-    assert parse_box("200,0:10,10") == (10, 0, -160, 10)  # past 180: east from 10, the long way round
+    for bad in ("5:17,95:49", "200:10,0:10", "5:17,49:43", "10:10,40:50", "5:17,40:40"):  # out of range, north < south, no area
+        with pytest.raises(ValueError):
+            parse_box(bad)
 
 
 def test_box_region_splits_at_antimeridian() -> None:
@@ -126,14 +135,6 @@ def test_name_crop_needs_labels() -> None:
         make_map_frame(parse_args(["--crop", "France", "--label", "none"]))
 
 
-def test_parse_box_whole_longitude_range_and_degenerate_boxes() -> None:
-    assert parse_box("-180,70:180,90") == (-180, 70, 180, 90)
-    assert not crop_frame(box_region((-180, 70, 180, 90)), 0).globe
-    for flat in ("10,40:10,50", "10,40:20,40"):
-        with pytest.raises(ValueError, match="no area"):
-            parse_box(flat)
-
-
 def test_candidates_across_the_antimeridian_are_finite() -> None:
     import numpy as np
 
@@ -205,14 +206,6 @@ def test_several_names() -> None:
         assert frame.canvas.contains(Point(*frame.to_map.transform(lon, lat)))
     with pytest.raises(SystemExit, match="atlantis"):
         make_map_frame(parse_args(["--crop", "france,atlantis"]))
-
-
-def test_parse_box_past_180_goes_the_long_way() -> None:
-    assert parse_box("114.8,-81.9:305.7,79.6") == pytest.approx((114.8, -81.9, -54.3, 79.6))  # 191 degrees, across +-180
-    assert parse_box("305.7,79.6:114.8,-81.9") == pytest.approx((114.8, -81.9, -54.3, 79.6))
-    assert parse_box("260,0:480,10") == (-100, 0, 120, 10)  # 220 degrees, not across
-    with pytest.raises(ValueError):
-        parse_box("-200,0:300,10")  # more than once round
 
 
 @pytest.mark.parametrize("name", ["PACIFIC OCEAN", "ATLANTIC OCEAN", "INDIAN OCEAN", "SOUTHERN OCEAN", "ARCTIC OCEAN"])  # round a pole too

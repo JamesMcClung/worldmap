@@ -86,7 +86,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         "the layout is the same at any resolution, only the pixel count changes")
     p.add_argument("--crop", metavar="SPEC",
                    help="zoom in on a region, redrawn in a projection centred on it: label names, comma-separated (or parts of "
-                        "them; only the --label kinds are searched), or lon,lat:lon,lat (two opposite corners)")
+                        "them; only the --label kinds are searched), or edges west:east,south:north (any may be left out, "
+                        "e.g. :,60: is everything north of 60N; west past east crosses +-180)")
     p.add_argument("--pick", metavar="FILE",
                    help="click the rendered map to add pins; they are appended to FILE when the window closes")
     return p.parse_args(argv)

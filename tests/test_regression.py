@@ -43,7 +43,7 @@ def test_render_crop(tmp_path: Path) -> None:
 
 
 def test_render_crop_water(tmp_path: Path) -> None:
-    check_fingerprint("crop_water", render(tmp_path, "--crop", "160,48:-150,72", "--label", "countries,territories,water", "--disputed"))
+    check_fingerprint("crop_water", render(tmp_path, "--crop", "160:-150,48:72", "--label", "countries,territories,water", "--disputed"))
 
 
 def test_render_crop_pacific_water(tmp_path: Path) -> None:  # Equal Earth; "water" in the name keys the marine file
@@ -87,7 +87,7 @@ def test_version_mismatch_skips(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
 
 
 def test_render_topographic_crop(tmp_path: Path) -> None:
-    check_fingerprint("topographic_crop", render(tmp_path, "--type", "topographic", "--ocean", "--crop", "5,40:17,49"))
+    check_fingerprint("topographic_crop", render(tmp_path, "--type", "topographic", "--ocean", "--crop", "5:17,40:49"))
 
 
 def test_render_topographic(tmp_path: Path) -> None:
