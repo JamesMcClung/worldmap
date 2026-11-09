@@ -55,15 +55,21 @@ def box_region(b: CropBox) -> BaseGeometry:
     return shapely.union_all([box(west, south, 180, north), box(-180, south, east, north)])
 
 
-def sphere_centre(geom: BaseGeometry) -> tuple[float, float]:
-    """The middle of the geometry's lon/lat extent, its longitudes taken the short way round (across +-180 if need
-    be). Around a pole, where they wrap the globe, the mean of its vertices as unit vectors."""
+def extent(geom: BaseGeometry) -> CropBox:
+    """The geometry's lon/lat extent, its longitudes taken the short way round (west > east: across +-180)."""
     lon, lat = shapely.get_coordinates(shapely.segmentize(geom, SEGMENT_DEG)).T
     ranges = lon_ranges(lon, 0)
-    if ranges != [(-180, 180)]:
-        west, east = ranges[0][0], ranges[-1][1]
+    return float(ranges[0][0]), float(lat.min()), float(ranges[-1][1]), float(lat.max())
+
+
+def sphere_centre(geom: BaseGeometry) -> tuple[float, float]:
+    """The middle of the geometry's lon/lat extent (see `extent`). Around a pole, where the longitudes wrap the
+    globe, the mean of its vertices as unit vectors."""
+    west, south, east, north = extent(geom)
+    if (west, east) != (-180, 180):
         mid = (west + east + (360 if east < west else 0)) / 2
-        return (mid + 180) % 360 - 180, (lat.min() + lat.max()) / 2
+        return (mid + 180) % 360 - 180, (south + north) / 2
+    lon, lat = shapely.get_coordinates(shapely.segmentize(geom, SEGMENT_DEG)).T
     lon, lat = np.radians(lon), np.radians(lat)
     v = np.array([np.cos(lat) * np.cos(lon), np.cos(lat) * np.sin(lon), np.sin(lat)]).mean(axis=1)
     return float(np.degrees(np.arctan2(v[1], v[0]))), float(np.degrees(np.arctan2(v[2], np.hypot(v[0], v[1]))))
@@ -192,14 +198,15 @@ def matches(name: str, cands: list[Candidate]) -> list[Candidate]:
     return sorted(found, key=lambda c: (fold(c.text) != key, KINDS.index(c.kind), c.text))
 
 
+def lonlat_text(lon: float, lat: float) -> str:
+    return f"{abs(lon):.1f}°{'E' if lon >= 0 else 'W'} {abs(lat):.1f}°{'N' if lat >= 0 else 'S'}"
+
+
 def describe(c: Candidate) -> str:
-    """'Colorado (river) 109.5°W 36.2°N': the text, the kind, and a point on it."""
-    if shapely.get_dimensions(c.geom) == 1:  # a river: the middle of its longest line
-        pt = max(shapely.get_parts(c.geom), key=lambda g: g.length).interpolate(0.5, normalized=True)
-    else:
-        pt = c.geom.representative_point()
-    lon, lat = pt.x, pt.y
-    return f"{c.text} ({c.kind}) {abs(lon):.1f}°{'E' if lon >= 0 else 'W'} {abs(lat):.1f}°{'N' if lat >= 0 else 'S'}"
+    """'Colorado (river) 114.5°W 31.8°N to 105.6°W 40.5°N': the text, the kind, and its extent from the south-west
+    corner to the north-east."""
+    west, south, east, north = extent(c.geom)
+    return f"{c.text} ({c.kind}) {lonlat_text(west, south)} to {lonlat_text(east, north)}"
 
 
 def choose(name: str, found: list[Candidate]) -> list[Candidate]:

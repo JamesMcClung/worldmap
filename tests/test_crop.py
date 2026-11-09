@@ -2,7 +2,7 @@ import sys
 
 import pytest
 import shapely
-from shapely.geometry import Point
+from shapely.geometry import LineString, Point, box
 
 from worldmap.cli import make_map_frame, parse_args
 from worldmap.crop import Candidate, box_region, candidates, choose, crop_frame, describe, matches, parse_box, sphere_centre
@@ -63,9 +63,11 @@ def test_matches_exact_first() -> None:
     assert [(m.text, m.kind) for m in matches("niger", c)] == [("Niger", "country"), ("Niger", "river"), ("Nigeria", "country")]
 
 
-def test_describe_shows_kind_and_coordinates() -> None:
-    assert describe(Candidate("Colorado", "river", Point(-109.5, 36.2))) == "Colorado (river) 109.5°W 36.2°N"
-    assert describe(Candidate("Fiji", "country", Point(178.0, -17.8))) == "Fiji (country) 178.0°E 17.8°S"
+def test_describe_shows_kind_and_span() -> None:
+    colorado = Candidate("Colorado", "river", LineString([(-114.5, 31.8), (-109, 36), (-105.6, 40.5)]))
+    assert describe(colorado) == "Colorado (river) 114.5°W 31.8°N to 105.6°W 40.5°N"
+    fiji = Candidate("Fiji", "country", shapely.union_all([box(177, -19, 180, -16), box(-180, -17, -179, -16)]))
+    assert describe(fiji) == "Fiji (country) 177.0°E 19.0°S to 179.0°W 16.0°S"
 
 
 def test_candidates_only_from_selected_kinds() -> None:
@@ -82,7 +84,7 @@ def test_country_candidate_excludes_territories() -> None:
 def test_ambiguous_name_without_tty_exits_with_list(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sys.stdin, "isatty", lambda: False)
     found = matches("niger", [Candidate("Niger", "country", Point(9, 17)), Candidate("Nigeria", "country", Point(8, 9))])
-    with pytest.raises(SystemExit, match=r"Niger \(country\) 9.0°E 17.0°N\n.*Nigeria \(country\)"):
+    with pytest.raises(SystemExit, match=r"Niger \(country\) 9.0°E 17.0°N to 9.0°E 17.0°N\n.*Nigeria \(country\)"):
         choose("niger", found)
 
 
