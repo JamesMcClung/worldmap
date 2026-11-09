@@ -95,7 +95,7 @@ def load_water_bodies(kinds: set[Kind], lakes_projected: gpd.GeoDataFrame, frame
     lakes_projected = frame.visible(lakes_projected)
     marine = marine[marine.name.notna() & ~marine.name.str.endswith(" River")]  # rivers come later, with river drawing
     marine["geometry"] = shapely.make_valid(marine.geometry.values)  # some are self-intersecting rough areas
-    marine = marine[[classify(c) in kinds for c in marine.featurecla]]
+    marine = marine[marine.featurecla.map(classify).isin(kinds)]  # not a list: an empty one would select columns
     bodies = []
     oceans = marine[marine.featurecla == "ocean"]
     for word, group in oceans.groupby(oceans.name.map(ocean_word)):

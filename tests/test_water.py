@@ -185,3 +185,11 @@ def test_best_stretch_prefers_straight_and_level() -> None:
     straight = [(x, 0.0) for x in range(50, 100)]  # ...level second half
     stretch = best_stretch(np.array(zigzag + straight, float), 30)
     assert stretch[:, 0].min() >= 49 and np.ptp(stretch[:, 1]) < 1e-9
+
+
+def test_crop_without_marine_areas() -> None:
+    from worldmap.crop import box_region, crop_frame
+
+    f = crop_frame(box_region((10, 10, 20, 20)), 0)  # Chad and Nigeria: no sea in sight
+    bodies = load_water_bodies({"oceans", "seas", "straits", "lakes"}, f.project(load_lakes()), f)
+    assert all(b.kind == "lakes" for b in bodies)
