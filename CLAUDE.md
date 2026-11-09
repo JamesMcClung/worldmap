@@ -7,7 +7,7 @@ large countries, non-overlapping country labels), or with `--type topographic` a
 
 ```
 python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'   # deps in pyproject.toml; [dev] adds pytest, mypy
-.venv/bin/make_map [out.png] [--type political|topographic] [--ocean] [--recolor] [--color colorblind|earth] [--label LIST] [--disputed] [--rivers] [--pins FILE] [--pin-size IN] [--dpi DPI] [--crop NAME|lon,lat:lon,lat] [--pick FILE]
+.venv/bin/make_map [out.png] [--type political|topographic] [--ocean] [--recolor] [--color colorblind|earth] [--label LIST] [--disputed] [--rivers] [--pins FILE] [--pin-size IN] [--dpi DPI] [--crop NAME[,NAME...]|lon,lat:lon,lat] [--pick FILE]
 ```
 
 `--dpi` only changes the `savefig` dpi (and the pin sprite's pixel size): layout is always measured at
@@ -53,7 +53,7 @@ Importing any module has no side effects; only `cli.main` (after choosing the ba
 | `cli.py` | `parse_args` (`--label`: `label_kinds`, a list that replaces the default `countries`; `none` = no labels), `graph_fills` (palette + Baikonur), `main()`: the pipeline as a sequence of stage calls |
 | `data.py` | `fetch`, `fetch_all`, `confirm_download`, `etopo15_tile`, file names (`MARINE`: the marine label areas; `RIVERS`), `CRS`, `STATE_COUNTRIES`, lakes filter, `is_dependency`, `parent_index`, `is_labeled`, `load_*` (`load_rivers`: scalerank <= `RIVER_MAX_RANK`, no canals) |
 | `frame.py` | `MapFrame` (transformers, outline, extent, `crs`, `globe`, `clip`, `label_scale`, `width_in`/`height_in`, `px_per_unit`, `units_per_in`, `canvas`, `project`, `visible`, `to_px`, `px_to_map`), `make_frame`, `cut`, `join_at_antimeridian`, `lon_ranges`, `DPI`, `POSTER_WIDTH_IN` |
-| `crop.py` | `--crop`: `parse_box`, `box_region`, `extent`, `sphere_centre`, `clip_boxes`, `reach`, `seam_boxes`, `globe_outline`, `crop_frame`, `Candidate`, `candidates`, `matches`, `describe`, `checklist`, `choose` |
+| `crop.py` | `--crop`: `parse_box`, `box_region`, `extent`, `sphere_centre`, `sample_lonlat`, `clip_boxes`, `frame_extent`, `reach`, `seam_boxes`, `globe_outline`, `crop_frame`, `Candidate`, `candidates`, `matches`, `describe`, `checklist`, `choose` |
 | `colorspace.py` | OKLab/OKLCH conversions, `fit_gamut`, `darken` |
 | `coloring.py` | `merge_into_parents`, `adjacency`, `add_proximity_edges`, `color_graph`, `make_palette`, `load_or_compute_coloring` (cache), `spot_check`, `OCEAN` |
 | `disputed.py` | `--disputed`: `parse_note`, `ALIASES`, `HAND_CLAIMS`, `LABEL_TEXT`, `Dispute`, `load_disputes`, `dispute_edges`, `dispute_fills`, `stripe_parts`, `border_lines`, `disputed_label_args` |
@@ -187,12 +187,14 @@ oceans) gets Equal Earth centred on its longitude instead, clipped a hair either
 - Labels: `frame.label_scale` = sqrt(zoom over the world map), 1..`LABEL_SCALE_MAX` = 2.5, multiplies every size
   limit (country `MIN_PT`/`MAX_PT`, water and river sizes, `SHRINK_MIN_PT`, `WaterLabel.min_size`).
 - `--crop lon,lat:lon,lat`: corners in any order, the narrower longitude span wins (so a box can cross +-180); no
-  margin. `--crop NAME`: substring of a label's text, ignoring case and accents (`fold`), among the `--label` kinds
+  margin. `--crop NAME[,NAME...]`: each name (no label has a comma) matched and chosen on its own, the crop
+  covering them all; a name is a substring of a label's text, ignoring case and accents (`fold`), among the `--label` kinds
   only (`candidates`, built in the world frame, then lon/lat). A country's extent leaves out what territories label
   separately (`HAND_PICKED`, which also has the far-flung islands for this). `Candidate.aliases` match too: a
   country's `NAME_EN` (UAE), a territory's parent (so `united` lists Alaska (US) beside the United States).
   Several matches: a `questionary` `checklist` (no select-all/invert keys; exact first, `describe` = text, kind,
-  lon/lat `extent`); the crop covers all checked; without a tty, exit with the list. Margin `CROP_MARGIN` = 10%. Candidates are inverted from the Robinson world frame with x nudged
+  and the crop's lon/lat extent (`frame_extent`, margin and corners included) as a box spec to copy; re-cropping to it
+  comes out a little bigger, since a box crop shows all of its box); the crop covers all checked; without a tty, exit with the list. Margin `CROP_MARGIN` = 10%. Candidates are inverted from the Robinson world frame with x nudged
   by `EDGE_NUDGE` (points on +-180 don't invert).
 - Drawing: ocean fills the canvas, no globe stroke; `child_regions` skips hand-picked regions out of frame (it
   raises only on the globe); out-of-frame disputes are dropped after the colouring; the Pacific is one body (one
