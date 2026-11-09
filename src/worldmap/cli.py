@@ -85,8 +85,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                    help="output dots per inch on the 36 in poster (default %(default)s); "
                         "the layout is the same at any resolution, only the pixel count changes")
     p.add_argument("--crop", metavar="SPEC",
-                   help="zoom in on a region, redrawn in a projection centred on it: a label's name (or part of it; only the "
-                        "--label kinds are searched) or lon,lat:lon,lat (two opposite corners)")
+                   help="zoom in on a region, redrawn in a projection centred on it: label names, comma-separated (or parts of "
+                        "them; only the --label kinds are searched), or lon,lat:lon,lat (two opposite corners)")
     p.add_argument("--pick", metavar="FILE",
                    help="click the rendered map to add pins; they are appended to FILE when the window closes")
     return p.parse_args(argv)
@@ -107,7 +107,9 @@ def make_map_frame(args: argparse.Namespace) -> MapFrame:
             return crop_frame(box_region(crop), 0)
         if not args.label:
             sys.exit(f"make_map: --crop {args.crop}: a name is looked up among the labels, but --label is none")
-        chosen = choose(args.crop, matches(args.crop, candidates(args.label, args.disputed)))
+        cands = candidates(args.label, args.disputed)
+        names = [n.strip() for n in args.crop.split(",") if n.strip()]  # no label has a comma in it
+        chosen = [c for name in names for c in choose(name, matches(name, cands))]
         return crop_frame(shapely.union_all([c.geom for c in chosen]), CROP_MARGIN)
     except ValueError as e:
         sys.exit(f"make_map: {e}")

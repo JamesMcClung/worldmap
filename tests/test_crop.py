@@ -198,3 +198,11 @@ def test_whole_world_box_shows_the_whole_width() -> None:
 
     half = Transformer.from_crs("EPSG:4326", "+proj=eqearth +datum=WGS84", always_xy=True).transform(179.99, 0)[0]
     assert f.width == pytest.approx(2 * half, rel=0.01)
+
+
+def test_several_names() -> None:
+    frame = make_map_frame(parse_args(["--crop", "france, germany"]))
+    for lon, lat in [(-0.6, 44.8), (13.4, 52.5)]:  # Bordeaux, Berlin
+        assert frame.canvas.contains(Point(*frame.to_map.transform(lon, lat)))
+    with pytest.raises(SystemExit, match="atlantis"):
+        make_map_frame(parse_args(["--crop", "france,atlantis"]))
