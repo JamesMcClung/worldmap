@@ -1,11 +1,12 @@
 import sys
 
+import numpy as np
 import pytest
 import shapely
 from shapely.geometry import LineString, Point, box
 
 from worldmap.cli import make_map_frame, parse_args
-from worldmap.frame import make_frame
+from worldmap.frame import MapFrame, make_frame
 from worldmap.crop import Candidate, box_region, candidates, choose, crop_frame, describe, matches, parse_box, sphere_centre
 
 
@@ -72,6 +73,14 @@ def test_matches_exact_first() -> None:
     assert [(m.text, m.kind) for m in matches("niger", c)] == [("Niger", "country"), ("Niger", "river"), ("Nigeria", "country")]
 
 
+def same_map(a: MapFrame, b: MapFrame, tolerance: float) -> bool:
+    """Whether b shows what a does: the same size, and its canvas centred on a's."""
+    centre = b.to_lonlat.transform((b.xmin + b.xmax) / 2, (b.ymin + b.ymax) / 2)
+    x, y = a.to_map.transform(*centre)
+    off = np.hypot(x - (a.xmin + a.xmax) / 2, y - (a.ymin + a.ymax) / 2) / a.width
+    return bool(abs(b.width / a.width - 1) < tolerance and abs(b.height / a.height - 1) < tolerance and off < tolerance)
+
+
 def test_describe_shows_a_box_that_reproduces_the_crop() -> None:
     from worldmap.crop import CROP_MARGIN
 
@@ -81,10 +90,7 @@ def test_describe_shows_a_box_that_reproduces_the_crop() -> None:
         assert name == f"{c.text} ({c.kind}"
         b = parse_box(spec)
         assert b is not None
-        named, again = crop_frame(c.geom, CROP_MARGIN), crop_frame(box_region(b), 0)
-        assert again.width == pytest.approx(named.width, rel=0.01) and again.height == pytest.approx(named.height, rel=0.01)
-        lon, lat = again.to_lonlat.transform(0, 0)  # the same centre
-        assert named.to_map.transform(lon, lat) == pytest.approx((0, 0), abs=0.01 * named.width)
+        assert same_map(crop_frame(c.geom, CROP_MARGIN), crop_frame(box_region(b), 0), 0.01)
 
 
 def test_territories_match_their_parents_full_name() -> None:
@@ -215,8 +221,7 @@ def test_describe_reproduces_ocean_crops(name: str) -> None:
     c = next(c for c in candidates({"oceans"}, False) if c.text == name)
     b = parse_box(describe(c).rsplit(" ", 1)[1])
     assert b is not None
-    named, again = crop_frame(c.geom, CROP_MARGIN), crop_frame(box_region(b), 0)
-    assert again.width == pytest.approx(named.width, rel=0.05) and again.height == pytest.approx(named.height, rel=0.05)
+    assert same_map(crop_frame(c.geom, CROP_MARGIN), crop_frame(box_region(b), 0), 0.05)
 
 
 def test_frame_extent_of_a_crop_round_the_globe() -> None:

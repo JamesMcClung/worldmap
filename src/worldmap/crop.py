@@ -162,21 +162,6 @@ def globe_outline(to_map: Transformer, lon0: float) -> Polygon:
     return Polygon(np.vstack([east, west]))
 
 
-def round_pole(region: BaseGeometry) -> float | None:
-    """90 or -90 if the region surrounds that pole: it goes all the way round within one hemisphere (the Southern
-    Ocean, `:,60:`), or reaches the pole and more than half way round (the Arctic Ocean, its coast cut by Greenland
-    and Canada's islands). Else None (a wedge that just touches a pole)."""
-    west, south, east, north = extent(region)
-    span = 360.0 if (west, east) == (-180, 180) else (east - west) % 360
-    if span == 360 and (south >= 0 or north <= 0):
-        return 90.0 if south >= 0 else -90.0
-    if span > 180 and north >= 90 - POLE_DEG:
-        return 90.0
-    if span > 180 and south <= -90 + POLE_DEG:
-        return -90.0
-    return None
-
-
 def crop_frame(region: BaseGeometry, margin: float) -> MapFrame:
     """A frame centred on `region` (lon/lat), fitting its projected bounds plus `margin` of their width/height on
     each side. The projection is Lambert azimuthal equal-area, or Equal Earth for a region reaching further than
@@ -198,6 +183,21 @@ def crop_frame(region: BaseGeometry, margin: float) -> MapFrame:
         lon0, lat0 = float(lon), float(lat) if azimuthal else lat0
     zoom = frame.px_per_unit / make_frame().px_per_unit  # both in metres
     return replace(frame, label_scale=float(np.clip(np.sqrt(zoom), 1, LABEL_SCALE_MAX)))
+
+
+def round_pole(region: BaseGeometry) -> float | None:
+    """90 or -90 if the region surrounds that pole: it goes all the way round within one hemisphere (the Southern
+    Ocean, `:,60:`), or reaches the pole and more than half way round (the Arctic Ocean, its coast cut by Greenland
+    and Canada's islands). Else None (a wedge that just touches a pole)."""
+    west, south, east, north = extent(region)
+    span = 360.0 if (west, east) == (-180, 180) else (east - west) % 360
+    if span == 360 and (south >= 0 or north <= 0):
+        return 90.0 if south >= 0 else -90.0
+    if span > 180 and north >= 90 - POLE_DEG:
+        return 90.0
+    if span > 180 and south <= -90 + POLE_DEG:
+        return -90.0
+    return None
 
 
 def fit_frame(region: BaseGeometry, margin: float, lon0: float, lat0: float, square: bool = False) -> MapFrame:
@@ -242,32 +242,45 @@ def frame_extent(frame: MapFrame) -> CropBox:
     return float(ranges[0][0]), south, float(ranges[-1][1]), north
 
 
+def canvas_centre(frame: MapFrame) -> tuple[float, float]:
+    """The lon/lat at the middle of the frame's canvas."""
+    lon, lat = frame.to_lonlat.transform((frame.xmin + frame.xmax) / 2, (frame.ymin + frame.ymax) / 2)
+    return float(lon), float(lat)
+
+
 def recipe_box(region: BaseGeometry, margin: float) -> CropBox:
-    """A box that, given to --crop, reproduces the crop to `region` with `margin`: centred where it is, its spans
-    scaled until the box crop is the same size (the map's corners reach past it, since a projected rectangle isn't a
-    lon/lat box). Of that and the lon/lat extent the map covers, whichever crops closer (round a pole, no box
-    centred on it fits)."""
+    """A box that, given to --crop, reproduces the crop to `region` with `margin`: moved until a box crop's canvas
+    is centred where the crop's is, its spans scaled until it's the same size (the map's corners reach past it,
+    since a projected rectangle isn't a lon/lat box). Of that and the lon/lat extent the map covers, whichever
+    crops closer (round a pole, no box fits)."""
     target = crop_frame(region, margin)
-    lon0, lat0 = sphere_centre(region)
+    tx, ty = (target.xmin + target.xmax) / 2, (target.ymin + target.ymax) / 2
+
+    def miss(got: MapFrame) -> float:
+        """How far a box crop is from the target: size, and centre offset, as fractions of the target's size."""
+        x, y = target.to_map.transform(*canvas_centre(got))
+        return max(abs(got.width / target.width - 1), abs(got.height / target.height - 1), np.hypot(x - tx, y - ty) / target.width)
+
+    tlon, tlat = lon0, lat0 = canvas_centre(target)
     west, south, east, north = extent(region)
     half_lon, half_lat = ((east - west) % 360 or 360) / 2, (north - south) / 2
-    b = (west, south, east, north)
+    best, best_miss = frame_extent(target), float("inf")
     for _ in range(RECIPE_ROUNDS):
-        b = ((lon0 - half_lon + 180) % 360 - 180, max(-90.0, lat0 - half_lat), (lon0 + half_lon + 180) % 360 - 180, min(90.0, lat0 + half_lat))
+        lons = (-180.0, 180.0) if half_lon >= 180 - RECIPE_TOLERANCE else ((lon0 - half_lon + 180) % 360 - 180, (lon0 + half_lon + 180) % 360 - 180)
+        b = (lons[0], max(-90.0, lat0 - half_lat), lons[1], min(90.0, lat0 + half_lat))
         got = crop_frame(box_region(b), 0)
-        if abs(got.width / target.width - 1) < RECIPE_TOLERANCE and abs(got.height / target.height - 1) < RECIPE_TOLERANCE:
+        m = miss(got)
+        if m < best_miss:
+            best, best_miss = b, m
+        if m < RECIPE_TOLERANCE:
             break
-        half_lon = min(180 - RECIPE_TOLERANCE, half_lon * target.width / got.width)
+        glon, glat = canvas_centre(got)
+        lon0 += (tlon - glon + 180) % 360 - 180
+        lat0 = float(np.clip(lat0 + tlat - glat, -90, 90))
+        half_lon = min(180.0, half_lon * target.width / got.width)
         half_lat = min(90.0, half_lat * target.height / got.height)
-    else:
-
-        def miss(box_: CropBox) -> float:
-            got = crop_frame(box_region(box_), 0)
-            return max(abs(got.width / target.width - 1), abs(got.height / target.height - 1))
-
-        covered = frame_extent(target)
-        return min((b, covered), key=miss)
-    return b
+    covered = frame_extent(target)
+    return best if best_miss <= miss(crop_frame(box_region(covered), 0)) else covered
 
 
 KINDS = ("country", "territory", "disputed", "ocean", "sea", "lake", "strait", "river")  # the order a match list is in
