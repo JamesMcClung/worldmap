@@ -49,7 +49,7 @@ Importing any module has no side effects; only `cli.main` (after choosing the ba
 | `cli.py` | `parse_args` (`--label`: `label_kinds`, a list that replaces the default `countries`; `none` = no labels), `graph_fills` (palette + Baikonur), `main()`: the pipeline as a sequence of stage calls |
 | `data.py` | `fetch`, file names (`MARINE`: the marine label areas; `RIVERS`), `CRS`, `STATE_COUNTRIES`, lakes filter, `is_dependency`, `parent_index`, `is_labeled`, `load_*` (`load_rivers`: scalerank <= `RIVER_MAX_RANK`, no canals) |
 | `frame.py` | `MapFrame` (transformers, outline, extent, `crs`, `globe`, `clip`, `width_in`/`height_in`, `px_per_unit`, `units_per_in`, `canvas`, `project`, `visible`, `to_px`, `px_to_map`), `make_frame`, `cut`, `join_at_antimeridian`, `DPI`, `POSTER_WIDTH_IN` |
-| `crop.py` | `--crop`: `parse_box`, `box_region`, `sphere_centre`, `clip_boxes`, `crop_frame`, `Candidate`, `candidates`, `matches`, `describe`, `choose` |
+| `crop.py` | `--crop`: `parse_box`, `box_region`, `extent`, `sphere_centre`, `clip_boxes`, `crop_frame`, `Candidate`, `candidates`, `matches`, `describe`, `checklist`, `choose` |
 | `colorspace.py` | OKLab/OKLCH conversions, `fit_gamut`, `darken` |
 | `coloring.py` | `merge_into_parents`, `adjacency`, `add_proximity_edges`, `color_graph`, `make_palette`, `load_or_compute_coloring` (cache), `spot_check`, `OCEAN` |
 | `disputed.py` | `--disputed`: `parse_note`, `ALIASES`, `HAND_CLAIMS`, `LABEL_TEXT`, `Dispute`, `load_disputes`, `dispute_edges`, `dispute_fills`, `stripe_parts`, `border_lines`, `disputed_label_args` |
@@ -180,9 +180,10 @@ A zoomed map of one region, redrawn in a Lambert azimuthal equal-area projection
 - `--crop lon,lat:lon,lat`: corners in any order, the narrower longitude span wins (so a box can cross +-180); no
   margin. `--crop NAME`: substring of a label's text, ignoring case and accents (`fold`), among the `--label` kinds
   only (`candidates`, built in the world frame, then lon/lat). A country's extent leaves out what territories label
-  separately (`HAND_PICKED`, which also has the far-flung islands for this). Several matches: a `questionary`
-  checklist (exact first, `describe` = text, kind, coordinates); the crop covers all checked; without a tty, exit
-  with the list. Margin `CROP_MARGIN` = 10%. Candidates are inverted from the Robinson world frame with x nudged
+  separately (`HAND_PICKED`, which also has the far-flung islands for this). `Candidate.aliases` match too: a
+  country's `NAME_EN` (UAE), a territory's parent (so `united` lists Alaska (US) beside the United States).
+  Several matches: a `questionary` `checklist` (no select-all/invert keys; exact first, `describe` = text, kind,
+  lon/lat `extent`); the crop covers all checked; without a tty, exit with the list. Margin `CROP_MARGIN` = 10%. Candidates are inverted from the Robinson world frame with x nudged
   by `EDGE_NUDGE` (points on +-180 don't invert).
 - Drawing: ocean fills the canvas, no globe stroke; `child_regions` skips hand-picked regions out of frame (it
   raises only on the globe); out-of-frame disputes are dropped after the colouring; the Pacific is one body.
