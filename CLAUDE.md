@@ -196,7 +196,8 @@ oceans) gets Equal Earth centred on its longitude instead, clipped a hair either
   Several matches: a `questionary` `checklist` (no select-all/invert keys; exact first, `describe` = text, kind,
   and a box that reproduces the crop, to copy and adjust: `recipe_box` centres it on the crop and fits its spans
   until a box crop is the same size (the map's corners reach past it), or, round a pole, takes the map's own extent
-  (`frame_extent`; no 15-degree lon gap = all the way round), whichever crops closer); the crop covers all checked; without a tty, exit with the list. Margin `CROP_MARGIN` = 10%. Candidates are inverted from the Robinson world frame with x nudged
+  (`frame_extent`; no 15-degree lon gap = all the way round), whichever crops closer). Every name crop prints
+  the `recipe_box` of everything chosen (`cropping to France; the same as --crop -5.9,40.7:10.4,51.8`); the crop covers all checked; without a tty, exit with the list. Margin `CROP_MARGIN` = 10%. Candidates are inverted from the Robinson world frame with x nudged
   by `EDGE_NUDGE` (points on +-180 don't invert).
 - Drawing: ocean fills the canvas, no globe stroke; `child_regions` skips hand-picked regions out of frame (it
   raises only on the globe); out-of-frame disputes are dropped after the colouring; the Pacific is one body (one
