@@ -27,6 +27,9 @@ PHYSICAL = {LAKES, GLACIERS, ICE_SHELVES, LAND_OUTLINE, MARINE, RIVERS}  # under
 # ETOPO 2022 (NOAA, public domain): land heights and sea depths in metres, 60 arc-second grid, top of the ice.
 ETOPO = "ETOPO_2022_v1_60s_N90W180_surface.tif"
 ETOPO_URL = "https://www.ngdc.noaa.gov/mgg/global/relief/ETOPO2022/data/60s/60s_surface_elev_gtif/" + ETOPO
+# Its 15 arc-second version, in 15-degree tiles (4-33 MB each), for zoomed-in crops; kept in .cache/etopo15/.
+ETOPO15_URL = "https://www.ngdc.noaa.gov/mgg/global/relief/ETOPO2022/data/15s/15s_surface_elev_gtif/"
+ETOPO15_DIR = "etopo15"
 
 LAKE_MIN_KM2 = 2000  # lakes at least this big are drawn as water (~8 px across on the poster)
 DRY_LAKES = {"Lake Eyre North", "Lake Torrens", "Lake Gairdner", "Lake Mackay", "Lake Frome", "Lake Barlee"}  # Australian salt pans, usually dry
@@ -54,6 +57,13 @@ LABELED_TYPES = ("Sovereign country", "Country", "Sovereignty")
 NOT_DEPENDENCY_TYPES = ("Lease", "Indeterminate")
 
 
+def etopo15_tile(north: int, west: int) -> str:
+    """The 15" ETOPO tile whose north-west corner is at (west, north), as a fetch name."""
+    ns = f"N{north:02d}" if north >= 0 else f"S{-north:02d}"
+    ew = f"E{west:03d}" if west >= 0 else f"W{-west:03d}"
+    return f"{ETOPO15_DIR}/ETOPO_2022_v1_15s_{ns}{ew}_surface.tif"
+
+
 def download_size(url: str) -> int | None:
     """The file's size in bytes, from a HEAD request; None if the server doesn't say."""
     try:
@@ -64,29 +74,57 @@ def download_size(url: str) -> int | None:
     return int(length) if length else None
 
 
-def confirm_download(url: str, path: Path) -> None:
-    """Ask before downloading `url` into `path`'s folder, saying how big it is; without a terminal to ask on, stop."""
-    size = download_size(url)
-    what = f"{url} ({'size unknown' if size is None else f'{size / 1e6:.0f} MB'}), into {path.parent}"
+def confirm_download(urls: list[str], folder: Path, optional: bool = False) -> bool:
+    """Ask before downloading `urls` into `folder`, saying how big they are; without a terminal to ask on, stop.
+    Declined: stop, or with `optional` return False (the caller can do without)."""
+    sizes = [download_size(url) for url in urls]
+    total = "size unknown" if None in sizes else f"{sum(s or 0 for s in sizes) / 1e6:.0f} MB"
+    files = urls[0] if len(urls) == 1 else f"{len(urls)} files from {os.path.dirname(urls[0])}/"
+    what = f"{files} ({total}), into {folder}"
     if not sys.stdin.isatty():
         sys.exit(f"make_map: needs to download {what}; run in a terminal to confirm, or download it there yourself")
-    if input(f"make_map needs to download {what}. Download? [y/N] ").strip().lower() not in ("y", "yes"):
-        sys.exit("make_map: download declined")
+    if input(f"make_map needs to download {what}. Download? [y/N] ").strip().lower() in ("y", "yes"):
+        return True
+    if optional:
+        return False
+    sys.exit("make_map: download declined")
+
+
+def url_of(name: str) -> str:
+    if name == RASTER:
+        return NE_URL + "raster/NE1_LR_LC.zip"
+    if name == ETOPO:
+        return ETOPO_URL
+    if name.startswith(ETOPO15_DIR + "/"):
+        return ETOPO15_URL + name.split("/", 1)[1]
+    return NE_URL + ("physical/" if name in PHYSICAL else "cultural/") + name
 
 
 def fetch(name: str) -> Path:
     """Path of data file `name` in CACHE, downloading it first (once the user agrees) if it isn't there yet."""
+    paths = fetch_all([name])
+    assert paths is not None
+    return paths[0]
+
+
+def fetch_all(names: list[str], optional: bool = False) -> list[Path] | None:
+    """Paths of the data files `names` in CACHE, downloading the missing ones first, asking once for them all.
+    With `optional`, None if the user declines."""
+    missing = [name for name in names if not (CACHE / name).exists()]
+    if missing:
+        folders = {(CACHE / name).parent for name in missing}
+        folder = folders.pop() if len(folders) == 1 else CACHE
+        if not confirm_download([url_of(name) for name in missing], folder, optional):
+            return None
+        for name in missing:
+            download(name)
+    return [CACHE / name for name in names]
+
+
+def download(name: str) -> None:
     path = CACHE / name
-    if path.exists():
-        return path
-    if name == RASTER:
-        url = NE_URL + "raster/NE1_LR_LC.zip"
-    elif name == ETOPO:
-        url = ETOPO_URL
-    else:
-        url = NE_URL + ("physical/" if name in PHYSICAL else "cultural/") + name
-    confirm_download(url, path)
     path.parent.mkdir(parents=True, exist_ok=True)
+    url = url_of(name)
     print("downloading", url)
     part = path.with_name(path.name + ".part")
     urllib.request.urlretrieve(url, part)
@@ -96,7 +134,6 @@ def fetch(name: str) -> Path:
         os.remove(part)
     else:
         os.replace(part, path)
-    return path
 
 
 def is_labeled(row: pd.Series) -> bool:

@@ -70,3 +70,24 @@ def test_fetch_asks_first(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> No
     assert got == []
     got = fake_download(monkeypatch, tmp_path, tty=True, answer="y")
     assert fetch(ETOPO) == tmp_path / ETOPO and len(got) == 1
+
+
+def test_etopo15_tile_names() -> None:
+    from worldmap.data import etopo15_tile
+
+    assert etopo15_tile(45, 0) == "etopo15/ETOPO_2022_v1_15s_N45E000_surface.tif"
+    assert etopo15_tile(-15, -180) == "etopo15/ETOPO_2022_v1_15s_S15W180_surface.tif"
+    assert etopo15_tile(0, 165) == "etopo15/ETOPO_2022_v1_15s_N00E165_surface.tif"
+
+
+def test_fetch_all_asks_once_and_optional_may_be_declined(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from worldmap.data import etopo15_tile, fetch_all
+
+    names = [etopo15_tile(45, 0), etopo15_tile(60, 0)]
+    asked: list[str] = []
+    got = fake_download(monkeypatch, tmp_path, tty=True, answer="n")
+    monkeypatch.setattr("builtins.input", lambda prompt: (asked.append(prompt), "n")[1])
+    assert fetch_all(names, optional=True) is None and got == []
+    assert len(asked) == 1 and "2 files" in asked[0] and "932 MB" in asked[0]
+    monkeypatch.setattr("builtins.input", lambda prompt: "y")
+    assert fetch_all(names, optional=True) == [tmp_path / n for n in names] and len(got) == 2
