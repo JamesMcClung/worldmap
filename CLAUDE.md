@@ -17,14 +17,18 @@ A run takes ~7-12 s. Output goes to the current directory. After changing the en
 Natural Earth data (public domain) is downloaded by `data.fetch(name)` on first use into `.cache/` at the repo root, located
 relative to `data.py` (`CACHE`), so the package must be installed editable (`-e`). The land-cover raster (~75 MB zip,
 394 MB unzipped into `.cache/ne1/`) is fetched only for `--color earth`; ETOPO 2022 (466 MB GeoTIFF) and the Natural Earth ice files only for
-`--type topographic`. `coloring.json`, `earth.json` and `etopo_3min.npy`/`.json` live in `.cache/` too.
+`--type topographic`; ETOPO's 15" tiles (`etopo15_tile`, 4-33 MB each, into `.cache/etopo15/`) only for zoomed
+topographic crops. `fetch`/`fetch_all` ask y/N first with the total size (HEAD request) and the folder, once for all
+missing files; without a tty they exit with that message. `fetch_all(optional=True)` returns None when declined (the
+tiles: the crop falls back to 1'). `coloring.json`, `earth.json` and `etopo_3min.npy`/`.json` live in `.cache/` too.
 `.cache/` is gitignored. User-facing docs are in `README.md`; MIT `LICENSE`.
 
 ## Tests
 
 `.venv/bin/pytest` (~155 s). Unit tests cover the pure pieces (colour maths, `color_graph`, pin parsing and sprite, label geometry,
 CLI errors), and `test_import_has_no_pyplot` guards that importing any module doesn't pick a matplotlib backend (`--pick` needs to).
-`test_regression.py` renders the default, `--color earth`, `--pins`, `--label countries,territories`, `--label countries,water` (`water`), `--disputed`, `--rivers`, `--type topographic`, `--type topographic --ocean`, `--type topographic --label water` (`topographic_water`), `--crop France` (`crop`), a Bering Strait box crop with territories, water and `--disputed` (`crop_water`) and an Alps box crop with `--type topographic --ocean` (`topographic_crop`) maps in a subprocess and compares a SHA-256 of the decoded pixels
+`test_regression.py` renders the default, `--color earth`, `--pins`, `--label countries,territories`, `--label countries,water` (`water`), `--disputed`, `--rivers`, `--type topographic`, `--type topographic --ocean`, `--type topographic --label water` (`topographic_water`), `--crop France` (`crop`), a Bering Strait box crop with territories, water and `--disputed` (`crop_water`) an Alps box crop with `--type topographic --ocean` (`topographic_crop`; reads four 15" tiles, recorded in its
+environment, so it skips where they aren't downloaded) and `--crop pacific --label countries,oceans,seas` (`crop_pacific_water`, Equal Earth) maps in a subprocess and compares a SHA-256 of the decoded pixels
 with `tests/fingerprints.json`:
 - A commit that changes the output on purpose re-records with `UPDATE_REFERENCE=1 .venv/bin/pytest` and commits `fingerprints.json`
   in the same commit, saying in the body what changed visually. Refactors must leave the fingerprints unchanged.
@@ -47,13 +51,13 @@ Importing any module has no side effects; only `cli.main` (after choosing the ba
 | Module | Contents |
 |---|---|
 | `cli.py` | `parse_args` (`--label`: `label_kinds`, a list that replaces the default `countries`; `none` = no labels), `graph_fills` (palette + Baikonur), `main()`: the pipeline as a sequence of stage calls |
-| `data.py` | `fetch`, file names (`MARINE`: the marine label areas; `RIVERS`), `CRS`, `STATE_COUNTRIES`, lakes filter, `is_dependency`, `parent_index`, `is_labeled`, `load_*` (`load_rivers`: scalerank <= `RIVER_MAX_RANK`, no canals) |
-| `frame.py` | `MapFrame` (transformers, outline, extent, `crs`, `globe`, `clip`, `width_in`/`height_in`, `px_per_unit`, `units_per_in`, `canvas`, `project`, `visible`, `to_px`, `px_to_map`), `make_frame`, `cut`, `join_at_antimeridian`, `DPI`, `POSTER_WIDTH_IN` |
-| `crop.py` | `--crop`: `parse_box`, `box_region`, `extent`, `sphere_centre`, `clip_boxes`, `crop_frame`, `Candidate`, `candidates`, `matches`, `describe`, `checklist`, `choose` |
+| `data.py` | `fetch`, `fetch_all`, `confirm_download`, `etopo15_tile`, file names (`MARINE`: the marine label areas; `RIVERS`), `CRS`, `STATE_COUNTRIES`, lakes filter, `is_dependency`, `parent_index`, `is_labeled`, `load_*` (`load_rivers`: scalerank <= `RIVER_MAX_RANK`, no canals) |
+| `frame.py` | `MapFrame` (transformers, outline, extent, `crs`, `globe`, `clip`, `label_scale`, `width_in`/`height_in`, `px_per_unit`, `units_per_in`, `canvas`, `project`, `visible`, `to_px`, `px_to_map`), `make_frame`, `cut`, `join_at_antimeridian`, `lon_ranges`, `DPI`, `POSTER_WIDTH_IN` |
+| `crop.py` | `--crop`: `parse_box`, `box_region`, `extent`, `sphere_centre`, `clip_boxes`, `reach`, `seam_boxes`, `globe_outline`, `crop_frame`, `Candidate`, `candidates`, `matches`, `describe`, `checklist`, `choose` |
 | `colorspace.py` | OKLab/OKLCH conversions, `fit_gamut`, `darken` |
 | `coloring.py` | `merge_into_parents`, `adjacency`, `add_proximity_edges`, `color_graph`, `make_palette`, `load_or_compute_coloring` (cache), `spot_check`, `OCEAN` |
 | `disputed.py` | `--disputed`: `parse_note`, `ALIASES`, `HAND_CLAIMS`, `LABEL_TEXT`, `Dispute`, `load_disputes`, `dispute_edges`, `dispute_fills`, `stripe_parts`, `border_lines`, `disputed_label_args` |
-| `topographic.py` | `--type topographic`: `elevation_grid` (ETOPO -> cached 3' grid), `sample`, `Scale` (`LAND`, `SEA`, `ICE`), `Contours`, `colorize`, `relief`, `shade`, `soften`, `poster_grid`, `polygon_mask`, `coastline`, `draw_topography` |
+| `topographic.py` | `--type topographic`: `elevation_grid` (ETOPO -> cached 3' grid), `Grid` (a window has an origin), `elevation_window`, `read_etopo`, `read_tiles`, `elevation_for`, `sample`, `Scale` (`LAND`, `SEA`, `ICE`), `Contours`, `colorize`, `relief`, `shade`, `soften`, `poster_grid`, `polygon_mask`, `coastline`, `draw_topography` |
 | `colorbars.py` | `--type topographic`: `bar_region`, `globe_side`, `inner_side`, `curved_title`, `draw_colorbar` (right-triangle bars in the canvas corners; rectangles in a crop) |
 | `earth.py` | `--color earth`: `earth_values` (raster sampling, cache), `earth_fill`, `build_regions`, `fill_at` |
 | `pins.py` | `load_pins`, `PinStyle` (every sprite shading constant), `pin_sprite`, `draw_pins`, `pick_pins` |
@@ -167,7 +171,10 @@ or country labels run. `--color`, `--disputed`, `--recolor` and `--label countri
 
 ## `--crop`
 
-A zoomed map of one region, redrawn in a Lambert azimuthal equal-area projection centred on it (`crop.crop_frame`).
+A zoomed map of one region, redrawn in a Lambert azimuthal equal-area projection centred on it (`crop.crop_frame`);
+a region reaching over `AZIMUTHAL_MAX_DEG` = 60 degrees from its centre (`reach`: the Pacific, Atlantic and Indian
+oceans) gets Equal Earth centred on its longitude instead, clipped a hair either side of the far meridian
+(`seam_boxes`), measured along the equator too (widest there), the canvas cut to the globe (`globe_outline`).
 - Every stage projects through the frame: `frame.project(gdf)` (there is no `data.project`). The world frame
   (`globe=True`) clips to the +-180/90 box and projects to Robinson exactly as before. A crop frame (`globe=False`)
   first clips to lon/lat `clip` boxes (`clip_boxes`: the canvas's lon/lat extent + `CLIP_PAD_DEG`; LAEA is singular
@@ -177,6 +184,8 @@ A zoomed map of one region, redrawn in a Lambert azimuthal equal-area projection
   Wrangel Island) pass `dissolve=True`. `frame.visible` cuts to the canvas itself: labels use it,
   so a neighbour cut by the edge is labelled on its visible part.
 - Size: the long side is `POSTER_WIDTH_IN` (`width_in`/`height_in`); the world map is unchanged.
+- Labels: `frame.label_scale` = sqrt(zoom over the world map), 1..`LABEL_SCALE_MAX` = 2.5, multiplies every size
+  limit (country `MIN_PT`/`MAX_PT`, water and river sizes, `SHRINK_MIN_PT`, `WaterLabel.min_size`).
 - `--crop lon,lat:lon,lat`: corners in any order, the narrower longitude span wins (so a box can cross +-180); no
   margin. `--crop NAME`: substring of a label's text, ignoring case and accents (`fold`), among the `--label` kinds
   only (`candidates`, built in the world frame, then lon/lat). A country's extent leaves out what territories label
@@ -186,10 +195,14 @@ A zoomed map of one region, redrawn in a Lambert azimuthal equal-area projection
   lon/lat `extent`); the crop covers all checked; without a tty, exit with the list. Margin `CROP_MARGIN` = 10%. Candidates are inverted from the Robinson world frame with x nudged
   by `EDGE_NUDGE` (points on +-180 don't invert).
 - Drawing: ocean fills the canvas, no globe stroke; `child_regions` skips hand-picked regions out of frame (it
-  raises only on the globe); out-of-frame disputes are dropped after the colouring; the Pacific is one body.
+  raises only on the globe); out-of-frame disputes are dropped after the colouring; the Pacific is one body (one
+  name candidate too).
   `--color earth`: `build_regions(countries, frame)` projects polygon by polygon so each keeps its value.
-- Topographic: `soften` blurs heights over about a 3' cell when a cell spans > 2 pixels (bilinear heights shaded
-  as flat facets); colour bars are rectangles (`BAR_RECT_WIDTH_IN`, `BAR_RECT_LENGTH`) titled along `inner_side`,
+- Topographic: `elevation_for` steps up from the cached 3' grid to a window of the 60" file when 3' cells span >
+  `FINE_ABOVE_PX` = 2 pixels, and to the 15" tiles when 1' cells do too (`elevation_window`, from the lon/lat of every
+  8th shown pixel, + `FINE_PAD_DEG`; runs across +-180 are read in two pieces). `soften` still blurs heights over
+  about a cell when a cell spans > 2 pixels (bilinear heights shade as flat facets). A 200 dpi square crop peaks
+  ~4.3 GB (more pixels than the world poster). Colour bars are rectangles (`BAR_RECT_WIDTH_IN`, `BAR_RECT_LENGTH`) titled along `inner_side`,
   over the map: water labels are placed in `label_outline` (the canvas minus the bar corners), and a crop's water
   label with a glyph outside the outline is dropped (`placement.outside_outline`).
 - `--pick` with the same `--crop` inverts the crop's projection.
