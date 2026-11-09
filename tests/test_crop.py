@@ -248,3 +248,25 @@ def test_clip_edges_follow_their_parallels() -> None:
     c = load_countries()
     russia = f.project(c)[c.NAME_EN == "Russia"].geometry.iloc[0]
     assert russia.is_valid and russia.contains(Point(*f.to_map.transform(75, 66.5)))  # the Gydan peninsula
+
+
+@pytest.mark.parametrize("region", [box(-5, 42, 9, 51), box(-180, 60, 180, 90), box(30, 60, 150, 85), box(120, -60, 290 - 360, 60)])
+def test_crops_are_centred_on_their_map(region: shapely.Geometry) -> None:
+    f = crop_frame(region, 0.1)
+    assert abs(f.xmin + f.xmax) / 2 < 1e-3 * f.width
+    if "+proj=laea" in f.crs:
+        assert abs(f.ymin + f.ymax) / 2 < 1e-3 * f.height
+
+
+def test_polar_cap_is_centred_on_the_pole() -> None:
+    assert float(crop_frame(box(-180, 60, 180, 90), 0).crs.split("+lat_0=")[1].split()[0]) > 89.99
+
+
+@pytest.mark.parametrize("name, lat", [("ARCTIC OCEAN", 90), ("SOUTHERN OCEAN", -90)])
+def test_regions_round_a_pole_get_a_square_map_centred_on_it(name: str, lat: int) -> None:
+    from worldmap.crop import CROP_MARGIN
+
+    c = next(c for c in candidates({"oceans"}, False) if c.text == name)
+    f = crop_frame(c.geom, CROP_MARGIN)
+    assert f"+lat_0={lat}" in f.crs.replace(".000000", "") and f.width == pytest.approx(f.height)
+    assert f.xmin == pytest.approx(-f.xmax) and f.ymin == pytest.approx(-f.ymax)

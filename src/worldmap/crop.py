@@ -32,6 +32,8 @@ CLIP_SAMPLES = 65  # points per side of the grid sampled to find the canvas's lo
 AZIMUTHAL_MAX_DEG = 60  # a region reaching further than this from its centre gets Equal Earth: azimuthal shapes would stretch
 RECIPE_ROUNDS, RECIPE_TOLERANCE = 12, 0.002  # recipe_box: rounds of fitting, and how close the size must come
 WRAP_GAP_DEG = 15  # frame_extent: a crop whose shown longitudes leave no gap this wide goes all the way round (samples can be ~7 degrees apart)
+POLE_DEG = 0.1  # round_pole: reaching this close to a pole counts
+RECENTRE_ROUNDS, RECENTRE_TOLERANCE = 8, 1e-4  # crop_frame: rounds of moving the centre to the map's middle, and how close
 LABEL_SCALE_MAX = 2.5  # a crop's label_scale: the square root of its zoom over the world map, up to this
 
 NUM = r"\s*(-?\d+(?:\.\d*)?)\s*"
@@ -85,6 +87,8 @@ def box_region(b: CropBox) -> BaseGeometry:
 def extent(geom: BaseGeometry) -> CropBox:
     """The geometry's lon/lat extent, its longitudes taken the short way round (west > east: across +-180)."""
     lon, lat = shapely.get_coordinates(shapely.segmentize(geom, SEGMENT_DEG)).T
+    if lon_ranges(lon, SEGMENT_DEG) == [(-180, 180)]:  # no gap wider than the segments: all the way round
+        return -180.0, float(lat.min()), 180.0, float(lat.max())
     ranges = lon_ranges(lon, 0)
     return float(ranges[0][0]), float(lat.min()), float(ranges[-1][1]), float(lat.max())
 
@@ -162,11 +166,46 @@ def globe_outline(to_map: Transformer, lon0: float) -> Polygon:
     return Polygon(np.vstack([east, west]))
 
 
+def round_pole(region: BaseGeometry) -> float | None:
+    """90 or -90 if the region surrounds that pole: it goes all the way round within one hemisphere (the Southern
+    Ocean, `:,60:`), or reaches the pole and more than half way round (the Arctic Ocean, its coast cut by Greenland
+    and Canada's islands). Else None (a wedge that just touches a pole)."""
+    west, south, east, north = extent(region)
+    span = 360.0 if (west, east) == (-180, 180) else (east - west) % 360
+    if span == 360 and (south >= 0 or north <= 0):
+        return 90.0 if south >= 0 else -90.0
+    if span > 180 and north >= 90 - POLE_DEG:
+        return 90.0
+    if span > 180 and south <= -90 + POLE_DEG:
+        return -90.0
+    return None
+
+
 def crop_frame(region: BaseGeometry, margin: float) -> MapFrame:
     """A frame centred on `region` (lon/lat), fitting its projected bounds plus `margin` of their width/height on
     each side. The projection is Lambert azimuthal equal-area, or Equal Earth for a region reaching further than
-    AZIMUTHAL_MAX_DEG from its centre (an ocean); there the canvas is cut to the globe's outline."""
+    AZIMUTHAL_MAX_DEG from its centre (an ocean); there the canvas is cut to the globe's outline. The projection is
+    centred on the middle of the map: the bounds aren't symmetric about the region's own centre, so it's moved there
+    and the bounds refitted, up to RECENTRE_ROUNDS times. A region round a pole gets a square map centred on it."""
+    if (pole := round_pole(region)) is not None:
+        frame = fit_frame(region, margin, 0.0, pole, square=True)
+        zoom = frame.px_per_unit / make_frame().px_per_unit
+        return replace(frame, label_scale=float(np.clip(np.sqrt(zoom), 1, LABEL_SCALE_MAX)))
     lon0, lat0 = sphere_centre(region)
+    for _ in range(RECENTRE_ROUNDS):
+        frame = fit_frame(region, margin, lon0, lat0)
+        mid_x, mid_y = (frame.xmin + frame.xmax) / 2, (frame.ymin + frame.ymax) / 2
+        azimuthal = "+proj=laea" in frame.crs
+        if np.hypot(mid_x, mid_y if azimuthal else 0) < RECENTRE_TOLERANCE * min(frame.width, frame.height):
+            break
+        lon, lat = frame.to_lonlat.transform(mid_x, mid_y if azimuthal else 0)
+        lon0, lat0 = float(lon), float(lat) if azimuthal else lat0
+    zoom = frame.px_per_unit / make_frame().px_per_unit  # both in metres
+    return replace(frame, label_scale=float(np.clip(np.sqrt(zoom), 1, LABEL_SCALE_MAX)))
+
+
+def fit_frame(region: BaseGeometry, margin: float, lon0: float, lat0: float, square: bool = False) -> MapFrame:
+    """crop_frame with the projection centred on (lon0, lat0); with `square`, the canvas is a square centred there."""
     xy = shapely.get_coordinates(shapely.segmentize(region, SEGMENT_DEG))
     azimuthal = reach(xy, (lon0, lat0)) <= AZIMUTHAL_MAX_DEG
     if azimuthal:
@@ -184,6 +223,9 @@ def crop_frame(region: BaseGeometry, margin: float) -> MapFrame:
     x0, y0, x1, y1 = x.min(), y.min(), x.max(), y.max()
     mx, my = margin * (x1 - x0), margin * (y1 - y0)
     x0, y0, x1, y1 = float(x0 - mx), float(y0 - my), float(x1 + mx), float(y1 + my)
+    if square:
+        half = max(abs(x0), abs(y0), abs(x1), abs(y1))
+        x0, y0, x1, y1 = -half, -half, half, half
     canvas = box(x0, y0, x1, y1)
     if azimuthal:
         clip = clip_boxes(to_lonlat, to_map, canvas, (lon0, lat0))
@@ -192,9 +234,7 @@ def crop_frame(region: BaseGeometry, margin: float) -> MapFrame:
         clip = seam_boxes(lon0)
         shown = canvas.intersection(globe_outline(to_map, lon0))
         outline = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)] if shown.equals(canvas) else list(shown.exterior.coords[:-1])
-    frame = MapFrame(to_map, to_lonlat, outline, x0, y0, x1, y1, crs=crs, globe=False, clip=clip)
-    zoom = frame.px_per_unit / make_frame().px_per_unit  # both in metres
-    return replace(frame, label_scale=float(np.clip(np.sqrt(zoom), 1, LABEL_SCALE_MAX)))
+    return MapFrame(to_map, to_lonlat, outline, x0, y0, x1, y1, crs=crs, globe=False, clip=clip)
 
 
 def frame_extent(frame: MapFrame) -> CropBox:

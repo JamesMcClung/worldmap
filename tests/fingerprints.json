@@ -15,7 +15,7 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "3281010c3b8bbc53ca06cd576df416b2b66bfdfd8b5d3017b67ece48b86ad922"
+    "sha256": "cef74660bfb1254e7c4f20bfafda9ff58e68bedeff344a04c236bd87800dc418"
   },
   "crop_pacific_water": {
     "env": {
@@ -35,7 +35,7 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "8dbb43989a8212129e759fa174a996c5a484f0563caaa9e32e64e0f1e150d92b"
+    "sha256": "55954bdb1ca7af1a78422c97169559fd5a766440c6af2d9b1d2d25382d989f27"
   },
   "crop_water": {
     "env": {
@@ -55,7 +55,7 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "af2024f3b290e24e7b15f1a2243a73ee8cb89975b0b5e14700fb084d3abdd19f"
+    "sha256": "8796ca986a1320bec4fd4e893c2937c690482f1440f6e55c4f6239c11829bdad"
   },
   "default": {
     "env": {
@@ -217,7 +217,7 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "c9c94a1091f39d014574bfbe2df5ed4a293c6d76b824deb510fa7e86ae3d572f"
+    "sha256": "4d7180e76c4e07477a9b275ad418593c01b84fd489ac0b8e0d9f4f09900c790b"
   },
   "topographic_ocean": {
     "env": {
