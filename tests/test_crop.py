@@ -231,3 +231,11 @@ def test_frame_extent_of_a_crop_round_the_globe() -> None:
 
     west, south, east, north = frame_extent(crop_frame(box(-180, -70, 180, -55), CROP_MARGIN))
     assert (west, east) == (-180, 180) and south < -70 and north > -55
+
+
+def test_name_crop_prints_its_box(capsys: pytest.CaptureFixture[str]) -> None:
+    frame = make_map_frame(parse_args(["--crop", "france,germany"]))
+    out = capsys.readouterr().out
+    spec = out.split("--crop ")[1].split()[0]
+    b = parse_box(spec)
+    assert b is not None and crop_frame(box_region(b), 0).width == pytest.approx(frame.width, rel=0.01)

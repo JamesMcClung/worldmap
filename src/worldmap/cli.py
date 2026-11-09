@@ -21,7 +21,7 @@ from worldmap.coloring import Coloring, load_or_compute_coloring, make_palette, 
 from worldmap.colorspace import RGB
 from worldmap.data import is_labeled, load_countries, load_disputed, load_lakes, load_rivers, load_states, parent_index
 from worldmap.disputed import DISPUTED_GREY, STRIPE_WIDTH_IN, border_lines, dispute_edges, disputed_label_args, load_disputes
-from worldmap.crop import CROP_MARGIN, box_region, candidates, choose, crop_frame, matches, parse_box
+from worldmap.crop import CROP_MARGIN, box_region, box_spec, candidates, choose, crop_frame, matches, parse_box, recipe_box
 from worldmap.earth import Fill, build_regions, fill_at
 from worldmap.frame import DPI, MapFrame, make_frame
 from worldmap.labels.label import decide_out_and_wrap, make_labels
@@ -110,7 +110,9 @@ def make_map_frame(args: argparse.Namespace) -> MapFrame:
         cands = candidates(args.label, args.disputed)
         names = [n.strip() for n in args.crop.split(",") if n.strip()]  # no label has a comma in it
         chosen = [c for name in names for c in choose(name, matches(name, cands))]
-        return crop_frame(shapely.union_all([c.geom for c in chosen]), CROP_MARGIN)
+        region = shapely.union_all([c.geom for c in chosen])
+        print(f"cropping to {', '.join(c.text for c in chosen)}; the same as --crop {box_spec(recipe_box(region, CROP_MARGIN))}")
+        return crop_frame(region, CROP_MARGIN)
     except ValueError as e:
         sys.exit(f"make_map: {e}")
 
