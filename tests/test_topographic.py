@@ -238,3 +238,32 @@ def test_soften_smooths_cell_facets_in_a_crop() -> None:
     assert np.abs(np.diff(out, axis=1)).max() < 150  # spread over ~ a cell
     assert out[:, :10].max() == 0 and out[:, -10:].min() == 1000  # flat ground stays flat, to the edges
     assert out.mean() == pytest.approx(z.mean(), rel=1e-3)
+
+
+def test_elevation_window_is_full_resolution() -> None:
+    from worldmap.topographic import FINE_STEP_DEG, elevation_window
+
+    w = elevation_window(np.array([86.0, 88.0]), np.array([27.0, 29.0]))
+    assert w.step == FINE_STEP_DEG and w.z.shape[1] < 200
+    everest = sample(w, np.array([86.925]), np.array([27.988]))[0]
+    assert everest > sample(elevation_grid(), np.array([86.925]), np.array([27.988]))[0] + 300
+
+
+def test_elevation_window_across_the_antimeridian() -> None:
+    from worldmap.topographic import elevation_window
+
+    w = elevation_window(np.array([179.0, -179.0]), np.array([64.0, 66.0]))
+    assert w.z.shape[1] < 200  # 2 degrees of longitude, not 358
+    a, b = sample(w, np.array([179.99, -179.99]), np.array([65.0, 65.0]))  # Chukotka
+    coarse = sample(elevation_grid(), np.array([179.99]), np.array([65.0]))[0]
+    assert abs(a - b) < 150 and abs(a - coarse) < 100
+
+
+def test_crops_use_full_resolution() -> None:
+    from worldmap.crop import box_region, crop_frame
+    from worldmap.topographic import FINE_STEP_DEG, GRID_STEP_DEG, elevation_for
+
+    alps = crop_frame(box_region((5, 40, 17, 49)), 0)
+    assert elevation_for(alps, poster_grid(alps, 20)).step == FINE_STEP_DEG
+    world = make_frame()
+    assert elevation_for(world, poster_grid(world, 20)).step == GRID_STEP_DEG

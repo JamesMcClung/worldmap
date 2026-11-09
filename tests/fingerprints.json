@@ -213,7 +213,7 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "2a7df0debcf650c4c65f76210034c44bd5ad6fb6a3419a70788be79c1bc2ef71"
+    "sha256": "bb9db3fea3de942d8aa3d33bc8a4c223c5011e37eefe8058f89edb8324661234"
   },
   "topographic_ocean": {
     "env": {
