@@ -15,7 +15,7 @@ from shapely.geometry.base import BaseGeometry
 from worldmap.data import is_labeled, load_countries, load_disputed, load_lakes
 from worldmap.disputed import disputed_label_args, load_disputes
 from worldmap.earth import Fill
-from worldmap.frame import PROJECT_PAD, LonLatBox, MapFrame, make_frame
+from worldmap.frame import ANTIMERIDIAN_EPS, OUTLINE_POINTS, PROJECT_PAD, LonLatBox, MapFrame, make_frame
 from worldmap.labels.label import RENAME
 from worldmap.labels.regions import PARENT_SHORT, child_regions, polygons
 from worldmap.labels.water import kinds_from_labels, load_water_bodies
@@ -29,6 +29,7 @@ CLIP_PAD_DEG = 5  # lon/lat clip boxes reach this far past what the canvas shows
 SEGMENT_DEG = 0.5  # lon/lat edges are split this finely before projecting (they curve in the crop's projection)
 EDGE_NUDGE = 1e-9  # relative: ~2 cm on the Robinson globe
 CLIP_SAMPLES = 65  # points per side of the grid sampled to find the canvas's lon/lat extent
+AZIMUTHAL_MAX_DEG = 60  # a region reaching further than this from its centre gets Equal Earth: azimuthal shapes would stretch
 LABEL_SCALE_MAX = 2.5  # a crop's label_scale: the square root of its zoom over the world map, up to this
 
 NUM = r"\s*(-?\d+(?:\.\d*)?)\s*"
@@ -121,20 +122,61 @@ def clip_boxes(to_lonlat: Transformer, to_map: Transformer, canvas: Polygon, cen
     return boxes
 
 
+def reach(xy: np.ndarray, centre: tuple[float, float]) -> float:
+    """The greatest angle (degrees) on the sphere from `centre` to any of the lon/lat points `xy`."""
+    lon, lat = np.radians(xy).T
+    lon0, lat0 = np.radians(centre)
+    cos = np.sin(lat0) * np.sin(lat) + np.cos(lat0) * np.cos(lat) * np.cos(lon - lon0)
+    return float(np.degrees(np.arccos(np.clip(cos, -1, 1))).max())
+
+
+def seam_boxes(lon0: float) -> tuple[LonLatBox, ...]:
+    """Boxes covering the globe but a hair either side of the meridian opposite `lon0` (a map centred on lon0 is cut
+    there), split at +-180 when that isn't the cut."""
+    seam = (lon0 + 360) % 360 - 180
+    if abs(seam) >= 180 - ANTIMERIDIAN_EPS:
+        return ((-180, -90, 180, 90),)
+    return ((seam + ANTIMERIDIAN_EPS, -90, 180, 90), (-180, -90, seam - ANTIMERIDIAN_EPS, 90))
+
+
+def globe_outline(to_map: Transformer, lon0: float) -> Polygon:
+    """The outline of a whole-globe map centred on lon0: its meridians a hair either side of the far one."""
+    lats = np.linspace(-90, 90, OUTLINE_POINTS)
+    east = np.column_stack(to_map.transform(np.full_like(lats, lon0 + 180 - ANTIMERIDIAN_EPS), lats))
+    west = np.column_stack(to_map.transform(np.full_like(lats, lon0 - 180 + ANTIMERIDIAN_EPS), lats[::-1]))
+    return Polygon(np.vstack([east, west]))
+
+
 def crop_frame(region: BaseGeometry, margin: float) -> MapFrame:
-    """A frame in a Lambert azimuthal equal-area projection centred on `region` (lon/lat), fitting its projected
-    bounds plus `margin` of their width/height on each side."""
+    """A frame centred on `region` (lon/lat), fitting its projected bounds plus `margin` of their width/height on
+    each side. The projection is Lambert azimuthal equal-area, or Equal Earth for a region reaching further than
+    AZIMUTHAL_MAX_DEG from its centre (an ocean); there the canvas is cut to the globe's outline."""
     lon0, lat0 = sphere_centre(region)
-    crs = f"+proj=laea +lat_0={lat0:.6f} +lon_0={lon0:.6f} +datum=WGS84"
+    xy = shapely.get_coordinates(shapely.segmentize(region, SEGMENT_DEG))
+    azimuthal = reach(xy, (lon0, lat0)) <= AZIMUTHAL_MAX_DEG
+    if azimuthal:
+        crs = f"+proj=laea +lat_0={lat0:.6f} +lon_0={lon0:.6f} +datum=WGS84"
+    else:
+        crs = f"+proj=eqearth +lon_0={lon0:.6f} +datum=WGS84"
+        # Measured without what touches the seam (it would wrap to the other side), and along the equator too:
+        # a pseudo-cylindrical map is widest there, so a region crossing it can reach further than its outline.
+        shown = region.intersection(shapely.union_all([box(*b) for b in seam_boxes(lon0)]))
+        equator = shown.intersection(shapely.LineString([(-180, 0), (180, 0)]))
+        xy = shapely.get_coordinates(shapely.segmentize(shapely.union_all([shown.boundary, equator]), SEGMENT_DEG))
     to_map = Transformer.from_crs("EPSG:4326", crs, always_xy=True)
     to_lonlat = Transformer.from_crs(crs, "EPSG:4326", always_xy=True)
-    xy = shapely.get_coordinates(shapely.segmentize(region, SEGMENT_DEG))
     x, y = to_map.transform(xy[:, 0], xy[:, 1])
     x0, y0, x1, y1 = x.min(), y.min(), x.max(), y.max()
     mx, my = margin * (x1 - x0), margin * (y1 - y0)
     x0, y0, x1, y1 = float(x0 - mx), float(y0 - my), float(x1 + mx), float(y1 + my)
-    clip = clip_boxes(to_lonlat, to_map, box(x0, y0, x1, y1), (lon0, lat0))
-    outline = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+    canvas = box(x0, y0, x1, y1)
+    if azimuthal:
+        clip = clip_boxes(to_lonlat, to_map, canvas, (lon0, lat0))
+        outline = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+    else:
+        clip = seam_boxes(lon0)
+        shown = canvas.intersection(globe_outline(to_map, lon0))
+        outline = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)] if shown.equals(canvas) else list(shown.exterior.coords[:-1])
     frame = MapFrame(to_map, to_lonlat, outline, x0, y0, x1, y1, crs=crs, globe=False, clip=clip)
     zoom = frame.px_per_unit / make_frame().px_per_unit  # both in metres
     return replace(frame, label_scale=float(np.clip(np.sqrt(zoom), 1, LABEL_SCALE_MAX)))
@@ -182,7 +224,13 @@ def candidates(label: set[str], disputed: bool) -> list[Candidate]:
                 found.append((c.text, "territory", shapely.union_all(c.polys), (RENAME.get(name, name), name)))
     kinds = kinds_from_labels(label)
     if kinds:
-        found += [(b.text, WATER_KIND[b.kind], b.geom, ()) for b in load_water_bodies(kinds, frame.project(load_lakes()), frame)]
+        bodies = load_water_bodies(kinds, frame.project(load_lakes()), frame)
+        oceans: dict[str, list[BaseGeometry]] = {}
+        for b in bodies:  # the world map labels the Pacific twice, either side of +-180: one candidate
+            if b.kind == "oceans":
+                oceans.setdefault(b.text, []).append(b.geom)
+        found += [(text, "ocean", shapely.union_all(geoms), ()) for text, geoms in oceans.items()]
+        found += [(b.text, WATER_KIND[b.kind], b.geom, ()) for b in bodies if b.kind != "oceans"]
     return [Candidate(text, kind, to_lonlat(g, frame), aliases) for text, kind, g, aliases in found]
 
 

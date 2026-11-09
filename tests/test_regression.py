@@ -46,6 +46,10 @@ def test_render_crop_water(tmp_path: Path) -> None:
     check_fingerprint("crop_water", render(tmp_path, "--crop", "160,48:-150,72", "--label", "countries,territories,water", "--disputed"))
 
 
+def test_render_crop_pacific_water(tmp_path: Path) -> None:  # Equal Earth; "water" in the name keys the marine file
+    check_fingerprint("crop_pacific_water", render(tmp_path, "--crop", "pacific", "--label", "countries,oceans,seas"))
+
+
 def test_render_failure_shows_stderr(tmp_path: Path) -> None:
     with pytest.raises(pytest.fail.Exception, match="unrecognized arguments"):
         render(tmp_path, "--no-such-flag")

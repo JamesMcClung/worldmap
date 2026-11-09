@@ -158,3 +158,35 @@ def test_label_sizes_scale_in_a_crop() -> None:
     assert new_label(ax, r, f, "Big", (0, 0), huge, huge.area, (0, 0, 0)).text.get_fontsize() == pytest.approx(MAX_PT * f.label_scale)
     assert new_label(ax, r, f, "Small", (0, 0), tiny, tiny.area, (0, 0, 0)).text.get_fontsize() == pytest.approx(MIN_PT * f.label_scale)
     plt.close(fig)
+
+
+def test_wide_regions_use_equal_earth() -> None:
+    from worldmap.crop import CROP_MARGIN
+
+    assert "+proj=laea" in crop_frame(box_region((-179, 18, -66, 72)), CROP_MARGIN).crs  # US with Alaska and Hawaii
+    pacific = crop_frame(box_region((120, -60, -70, 60)), 0)
+    assert "+proj=eqearth" in pacific.crs and "+lon_0=-155" in pacific.crs
+    assert len(pacific.outline) == 4  # the canvas, well inside the globe
+
+
+def test_pacific_by_name_is_one_candidate_and_crops() -> None:
+    from worldmap.crop import CROP_MARGIN
+    from worldmap.data import load_countries
+
+    found = [c for c in candidates({"oceans"}, False) if c.text == "PACIFIC OCEAN"]
+    assert len(found) == 1
+    f = crop_frame(found[0].geom, CROP_MARGIN)
+    assert "+proj=eqearth" in f.crs
+    raw = load_countries()
+    countries = f.visible(f.project(raw))
+    fiji = countries[countries.NAME_EN == "Fiji"].geometry.iloc[0]
+    split = raw[raw.NAME_EN == "Fiji"].geometry.iloc[0]  # 6 of its islands are cut at +-180
+    assert fiji.is_valid and len(shapely.get_parts(fiji)) == len(shapely.get_parts(split)) - 3
+
+
+def test_whole_world_box_shows_the_whole_width() -> None:
+    f = crop_frame(box_region((-180, -85, 180, 85)), 0)
+    from pyproj import Transformer
+
+    half = Transformer.from_crs("EPSG:4326", "+proj=eqearth +datum=WGS84", always_xy=True).transform(179.99, 0)[0]
+    assert f.width == pytest.approx(2 * half, rel=0.01)
