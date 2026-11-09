@@ -81,23 +81,34 @@ def sphere_centre(geom: BaseGeometry) -> tuple[float, float]:
     return float(np.degrees(np.arctan2(v[1], v[0]))), float(np.degrees(np.arctan2(v[2], np.hypot(v[0], v[1]))))
 
 
+def sample_lonlat(to_lonlat: Transformer, to_map: Transformer, rect: Polygon) -> tuple[np.ndarray, np.ndarray, list[int]]:
+    """The lon/lat of a CLIP_SAMPLES-square grid of points over `rect` (those on the globe), and the poles in it."""
+    x0, y0, x1, y1 = rect.bounds
+    mx, my = np.meshgrid(np.linspace(x0, x1, CLIP_SAMPLES), np.linspace(y0, y1, CLIP_SAMPLES))
+    gx, gy = mx.ravel(), my.ravel()
+    lon, lat = to_lonlat.transform(gx, gy)
+    ok = np.isfinite(lon) & np.isfinite(lat)
+    bx, by = to_map.transform(np.where(ok, lon, 0), np.where(ok, lat, 0))
+    ok &= np.hypot(bx - gx, by - gy) < 1e-6 * (x1 - x0)  # off the edge of a whole-globe map, it doesn't map back
+    poles = []
+    for pole in (90, -90):
+        x, y = to_map.transform(0, pole)
+        if np.isfinite(x) and rect.contains(shapely.Point(x, y)):
+            poles.append(pole)
+    return lon[ok], lat[ok], poles
+
+
 def clip_boxes(to_lonlat: Transformer, to_map: Transformer, canvas: Polygon, centre: tuple[float, float]) -> tuple[LonLatBox, ...]:
     """lon/lat boxes covering what the canvas (grown by PROJECT_PAD) shows, padded by CLIP_PAD_DEG, so data far
     round the globe is cut off before projecting (the projection is singular at the centre's antipode)."""
     x0, y0, x1, y1 = canvas.bounds
     px, py = PROJECT_PAD * (x1 - x0), PROJECT_PAD * (y1 - y0)
-    grown = box(x0 - px, y0 - py, x1 + px, y1 + py)
-    gx, gy = np.meshgrid(np.linspace(x0 - px, x1 + px, CLIP_SAMPLES), np.linspace(y0 - py, y1 + py, CLIP_SAMPLES))
-    lon, lat = to_lonlat.transform(gx.ravel(), gy.ravel())
-    ok = np.isfinite(lon) & np.isfinite(lat)
-    lon, lat = lon[ok], lat[ok]
+    lon, lat, poles = sample_lonlat(to_lonlat, to_map, box(x0 - px, y0 - py, x1 + px, y1 + py))
     south, north = max(-90.0, float(lat.min()) - CLIP_PAD_DEG), min(90.0, float(lat.max()) + CLIP_PAD_DEG)
     ranges = lon_ranges(lon, CLIP_PAD_DEG)
-    for pole in (90, -90):
-        x, y = to_map.transform(0, pole)
-        if np.isfinite(x) and grown.contains(shapely.Point(x, y)):
-            ranges = [(-180, 180)]
-            south, north = (south, 90.0) if pole > 0 else (-90.0, north)
+    for pole in poles:
+        ranges = [(-180, 180)]
+        south, north = (south, 90.0) if pole > 0 else (-90.0, north)
     boxes = tuple((float(w), south, float(e), north) for w, e in ranges)
     anti_lon, anti_lat = (centre[0] + 360) % 360 - 180, -centre[1]
     if any(w <= anti_lon <= e and s <= anti_lat <= n for w, s, e, n in boxes):
@@ -163,6 +174,14 @@ def crop_frame(region: BaseGeometry, margin: float) -> MapFrame:
     frame = MapFrame(to_map, to_lonlat, outline, x0, y0, x1, y1, crs=crs, globe=False, clip=clip)
     zoom = frame.px_per_unit / make_frame().px_per_unit  # both in metres
     return replace(frame, label_scale=float(np.clip(np.sqrt(zoom), 1, LABEL_SCALE_MAX)))
+
+
+def frame_extent(frame: MapFrame) -> CropBox:
+    """The lon/lat extent of what the crop shows (west > east: across +-180)."""
+    lon, lat, poles = sample_lonlat(frame.to_lonlat, frame.to_map, frame.canvas)
+    ranges = [(-180.0, 180.0)] if poles else lon_ranges(lon, 0)
+    south, north = -90.0 if -90 in poles else float(lat.min()), 90.0 if 90 in poles else float(lat.max())
+    return float(ranges[0][0]), south, float(ranges[-1][1]), north
 
 
 KINDS = ("country", "territory", "disputed", "ocean", "sea", "lake", "strait", "river")  # the order a match list is in
@@ -242,15 +261,14 @@ def matches(name: str, cands: list[Candidate]) -> list[Candidate]:
     return sorted(found, key=lambda c: (key not in names[id(c)], KINDS.index(c.kind), c.text))
 
 
-def lonlat_text(lon: float, lat: float) -> str:
-    return f"{abs(lon):.1f}°{'E' if lon >= 0 else 'W'} {abs(lat):.1f}°{'N' if lat >= 0 else 'S'}"
-
-
 def describe(c: Candidate) -> str:
-    """'Colorado (river) 114.5°W 31.8°N to 105.6°W 40.5°N': the text, the kind, and its extent from the south-west
-    corner to the north-east."""
-    west, south, east, north = extent(c.geom)
-    return f"{c.text} ({c.kind}) {lonlat_text(west, south)} to {lonlat_text(east, north)}"
+    """'France (country) -6.4,40.9:10.5,52.0': the text, the kind, and the lon/lat extent a crop to it shows, margin
+    included, as --crop takes it (to copy and adjust)."""
+    try:
+        west, south, east, north = frame_extent(crop_frame(c.geom, CROP_MARGIN))
+    except ValueError:  # too big to crop: its own extent
+        west, south, east, north = extent(c.geom)
+    return f"{c.text} ({c.kind}) {west:.1f},{south:.1f}:{east:.1f},{north:.1f}"
 
 
 def checklist(message: str, lines: list[str]) -> "questionary.Question":

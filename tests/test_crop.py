@@ -64,11 +64,19 @@ def test_matches_exact_first() -> None:
     assert [(m.text, m.kind) for m in matches("niger", c)] == [("Niger", "country"), ("Niger", "river"), ("Nigeria", "country")]
 
 
-def test_describe_shows_kind_and_span() -> None:
-    colorado = Candidate("Colorado", "river", LineString([(-114.5, 31.8), (-109, 36), (-105.6, 40.5)]))
-    assert describe(colorado) == "Colorado (river) 114.5°W 31.8°N to 105.6°W 40.5°N"
+def test_describe_shows_the_box_the_crop_covers() -> None:
+    from worldmap.crop import CROP_MARGIN
+
+    france = Candidate("France", "country", box(-5, 42, 9, 51))
+    name, spec = describe(france).split(") ")
+    assert name == "France (country"
+    west, south, east, north = parse_box(spec) or (0, 0, 0, 0)
+    assert -9 < west < -5 and 40 < south < 42 and 9 < east < 13 and 51 < north < 53  # the margin, the corners
+    again = crop_frame(box_region((west, south, east, north)), 0)  # what a user editing it starts from
+    assert 1 <= again.width / crop_frame(france.geom, CROP_MARGIN).width < 1.3  # a box crop shows all of the box
     fiji = Candidate("Fiji", "country", shapely.union_all([box(177, -19, 180, -16), box(-180, -17, -179, -16)]))
-    assert describe(fiji) == "Fiji (country) 177.0°E 19.0°S to 179.0°W 16.0°S"
+    b = parse_box(describe(fiji).split(") ")[1])
+    assert b is not None and b[0] > b[2]  # across +-180
 
 
 def test_territories_match_their_parents_full_name() -> None:
@@ -100,7 +108,7 @@ def test_country_candidate_excludes_territories() -> None:
 def test_ambiguous_name_without_tty_exits_with_list(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sys.stdin, "isatty", lambda: False)
     found = matches("niger", [Candidate("Niger", "country", Point(9, 17)), Candidate("Nigeria", "country", Point(8, 9))])
-    with pytest.raises(SystemExit, match=r"Niger \(country\) 9.0°E 17.0°N to 9.0°E 17.0°N\n.*Nigeria \(country\)"):
+    with pytest.raises(SystemExit, match=r"Niger \(country\) [-\d.,:]+\n.*Nigeria \(country\)"):
         choose("niger", found)
 
 
