@@ -5,6 +5,7 @@ import shapely
 from shapely.geometry import LineString, Point, box
 
 from worldmap.cli import make_map_frame, parse_args
+from worldmap.frame import make_frame
 from worldmap.crop import Candidate, box_region, candidates, choose, crop_frame, describe, matches, parse_box, sphere_centre
 
 
@@ -134,3 +135,26 @@ def test_candidates_across_the_antimeridian_are_finite() -> None:
     for name in ("Fiji", "Gulf of Anadyr'", "SOUTHERN OCEAN"):
         c = next(c for c in cands if c.text == name)
         assert not crop_frame(c.geom, 0.1).globe
+
+
+def test_label_scale_grows_with_zoom() -> None:
+    from worldmap.crop import LABEL_SCALE_MAX
+
+    assert make_frame().label_scale == 1
+    assert crop_frame(box_region((-5, 42, 9, 51)), 0.1).label_scale == LABEL_SCALE_MAX  # France: zoom ~25
+    assert 1.3 < crop_frame(box_region((-179, 18, -66, 72)), 0.1).label_scale < 2  # US with Alaska and Hawaii: ~2.5
+
+
+def test_label_sizes_scale_in_a_crop() -> None:
+    import matplotlib.pyplot as plt
+
+    from worldmap.labels.label import MAX_PT, MIN_PT, new_label
+    from worldmap.render import new_figure
+
+    f = crop_frame(box_region((-5, 42, 9, 51)), 0.1)
+    fig, ax = new_figure(f)
+    r = fig.canvas.get_renderer()  # type: ignore[attr-defined]
+    huge, tiny = f.canvas, f.canvas.centroid.buffer(1)
+    assert new_label(ax, r, f, "Big", (0, 0), huge, huge.area, (0, 0, 0)).text.get_fontsize() == pytest.approx(MAX_PT * f.label_scale)
+    assert new_label(ax, r, f, "Small", (0, 0), tiny, tiny.area, (0, 0, 0)).text.get_fontsize() == pytest.approx(MIN_PT * f.label_scale)
+    plt.close(fig)

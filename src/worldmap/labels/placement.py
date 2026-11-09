@@ -305,7 +305,7 @@ def place_labels(labels: list[Label], frame: MapFrame, seed: int = SEED, weights
             break
         for i in bad:
             size = float(labels[i].text.get_fontsize())
-            if size > SHRINK_MIN_PT:
+            if size > SHRINK_MIN_PT * frame.label_scale:
                 labels[i].text.set_fontsize(size * SHRINK_FACTOR)
                 p.width[i] *= SHRINK_FACTOR
                 p.height[i] *= SHRINK_FACTOR

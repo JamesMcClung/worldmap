@@ -3,7 +3,7 @@
 import re
 import sys
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -29,6 +29,7 @@ CLIP_PAD_DEG = 5  # lon/lat clip boxes reach this far past what the canvas shows
 SEGMENT_DEG = 0.5  # lon/lat edges are split this finely before projecting (they curve in the crop's projection)
 EDGE_NUDGE = 1e-9  # relative: ~2 cm on the Robinson globe
 CLIP_SAMPLES = 65  # points per side of the grid sampled to find the canvas's lon/lat extent
+LABEL_SCALE_MAX = 2.5  # a crop's label_scale: the square root of its zoom over the world map, up to this
 
 NUM = r"\s*(-?\d+(?:\.\d*)?)\s*"
 BOX_RE = re.compile(f"^{NUM},{NUM}:{NUM},{NUM}$")
@@ -134,7 +135,9 @@ def crop_frame(region: BaseGeometry, margin: float) -> MapFrame:
     x0, y0, x1, y1 = float(x0 - mx), float(y0 - my), float(x1 + mx), float(y1 + my)
     clip = clip_boxes(to_lonlat, to_map, box(x0, y0, x1, y1), (lon0, lat0))
     outline = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
-    return MapFrame(to_map, to_lonlat, outline, x0, y0, x1, y1, crs=crs, globe=False, clip=clip)
+    frame = MapFrame(to_map, to_lonlat, outline, x0, y0, x1, y1, crs=crs, globe=False, clip=clip)
+    zoom = frame.px_per_unit / make_frame().px_per_unit  # both in metres
+    return replace(frame, label_scale=float(np.clip(np.sqrt(zoom), 1, LABEL_SCALE_MAX)))
 
 
 KINDS = ("country", "territory", "disputed", "ocean", "sea", "lake", "strait", "river")  # the order a match list is in

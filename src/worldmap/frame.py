@@ -59,6 +59,7 @@ class MapFrame:
     crs: str = CRS
     globe: bool = True  # the whole globe; False for a --crop, whose outline is the canvas rectangle
     clip: tuple[LonLatBox, ...] = (WORLD,)  # lon/lat data is clipped to these boxes before projecting
+    label_scale: float = 1.0  # multiplies every label size limit (pt): > 1 in a crop, which has room for bigger labels
 
     @property
     def width(self) -> float:

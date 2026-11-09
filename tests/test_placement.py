@@ -167,3 +167,10 @@ def test_crop_drops_water_labels_outside_the_outline(frame: MapFrame) -> None:
     assert kept == []
     _, kept = place_with_water([], [crossing_water_labels(frame)[0]], frame)
     assert [w.text for w in kept] == ["Sea"]  # on the globe it stays
+
+
+def test_water_floor_scales_with_the_frame() -> None:
+    parts = np.array([[0.0, 0.0, 10.0, 10.0]])
+    sea = water_label("Sea", (0, 0), shapely.box(0, 0, 10, 10), parts, 20)
+    sea.label_scale = 2
+    assert sea.min_size == 2 * WATER_MIN_PT

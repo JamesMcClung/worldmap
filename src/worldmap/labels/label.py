@@ -93,7 +93,8 @@ def new_label(ax: Axes, renderer: RendererBase, frame: MapFrame, name: str, anch
     """A measured label for `name` at `anchor` (map units), sized by `area`. Child regions are set in italics."""
     ppu = frame.px_per_unit
     x, y = anchor
-    size = float(np.clip(FONT_SCALE * np.sqrt(area) * ppu / DPI * POINTS_PER_INCH / 10, MIN_PT, MAX_PT))
+    s = frame.label_scale
+    size = float(np.clip(FONT_SCALE * np.sqrt(area) * ppu / DPI * POINTS_PER_INCH / 10, MIN_PT * s, MAX_PT * s))
     text = ax.text(x, y, name, fontsize=size, ha="center", va="center", color=color, zorder=LABEL_ZORDER, path_effects=HALO, fontstyle="italic" if italic else "normal")
     label = Label(name, area, color, text, 0.0, 0.0, (x - frame.xmin) * ppu, (y - frame.ymin) * ppu, frame.to_px(geom))
     measure(label, renderer)

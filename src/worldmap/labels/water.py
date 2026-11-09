@@ -296,11 +296,12 @@ class WaterLabel:
     size: float  # pt
     glyphs: Path  # the bent text, in px relative to the label's position
     parts: np.ndarray  # (k, 4) x0, y0, x1, y1 per non-space glyph, px relative to the label's position, halo-padded
+    label_scale: float = 1.0  # the frame's
 
     @property
     def min_size(self) -> float:
         """The smallest it may shrink to (pt): oceans stay bigger than any sea."""
-        return OCEAN_MIN_PT if self.kind == "oceans" else WATER_MIN_PT
+        return (OCEAN_MIN_PT if self.kind == "oceans" else WATER_MIN_PT) * self.label_scale
 
     def scale(self, factor: float) -> None:
         """Shrink the label by `factor` about its position."""
@@ -411,7 +412,7 @@ def height_above(points: np.ndarray, curve: np.ndarray) -> float:
 def river_label(body: WaterBody, frame: MapFrame) -> WaterLabel | None:
     """A river's name just above the best stretch of it (best_stretch) for a name its size plus half an em each side,
     clear of its wiggles there; None if the river is shorter than that."""
-    size = river_size(body.rank)
+    size = river_size(body.rank) * frame.label_scale
     em = size * PX_PER_PT
     line = largest_line(frame.to_px(body.geom))
     pts = np.asarray(line.coords)
@@ -422,6 +423,7 @@ def river_label(body: WaterBody, frame: MapFrame) -> WaterLabel | None:
     curve = fit_curve(LineString(stretch).buffer(1.0), MAX_TILT_DEG)
     rise = RIVER_GAP_EM * em + height_above(stretch, curve)
     label = lay_out(body, curve, size, line.buffer(RIVER_CORRIDOR_EM * em), rise)
+    label.label_scale = frame.label_scale
     return label if label.inside_share(label.anchor_x, label.anchor_y) >= WATER_MIN_INSIDE else None
 
 
@@ -446,8 +448,9 @@ def make_water_labels(bodies: list[WaterBody], frame: MapFrame) -> list[WaterLab
         if body.kind == "oceans":
             width_1pt += OCEAN_TRACKING_EM * (len(body.text) - 1) * PX_PER_PT
         low, high = (OCEAN_MIN_PT, OCEAN_PT) if body.kind == "oceans" else (WATER_MIN_PT, SEA_MAX_PT)
-        size = float(np.clip(SEA_FILL * arc_lengths(curve)[-1] / width_1pt, low, high))
+        size = float(np.clip(SEA_FILL * arc_lengths(curve)[-1] / width_1pt, low * frame.label_scale, high * frame.label_scale))
         label = lay_out(body, curve, size, frame.to_px(body.geom))
+        label.label_scale = frame.label_scale
         if label.inside_share(label.anchor_x, label.anchor_y) >= WATER_MIN_INSIDE:
             labels.append(label)
     return labels
