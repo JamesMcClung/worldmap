@@ -15,7 +15,7 @@ from shapely.geometry.base import BaseGeometry
 from worldmap.data import is_labeled, load_countries, load_disputed, load_lakes
 from worldmap.disputed import disputed_label_args, load_disputes
 from worldmap.earth import Fill
-from worldmap.frame import ANTIMERIDIAN_EPS, OUTLINE_POINTS, PROJECT_PAD, LonLatBox, MapFrame, make_frame
+from worldmap.frame import ANTIMERIDIAN_EPS, OUTLINE_POINTS, PROJECT_PAD, LonLatBox, MapFrame, lon_ranges, make_frame
 from worldmap.labels.label import RENAME
 from worldmap.labels.regions import PARENT_SHORT, child_regions, polygons
 from worldmap.labels.water import kinds_from_labels, load_water_bodies
@@ -79,23 +79,6 @@ def sphere_centre(geom: BaseGeometry) -> tuple[float, float]:
     lon, lat = np.radians(lon), np.radians(lat)
     v = np.array([np.cos(lat) * np.cos(lon), np.cos(lat) * np.sin(lon), np.sin(lat)]).mean(axis=1)
     return float(np.degrees(np.arctan2(v[1], v[0]))), float(np.degrees(np.arctan2(v[2], np.hypot(v[0], v[1]))))
-
-
-def lon_ranges(lons: np.ndarray, pad: float) -> list[tuple[float, float]]:
-    """The smallest set of +-180 longitude ranges covering `lons` (the complement of the widest gap), padded."""
-    s = np.sort(lons)
-    gaps = np.diff(np.append(s, s[0] + 360))
-    k = int(np.argmax(gaps))
-    if gaps[k] <= 2 * pad:
-        return [(-180, 180)]
-    start, end = s[(k + 1) % len(s)] - pad, s[k] + pad  # eastward from start to end
-    if end < start:
-        end += 360
-    if start < -180:
-        start, end = start + 360, end + 360
-    if end <= 180:
-        return [(start, end)]
-    return [(start, 180), (-180, end - 360)]
 
 
 def clip_boxes(to_lonlat: Transformer, to_map: Transformer, canvas: Polygon, centre: tuple[float, float]) -> tuple[LonLatBox, ...]:

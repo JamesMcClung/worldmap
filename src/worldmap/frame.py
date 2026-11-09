@@ -47,6 +47,23 @@ def cut(geoms: gpd.GeoSeries, window: Polygon) -> gpd.GeoSeries:
     return gpd.GeoSeries(out, index=geoms.index, crs=geoms.crs)
 
 
+def lon_ranges(lons: np.ndarray, pad: float) -> list[tuple[float, float]]:
+    """The smallest set of +-180 longitude ranges covering `lons` (the complement of the widest gap), padded."""
+    s = np.sort(lons)
+    gaps = np.diff(np.append(s, s[0] + 360))
+    k = int(np.argmax(gaps))
+    if gaps[k] <= 2 * pad:
+        return [(-180, 180)]
+    start, end = s[(k + 1) % len(s)] - pad, s[k] + pad  # eastward from start to end
+    if end < start:
+        end += 360
+    if start < -180:
+        start, end = start + 360, end + 360
+    if end <= 180:
+        return [(start, end)]
+    return [(start, 180), (-180, end - 360)]
+
+
 @dataclass(frozen=True)
 class MapFrame:
     to_map: Transformer  # lon/lat -> projected map units
