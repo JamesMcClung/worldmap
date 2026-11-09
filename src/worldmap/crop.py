@@ -4,6 +4,7 @@ import re
 import sys
 import unicodedata
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import numpy as np
 import shapely
@@ -18,6 +19,9 @@ from worldmap.frame import PROJECT_PAD, LonLatBox, MapFrame, make_frame
 from worldmap.labels.label import RENAME
 from worldmap.labels.regions import PARENT_SHORT, child_regions, polygons
 from worldmap.labels.water import kinds_from_labels, load_water_bodies
+
+if TYPE_CHECKING:
+    import questionary
 
 CropBox = tuple[float, float, float, float]  # west lon, south lat, east lon, north lat; west > east crosses +-180
 CROP_MARGIN = 0.10  # a named crop's margin on each side, as a fraction of the region's projected width/height
@@ -215,6 +219,22 @@ def describe(c: Candidate) -> str:
     return f"{c.text} ({c.kind}) {lonlat_text(west, south)} to {lonlat_text(east, north)}"
 
 
+def checklist(message: str, lines: list[str]) -> "questionary.Question":
+    """A checkbox prompt over `lines`, answering with their indices (so identical lines stay apart), without
+    questionary's select-all and invert keys."""
+    import questionary
+    from prompt_toolkit.key_binding import KeyBindings
+
+    q = questionary.checkbox(message, choices=[questionary.Choice(line, value=k) for k, line in enumerate(lines)],
+                             instruction="(arrow keys to move, <space> to check, <enter> to confirm)",
+                             validate=lambda chosen: bool(chosen) or "choose at least one")
+    bindings = q.application.key_bindings
+    assert isinstance(bindings, KeyBindings)
+    for key in ("a", "i"):
+        bindings.remove(key)
+    return q
+
+
 def choose(name: str, found: list[Candidate]) -> list[Candidate]:
     """The candidate(s) to crop to: the only match, or those the user checks when several match. Without a terminal
     to ask on, several matches are an error that lists them."""
@@ -226,10 +246,7 @@ def choose(name: str, found: list[Candidate]) -> list[Candidate]:
     if not sys.stdin.isatty():
         sys.exit(f"make_map: --crop {name} matches several labels; run in a terminal to choose, or use lon,lat:lon,lat:\n"
                  + "\n".join(lines))
-    import questionary
-
-    picked = questionary.checkbox(f"--crop {name} matches several labels. Crop to:", choices=lines,
-                                  validate=lambda chosen: bool(chosen) or "choose at least one").ask()
+    picked = checklist(f"--crop {name} matches several labels. Crop to:", lines).ask()
     if not picked:
         sys.exit("make_map: --crop: nothing chosen")
-    return [c for c, line in zip(found, lines) if line in picked]
+    return [found[k] for k in sorted(picked)]

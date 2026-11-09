@@ -78,6 +78,13 @@ def test_territories_match_their_parents_full_name() -> None:
     assert [c.text for c in matches("united states", cands)][:2] == ["United States", "Alaska (US)"]
 
 
+def test_checklist_has_no_toggle_all_or_invert_keys() -> None:
+    from worldmap.crop import checklist
+
+    keys = {b.keys for b in checklist("pick", ["one", "one"]).application.key_bindings.bindings}
+    assert ("a",) not in keys and ("i",) not in keys and (" ",) in keys
+
+
 def test_candidates_only_from_selected_kinds() -> None:
     texts = {c.text for c in candidates({"countries"}, False)}
     assert "India" in texts and not any("OCEAN" in t or "(" in t for t in texts)
