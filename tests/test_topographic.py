@@ -267,3 +267,33 @@ def test_crops_use_full_resolution() -> None:
     assert elevation_for(alps, poster_grid(alps, 20)).step == FINE_STEP_DEG
     world = make_frame()
     assert elevation_for(world, poster_grid(world, 20)).step == GRID_STEP_DEG
+
+
+def alps_tiles() -> None:
+    from worldmap.data import CACHE, etopo15_tile
+
+    if not all((CACHE / etopo15_tile(n, w)).exists() for n in (45, 60) for w in (0, 15)):
+        pytest.skip("the four 15\" ETOPO tiles around the Alps aren't downloaded")
+
+
+def test_elevation_window_reads_15s_tiles_across_their_corners() -> None:
+    from worldmap.topographic import FINE_STEP_DEG, TILE_STEP_DEG, elevation_window
+
+    alps_tiles()
+    fine, tiles = (elevation_window(np.array([14.0, 16.0]), np.array([44.0, 46.0]), step) for step in (FINE_STEP_DEG, TILE_STEP_DEG))
+    assert fine is not None and tiles is not None and tiles.step == TILE_STEP_DEG
+    rng = np.random.default_rng(0)
+    lon, lat = rng.uniform(14.2, 15.8, 400), rng.uniform(44.2, 45.8, 400)  # all four tiles
+    assert np.median(np.abs(sample(tiles, lon, lat) - sample(fine, lon, lat))) < 30
+    blanc = (np.array([6.865]), np.array([45.832]))
+    peak = elevation_window(np.array([6.5, 7.2]), np.array([45.5, 46.2]), TILE_STEP_DEG)
+    assert peak is not None and sample(peak, *blanc)[0] > sample(elevation_window(*blanc, FINE_STEP_DEG), *blanc)[0] + 100
+
+
+def test_zoomed_crops_use_15s_tiles() -> None:
+    from worldmap.crop import box_region, crop_frame
+    from worldmap.topographic import TILE_STEP_DEG, elevation_for
+
+    alps_tiles()
+    alps = crop_frame(box_region((5, 40, 17, 49)), 0)
+    assert elevation_for(alps, poster_grid(alps, 80)).step == TILE_STEP_DEG

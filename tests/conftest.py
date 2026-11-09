@@ -81,6 +81,7 @@ def environment(mode: str = "default") -> dict[str, str]:
         **({"marine": str(os.path.getsize(fetch(MARINE)))} if "water" in mode else {}),  # only modes with water labels
         **({"rivers": str(os.path.getsize(fetch(RIVERS)))} if "river" in mode or "water" in mode else {}),
         **(topographic_environment() if mode.startswith("topographic") else {}),
+        **(alps_tiles() if mode == "topographic_crop" else {}),
     }
 
 
@@ -93,6 +94,14 @@ def topographic_environment() -> dict[str, str]:
     return {"etopo": str(os.path.getsize(fetch(ETOPO))), "glaciers": str(os.path.getsize(fetch(GLACIERS))),
             "ice_shelves": str(os.path.getsize(fetch(ICE_SHELVES))), "land": str(os.path.getsize(fetch(LAND_OUTLINE))),
             "rasterio": rasterio.__version__, "gdal": rasterio.__gdal_version__}
+
+
+def alps_tiles() -> dict[str, str]:
+    """The 15" ETOPO tiles the Alps crop reads (missing ones make it skip: they're downloaded only on request)."""
+    from worldmap.data import CACHE, etopo15_tile
+
+    names = [etopo15_tile(n, w) for n in (45, 60) for w in (0, 15)]
+    return {name: str(os.path.getsize(CACHE / name)) if (CACHE / name).exists() else "missing" for name in names}
 
 
 def check_fingerprint(mode: str, png: Path, store: Path = FINGERPRINTS) -> None:

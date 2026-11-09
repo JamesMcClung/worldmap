@@ -196,6 +196,10 @@
       "countries": "4930492",
       "disputed": "215221",
       "etopo": "465969062",
+      "etopo15/ETOPO_2022_v1_15s_N45E000_surface.tif": "25195718",
+      "etopo15/ETOPO_2022_v1_15s_N45E015_surface.tif": "24525720",
+      "etopo15/ETOPO_2022_v1_15s_N60E000_surface.tif": "33233231",
+      "etopo15/ETOPO_2022_v1_15s_N60E015_surface.tif": "36324897",
       "freetype": "2.14.3",
       "gdal": "3.12.2",
       "geopandas": "1.2.0",
@@ -213,7 +217,7 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "bb9db3fea3de942d8aa3d33bc8a4c223c5011e37eefe8058f89edb8324661234"
+    "sha256": "c9c94a1091f39d014574bfbe2df5ed4a293c6d76b824deb510fa7e86ae3d572f"
   },
   "topographic_ocean": {
     "env": {
