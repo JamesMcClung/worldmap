@@ -16,7 +16,7 @@ from worldmap.disputed import disputed_label_args, load_disputes
 from worldmap.earth import Fill
 from worldmap.frame import PROJECT_PAD, LonLatBox, MapFrame, make_frame
 from worldmap.labels.label import RENAME
-from worldmap.labels.regions import child_regions, polygons
+from worldmap.labels.regions import PARENT_SHORT, child_regions, polygons
 from worldmap.labels.water import kinds_from_labels, load_water_bodies
 
 CropBox = tuple[float, float, float, float]  # west lon, south lat, east lon, north lat; west > east crosses +-180
@@ -142,13 +142,14 @@ class Candidate:
     text: str  # the label's text
     kind: str  # one of KINDS
     geom: BaseGeometry  # lon/lat: what the label stands for
+    aliases: tuple[str, ...] = ()  # other names it matches: a country's full name, a territory's parent's names
 
 
 def candidates(label: set[str], disputed: bool) -> list[Candidate]:
     """Every label of the `label` kinds (--label) a name crop can match, with the lon/lat geometry it stands for. A
     country's excludes the parts territories label separately (French Guiana...), whether or not they're labelled."""
     frame = make_frame()
-    found: list[tuple[str, str, BaseGeometry]] = []
+    found: list[tuple[str, str, BaseGeometry, tuple[str, ...]]] = []
     if label & {"countries", "territories"}:
         countries = load_countries()
         projected = frame.project(countries)
@@ -164,14 +165,18 @@ def candidates(label: set[str], disputed: bool) -> list[Candidate]:
                 taken = {p.wkb for c in children if c.feature == i for p in c.polys}
                 own = [p for p in polygons(row.geometry) if p.wkb not in taken]
                 if own:
-                    found.append((relabel.get(i) or RENAME.get(row.NAME_EN, row.NAME_EN), "country", shapely.union_all(own)))
-            found += [(text, "disputed", poly) for text, poly, _ in extra]
+                    text = relabel.get(i) or RENAME.get(row.NAME_EN, row.NAME_EN)
+                    found.append((text, "country", shapely.union_all(own), (row.NAME_EN,)))
+            found += [(text, "disputed", poly, ()) for text, poly, _ in extra]
         if "territories" in label:
-            found += [(c.text, "territory", shapely.union_all(c.polys)) for c in children]
+            full = {short: name for name, short in PARENT_SHORT.items()}  # "US" -> "United States of America"
+            for c in children:  # so "united" finds Alaska (US) too
+                name = full.get(c.parent_name, c.parent_name)
+                found.append((c.text, "territory", shapely.union_all(c.polys), (RENAME.get(name, name), name)))
     kinds = kinds_from_labels(label)
     if kinds:
-        found += [(b.text, WATER_KIND[b.kind], b.geom) for b in load_water_bodies(kinds, frame.project(load_lakes()), frame)]
-    return [Candidate(text, kind, to_lonlat(g, frame)) for text, kind, g in found]
+        found += [(b.text, WATER_KIND[b.kind], b.geom, ()) for b in load_water_bodies(kinds, frame.project(load_lakes()), frame)]
+    return [Candidate(text, kind, to_lonlat(g, frame), aliases) for text, kind, g, aliases in found]
 
 
 def to_lonlat(geom: BaseGeometry, frame: MapFrame) -> BaseGeometry:
@@ -191,11 +196,12 @@ def fold(s: str) -> str:
 
 
 def matches(name: str, cands: list[Candidate]) -> list[Candidate]:
-    """The candidates whose text contains `name` (ignoring case and accents): exact matches first, then the rest,
-    each in KINDS order, then by text."""
+    """The candidates whose text or an alias contains `name` (ignoring case and accents): exact matches first, then
+    the rest, each in KINDS order, then by text."""
     key = fold(name)
-    found = [c for c in cands if key in fold(c.text)]
-    return sorted(found, key=lambda c: (fold(c.text) != key, KINDS.index(c.kind), c.text))
+    names = {id(c): [fold(n) for n in (c.text, *c.aliases)] for c in cands}
+    found = [c for c in cands if any(key in n for n in names[id(c)])]
+    return sorted(found, key=lambda c: (key not in names[id(c)], KINDS.index(c.kind), c.text))
 
 
 def lonlat_text(lon: float, lat: float) -> str:

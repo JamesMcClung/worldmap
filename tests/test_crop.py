@@ -70,6 +70,14 @@ def test_describe_shows_kind_and_span() -> None:
     assert describe(fiji) == "Fiji (country) 177.0°E 19.0°S to 179.0°W 16.0°S"
 
 
+def test_territories_match_their_parents_full_name() -> None:
+    cands = candidates({"countries", "territories"}, False)
+    found = [c.text for c in matches("united", cands)]
+    assert {"United States", "United Kingdom", "Alaska (US)", "Hawaii (US)", "Bermuda (UK)"} <= set(found)
+    assert found.index("United States") < found.index("Alaska (US)")
+    assert [c.text for c in matches("united states", cands)][:2] == ["United States", "Alaska (US)"]
+
+
 def test_candidates_only_from_selected_kinds() -> None:
     texts = {c.text for c in candidates({"countries"}, False)}
     assert "India" in texts and not any("OCEAN" in t or "(" in t for t in texts)
