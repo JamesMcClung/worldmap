@@ -30,6 +30,8 @@ SEGMENT_DEG = 0.5  # lon/lat edges are split this finely before projecting (they
 EDGE_NUDGE = 1e-9  # relative: ~2 cm on the Robinson globe
 CLIP_SAMPLES = 65  # points per side of the grid sampled to find the canvas's lon/lat extent
 AZIMUTHAL_MAX_DEG = 60  # a region reaching further than this from its centre gets Equal Earth: azimuthal shapes would stretch
+RECIPE_ROUNDS, RECIPE_TOLERANCE = 12, 0.002  # recipe_box: rounds of fitting, and how close the size must come
+WRAP_GAP_DEG = 15  # frame_extent: a crop whose shown longitudes leave no gap this wide goes all the way round (samples can be ~7 degrees apart)
 LABEL_SCALE_MAX = 2.5  # a crop's label_scale: the square root of its zoom over the world map, up to this
 
 NUM = r"\s*(-?\d+(?:\.\d*)?)\s*"
@@ -60,6 +62,16 @@ def parse_box(s: str) -> CropBox | None:
     elif 180 < east - west < 360:  # narrower the other way round, across the antimeridian (-180..180 is all of it)
         west, east = east, west
     return west, min(lat_a, lat_b), east, max(lat_a, lat_b)
+
+
+def box_spec(b: CropBox) -> str:
+    """The box as --crop takes it, a longitude past 180 where it's over 180 degrees wide (so it isn't read the
+    narrow way round)."""
+    west, south, east, north = b
+    span = (east - west) % 360 or 360
+    if span > 180 and (west, east) != (-180, 180):
+        west, east = (west, west + span) if west + span > 180 else (west + 360, west + 360 + span)
+    return f"{west:.1f},{south:.1f}:{east:.1f},{north:.1f}"
 
 
 def box_region(b: CropBox) -> BaseGeometry:
@@ -188,9 +200,38 @@ def crop_frame(region: BaseGeometry, margin: float) -> MapFrame:
 def frame_extent(frame: MapFrame) -> CropBox:
     """The lon/lat extent of what the crop shows (west > east: across +-180)."""
     lon, lat, poles = sample_lonlat(frame.to_lonlat, frame.to_map, frame.canvas)
-    ranges = [(-180.0, 180.0)] if poles else lon_ranges(lon, 0)
+    wraps = poles or lon_ranges(lon, WRAP_GAP_DEG / 2) == [(-180, 180)]  # gaps that small are between samples
+    ranges = [(-180.0, 180.0)] if wraps else lon_ranges(lon, 0)
     south, north = -90.0 if -90 in poles else float(lat.min()), 90.0 if 90 in poles else float(lat.max())
     return float(ranges[0][0]), south, float(ranges[-1][1]), north
+
+
+def recipe_box(region: BaseGeometry, margin: float) -> CropBox:
+    """A box that, given to --crop, reproduces the crop to `region` with `margin`: centred where it is, its spans
+    scaled until the box crop is the same size (the map's corners reach past it, since a projected rectangle isn't a
+    lon/lat box). Of that and the lon/lat extent the map covers, whichever crops closer (round a pole, no box
+    centred on it fits)."""
+    target = crop_frame(region, margin)
+    lon0, lat0 = sphere_centre(region)
+    west, south, east, north = extent(region)
+    half_lon, half_lat = ((east - west) % 360 or 360) / 2, (north - south) / 2
+    b = (west, south, east, north)
+    for _ in range(RECIPE_ROUNDS):
+        b = ((lon0 - half_lon + 180) % 360 - 180, max(-90.0, lat0 - half_lat), (lon0 + half_lon + 180) % 360 - 180, min(90.0, lat0 + half_lat))
+        got = crop_frame(box_region(b), 0)
+        if abs(got.width / target.width - 1) < RECIPE_TOLERANCE and abs(got.height / target.height - 1) < RECIPE_TOLERANCE:
+            break
+        half_lon = min(180 - RECIPE_TOLERANCE, half_lon * target.width / got.width)
+        half_lat = min(90.0, half_lat * target.height / got.height)
+    else:
+
+        def miss(box_: CropBox) -> float:
+            got = crop_frame(box_region(box_), 0)
+            return max(abs(got.width / target.width - 1), abs(got.height / target.height - 1))
+
+        covered = frame_extent(target)
+        return min((b, covered), key=miss)
+    return b
 
 
 KINDS = ("country", "territory", "disputed", "ocean", "sea", "lake", "strait", "river")  # the order a match list is in
@@ -271,13 +312,13 @@ def matches(name: str, cands: list[Candidate]) -> list[Candidate]:
 
 
 def describe(c: Candidate) -> str:
-    """'France (country) -6.4,40.9:10.5,52.0': the text, the kind, and the lon/lat extent a crop to it shows, margin
-    included, as --crop takes it (to copy and adjust)."""
+    """'France (country) -5.9,40.7:10.4,51.8': the text, the kind, and a box that crops to the same map (recipe_box),
+    as --crop takes it, to copy and adjust."""
     try:
-        west, south, east, north = frame_extent(crop_frame(c.geom, CROP_MARGIN))
+        west, south, east, north = recipe_box(c.geom, CROP_MARGIN)
     except ValueError:  # too big to crop: its own extent
         west, south, east, north = extent(c.geom)
-    return f"{c.text} ({c.kind}) {west:.1f},{south:.1f}:{east:.1f},{north:.1f}"
+    return f"{c.text} ({c.kind}) {box_spec((west, south, east, north))}"
 
 
 def checklist(message: str, lines: list[str]) -> "questionary.Question":

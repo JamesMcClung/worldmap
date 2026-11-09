@@ -63,19 +63,19 @@ def test_matches_exact_first() -> None:
     assert [(m.text, m.kind) for m in matches("niger", c)] == [("Niger", "country"), ("Niger", "river"), ("Nigeria", "country")]
 
 
-def test_describe_shows_the_box_the_crop_covers() -> None:
+def test_describe_shows_a_box_that_reproduces_the_crop() -> None:
     from worldmap.crop import CROP_MARGIN
 
-    france = Candidate("France", "country", box(-5, 42, 9, 51))
-    name, spec = describe(france).split(") ")
-    assert name == "France (country"
-    west, south, east, north = parse_box(spec) or (0, 0, 0, 0)
-    assert -9 < west < -5 and 40 < south < 42 and 9 < east < 13 and 51 < north < 53  # the margin, the corners
-    again = crop_frame(box_region((west, south, east, north)), 0)  # what a user editing it starts from
-    assert 1 <= again.width / crop_frame(france.geom, CROP_MARGIN).width < 1.3  # a box crop shows all of the box
-    fiji = Candidate("Fiji", "country", shapely.union_all([box(177, -19, 180, -16), box(-180, -17, -179, -16)]))
-    b = parse_box(describe(fiji).split(") ")[1])
-    assert b is not None and b[0] > b[2]  # across +-180
+    for c in (Candidate("France", "country", box(-5, 42, 9, 51)), Candidate("Norway", "country", box(5, 58, 31, 71)),
+              Candidate("Fiji", "country", shapely.union_all([box(177, -19, 180, -16), box(-180, -17, -179, -16)]))):
+        name, spec = describe(c).split(") ")
+        assert name == f"{c.text} ({c.kind}"
+        b = parse_box(spec)
+        assert b is not None
+        named, again = crop_frame(c.geom, CROP_MARGIN), crop_frame(box_region(b), 0)
+        assert again.width == pytest.approx(named.width, rel=0.01) and again.height == pytest.approx(named.height, rel=0.01)
+        lon, lat = again.to_lonlat.transform(0, 0)  # the same centre
+        assert named.to_map.transform(lon, lat) == pytest.approx((0, 0), abs=0.01 * named.width)
 
 
 def test_territories_match_their_parents_full_name() -> None:
@@ -213,3 +213,21 @@ def test_parse_box_past_180_goes_the_long_way() -> None:
     assert parse_box("260,0:480,10") == (-100, 0, 120, 10)  # 220 degrees, not across
     with pytest.raises(ValueError):
         parse_box("-200,0:300,10")  # more than once round
+
+
+@pytest.mark.parametrize("name", ["PACIFIC OCEAN", "ATLANTIC OCEAN", "INDIAN OCEAN", "SOUTHERN OCEAN", "ARCTIC OCEAN"])  # round a pole too
+def test_describe_reproduces_ocean_crops(name: str) -> None:
+    from worldmap.crop import CROP_MARGIN
+
+    c = next(c for c in candidates({"oceans"}, False) if c.text == name)
+    b = parse_box(describe(c).rsplit(" ", 1)[1])
+    assert b is not None
+    named, again = crop_frame(c.geom, CROP_MARGIN), crop_frame(box_region(b), 0)
+    assert again.width == pytest.approx(named.width, rel=0.05) and again.height == pytest.approx(named.height, rel=0.05)
+
+
+def test_frame_extent_of_a_crop_round_the_globe() -> None:
+    from worldmap.crop import CROP_MARGIN, frame_extent
+
+    west, south, east, north = frame_extent(crop_frame(box(-180, -70, 180, -55), CROP_MARGIN))
+    assert (west, east) == (-180, 180) and south < -70 and north > -55
