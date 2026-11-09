@@ -22,8 +22,7 @@ def test_parse_box_names_and_errors() -> None:
     assert parse_box("Saint Kitts and Nevis") is None
     with pytest.raises(ValueError):
         parse_box("5,95:17,49")
-    with pytest.raises(ValueError):
-        parse_box("200,0:10,10")
+    assert parse_box("200,0:10,10") == (10, 0, -160, 10)  # past 180: east from 10, the long way round
 
 
 def test_box_region_splits_at_antimeridian() -> None:
@@ -206,3 +205,11 @@ def test_several_names() -> None:
         assert frame.canvas.contains(Point(*frame.to_map.transform(lon, lat)))
     with pytest.raises(SystemExit, match="atlantis"):
         make_map_frame(parse_args(["--crop", "france,atlantis"]))
+
+
+def test_parse_box_past_180_goes_the_long_way() -> None:
+    assert parse_box("114.8,-81.9:305.7,79.6") == pytest.approx((114.8, -81.9, -54.3, 79.6))  # 191 degrees, across +-180
+    assert parse_box("305.7,79.6:114.8,-81.9") == pytest.approx((114.8, -81.9, -54.3, 79.6))
+    assert parse_box("260,0:480,10") == (-100, 0, 120, 10)  # 220 degrees, not across
+    with pytest.raises(ValueError):
+        parse_box("-200,0:300,10")  # more than once round

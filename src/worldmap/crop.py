@@ -38,17 +38,26 @@ BOX_RE = re.compile(f"^{NUM},{NUM}:{NUM},{NUM}$")
 
 def parse_box(s: str) -> CropBox | None:
     """`lon,lat:lon,lat` (two opposite corners, in any order) -> CropBox, or None if `s` isn't of that form (a name).
-    Of the two ways round the globe between the corners' longitudes, the narrower is taken."""
+    Of the two ways round the globe between the corners' longitudes, the narrower is taken, unless one is written
+    past +-180: then the box runs east from the smaller to the larger (120,0:300,10 is 180 degrees across +-180)."""
     m = BOX_RE.match(s)
     if not m:
         return None
     lon_a, lat_a, lon_b, lat_b = (float(v) for v in m.groups())
-    if not all(-180 <= lon <= 180 for lon in (lon_a, lon_b)) or not all(-90 <= lat <= 90 for lat in (lat_a, lat_b)):
-        raise ValueError(f"--crop {s}: longitudes must be within +-180 and latitudes within +-90")
     west, east = min(lon_a, lon_b), max(lon_a, lon_b)
+    long_way = west < -180 or east > 180
+    if (long_way and not 0 < east - west <= 360) or not all(-90 <= lat <= 90 for lat in (lat_a, lat_b)):
+        raise ValueError(f"--crop {s}: longitudes must be within +-180 (or one past it, for a box going the long way "
+                         "round, at most 360 degrees across) and latitudes within +-90")
     if lon_a == lon_b or lat_a == lat_b:
         raise ValueError(f"--crop {s}: the box has no area")
-    if 180 < east - west < 360:  # narrower the other way round, across the antimeridian (-180..180 is all of it)
+    if long_way:
+        span = east - west
+        west = (west + 180) % 360 - 180
+        east = west + span - (360 if west + span > 180 else 0)
+        if span == 360:
+            west, east = -180, 180
+    elif 180 < east - west < 360:  # narrower the other way round, across the antimeridian (-180..180 is all of it)
         west, east = east, west
     return west, min(lat_a, lat_b), east, max(lat_a, lat_b)
 
