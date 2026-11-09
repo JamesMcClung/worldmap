@@ -1,6 +1,7 @@
 """Natural Earth inputs: download/cache, load, filter and project."""
 
 import os
+import sys
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -53,18 +54,39 @@ LABELED_TYPES = ("Sovereign country", "Country", "Sovereignty")
 NOT_DEPENDENCY_TYPES = ("Lease", "Indeterminate")
 
 
+def download_size(url: str) -> int | None:
+    """The file's size in bytes, from a HEAD request; None if the server doesn't say."""
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, method="HEAD"), timeout=30) as r:
+            length = r.headers.get("Content-Length")
+    except OSError:
+        return None
+    return int(length) if length else None
+
+
+def confirm_download(url: str, path: Path) -> None:
+    """Ask before downloading `url` into `path`'s folder, saying how big it is; without a terminal to ask on, stop."""
+    size = download_size(url)
+    what = f"{url} ({'size unknown' if size is None else f'{size / 1e6:.0f} MB'}), into {path.parent}"
+    if not sys.stdin.isatty():
+        sys.exit(f"make_map: needs to download {what}; run in a terminal to confirm, or download it there yourself")
+    if input(f"make_map needs to download {what}. Download? [y/N] ").strip().lower() not in ("y", "yes"):
+        sys.exit("make_map: download declined")
+
+
 def fetch(name: str) -> Path:
-    """Path of Natural Earth file `name` in CACHE, downloading it first if it isn't there yet."""
+    """Path of data file `name` in CACHE, downloading it first (once the user agrees) if it isn't there yet."""
     path = CACHE / name
     if path.exists():
         return path
-    path.parent.mkdir(parents=True, exist_ok=True)
     if name == RASTER:
         url = NE_URL + "raster/NE1_LR_LC.zip"
     elif name == ETOPO:
         url = ETOPO_URL
     else:
         url = NE_URL + ("physical/" if name in PHYSICAL else "cultural/") + name
+    confirm_download(url, path)
+    path.parent.mkdir(parents=True, exist_ok=True)
     print("downloading", url)
     part = path.with_name(path.name + ".part")
     urllib.request.urlretrieve(url, part)

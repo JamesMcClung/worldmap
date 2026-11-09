@@ -1,3 +1,8 @@
+import sys
+from pathlib import Path
+
+import pytest
+
 from worldmap.data import RIVER_MAX_RANK, is_labeled, load_countries, load_marine, load_rivers, parent_index
 
 
@@ -32,3 +37,36 @@ def test_load_rivers() -> None:
     assert rivers.scalerank.max() <= RIVER_MAX_RANK
     assert "Canal" not in set(rivers.featurecla)
     assert {"Amazonas", "Nile", "Mississippi", "Danube"} <= set(rivers.name)
+
+
+def fake_download(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, tty: bool, answer: str = "") -> list[str]:
+    """Point the cache at tmp_path, stub the network, and return the list the fake download appends its URL to."""
+    from worldmap import data
+
+    got: list[str] = []
+    monkeypatch.setattr(data, "CACHE", tmp_path)
+    monkeypatch.setattr(data, "download_size", lambda url: 466_000_000)
+    monkeypatch.setattr(data.urllib.request, "urlretrieve", lambda url, part: (got.append(url), Path(part).write_bytes(b"x")))
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: tty)
+    monkeypatch.setattr("builtins.input", lambda prompt: answer)
+    return got
+
+
+def test_fetch_without_a_terminal_stops_before_downloading(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from worldmap.data import ETOPO, fetch
+
+    got = fake_download(monkeypatch, tmp_path, tty=False)
+    with pytest.raises(SystemExit, match=rf"(?s)466 MB.*{tmp_path}"):
+        fetch(ETOPO)
+    assert got == []
+
+
+def test_fetch_asks_first(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from worldmap.data import ETOPO, fetch
+
+    got = fake_download(monkeypatch, tmp_path, tty=True, answer="n")
+    with pytest.raises(SystemExit):
+        fetch(ETOPO)
+    assert got == []
+    got = fake_download(monkeypatch, tmp_path, tty=True, answer="y")
+    assert fetch(ETOPO) == tmp_path / ETOPO and len(got) == 1
