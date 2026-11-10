@@ -26,3 +26,16 @@ def test_build_regions_joins_halves_split_at_the_antimeridian(monkeypatch: pytes
     regions = build_regions(countries, make_map_frame(parse_args(["--crop", spec])))
     shown = [fill for poly, fill in regions[0] if not poly.is_empty]
     assert len(shown) == 1 and shown[0] not in (earth_fill(-30.0, 0.0), earth_fill(40.0, 0.0))  # one, of both values
+
+
+def test_build_regions_halves_split_at_the_antimeridian_share_a_fill_on_the_globe(monkeypatch: pytest.MonkeyPatch) -> None:
+    from worldmap.frame import make_frame
+
+    halves = MultiPolygon([box(170, 60, 180, 65), box(-180, 60, -170, 65), box(-175, 70, -172, 71)])  # + an island
+    countries = gpd.GeoDataFrame(geometry=[halves], crs="EPSG:4326")
+    monkeypatch.setattr(earth, "earth_values", lambda c: [[[-30.0, 0.0], [40.0, 0.0], [40.0, 0.0]]])
+    regions = sorted(build_regions(countries, make_frame())[0], key=lambda r: r[0].centroid.y)  # the halves, then the island
+    assert len(regions) == 3  # still two pieces, at either edge of the map
+    (_, a), (_, b), (_, island) = regions
+    assert a == b and a not in (earth_fill(-30.0, 0.0), earth_fill(40.0, 0.0))  # one fill, of both values
+    assert island == earth_fill(40.0, 0.0)  # the island isn't part of it

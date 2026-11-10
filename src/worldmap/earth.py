@@ -12,11 +12,12 @@ import geopandas as gpd
 import numpy as np
 import shapely
 from matplotlib.colors import to_rgb
+from shapely import affinity
 from shapely.geometry import MultiPolygon, Point, Polygon, box
 
 from worldmap.colorspace import RGB, fit_gamut
 from worldmap.data import CACHE, COUNTRIES, RASTER, fetch
-from worldmap.frame import SEAM_SNAP_PX, WORLD, MapFrame
+from worldmap.frame import SEAM_GRID_DEG, SEAM_SNAP_PX, WORLD, MapFrame
 
 GR_DESERT, GR_LUSH = -12.0, 20.0  # mean (G - R) mapped to pure sand and pure green
 MIN_PIX = 6  # polygons with fewer raster pixels borrow from a window around their centroid, then from their country
@@ -108,12 +109,13 @@ def earth_fill(green_minus_red: float, ice_fraction: float) -> RGB:
 
 def build_regions(countries: gpd.GeoDataFrame, frame: MapFrame) -> Regions:
     """Each country's projected polygons with their land-cover fill. The polygons are projected one by one, so each
-    keeps its own value when a crop cuts some away or in two. A crop then joins those that touch (`join_touching`):
-    Natural Earth splits Chukotka and Wrangel Island at +-180, and their halves showed a seam."""
+    keeps its own value when a crop cuts some away or in two; those Natural Earth splits at +-180 (Chukotka, Wrangel
+    Island) share one (`share_across_seam`). A crop then joins those that touch (`join_touching`), or their halves
+    showed a seam."""
     owner, polys, values = [], [], []
     for i, geom, vals in zip(countries.index, countries.geometry.intersection(box(*WORLD)), earth_values(countries)):
         parts = list(geom.geoms) if isinstance(geom, MultiPolygon) else [geom]
-        for p, v in zip(parts, vals):
+        for p, v in zip(parts, share_across_seam(parts, vals)):
             owner.append(i)
             polys.append(p)
             values.append(v)
@@ -128,6 +130,34 @@ def build_regions(countries: gpd.GeoDataFrame, frame: MapFrame) -> Regions:
         if not regs:
             regions[i] = [(Polygon(), "#ffffff")]
     return regions
+
+
+def share_across_seam(parts: list[Polygon], values: list[list[float]]) -> list[list[float]]:
+    """The polygons' values, those of polygons Natural Earth splits at +-180 (one ends at 180 where the other starts
+    at -180) replaced by their mean, weighted by area on the ground: they're one piece of land, coloured as one."""
+    east = [k for k, p in enumerate(parts) if not p.is_empty and p.bounds[2] >= 180 - SEAM_GRID_DEG]
+    west = [k for k, p in enumerate(parts) if not p.is_empty and p.bounds[0] <= -180 + SEAM_GRID_DEG]
+    group = list(range(len(parts)))
+
+    def root(k: int) -> int:
+        while group[k] != k:
+            k = group[k]
+        return k
+
+    for w in west:
+        moved = affinity.translate(parts[w], 360)
+        for e in east:
+            if e != w and moved.distance(parts[e]) <= SEAM_GRID_DEG:
+                group[root(w)] = root(e)
+    out = [list(v) for v in values]
+    for g in {root(k) for k in range(len(parts))}:
+        members = [k for k in range(len(values)) if root(k) == g]
+        if len(members) > 1:
+            weights = [parts[k].area * np.cos(np.radians(parts[k].centroid.y)) for k in members]
+            mean = list(np.average([values[k] for k in members], axis=0, weights=weights))
+            for k in members:
+                out[k] = mean
+    return out
 
 
 def join_touching(parts: list[tuple[Polygon, list[float]]], grid: float) -> list[tuple[Polygon, list[float]]]:
