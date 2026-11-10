@@ -16,7 +16,7 @@ from shapely.geometry import MultiPolygon, Point, Polygon, box
 
 from worldmap.colorspace import RGB, fit_gamut
 from worldmap.data import CACHE, COUNTRIES, RASTER, fetch
-from worldmap.frame import WORLD, MapFrame
+from worldmap.frame import SEAM_SNAP_PX, WORLD, MapFrame
 
 GR_DESERT, GR_LUSH = -12.0, 20.0  # mean (G - R) mapped to pure sand and pure green
 MIN_PIX = 6  # polygons with fewer raster pixels borrow from a window around their centroid, then from their country
@@ -108,7 +108,8 @@ def earth_fill(green_minus_red: float, ice_fraction: float) -> RGB:
 
 def build_regions(countries: gpd.GeoDataFrame, frame: MapFrame) -> Regions:
     """Each country's projected polygons with their land-cover fill. The polygons are projected one by one, so each
-    keeps its own value when a crop cuts some away or in two."""
+    keeps its own value when a crop cuts some away or in two. A crop then joins those that touch (`join_touching`):
+    Natural Earth splits Chukotka and Wrangel Island at +-180, and their halves showed a seam."""
     owner, polys, values = [], [], []
     for i, geom, vals in zip(countries.index, countries.geometry.intersection(box(*WORLD)), earth_values(countries)):
         parts = list(geom.geoms) if isinstance(geom, MultiPolygon) else [geom]
@@ -117,14 +118,32 @@ def build_regions(countries: gpd.GeoDataFrame, frame: MapFrame) -> Regions:
             polys.append(p)
             values.append(v)
     projected = frame.project(gpd.GeoDataFrame(geometry=polys, crs=countries.crs)).geometry
-    regions: Regions = {i: [] for i in countries.index}
+    shown: dict[int, list[tuple[Polygon, list[float]]]] = {i: [] for i in countries.index}
     for i, geom, v in zip(owner, projected, values):
-        fill = earth_fill(*v)
-        regions[i] += [(p, fill) for p in shapely.get_parts(geom) if p.geom_type == "Polygon" and not p.is_empty]
+        shown[i] += [(p, v) for p in shapely.get_parts(geom) if p.geom_type == "Polygon" and not p.is_empty]
+    if not frame.globe:
+        shown = {i: join_touching(parts, SEAM_SNAP_PX / frame.px_per_unit) for i, parts in shown.items()}
+    regions: Regions = {i: [(p, earth_fill(*v)) for p, v in parts] for i, parts in shown.items()}
     for i, regs in regions.items():
         if not regs:
             regions[i] = [(Polygon(), "#ffffff")]
     return regions
+
+
+def join_touching(parts: list[tuple[Polygon, list[float]]], grid: float) -> list[tuple[Polygon, list[float]]]:
+    """The polygons, snapped to `grid` and those that touch joined, each with the area-weighted mean of its parts'
+    values."""
+    if len(parts) < 2:
+        return parts
+    joined = shapely.union_all([p for p, _ in parts], grid_size=grid)
+    out = []
+    for poly in shapely.get_parts(joined):
+        members = [(p.area, v) for p, v in parts if poly.intersects(p.representative_point())]
+        if not members:
+            continue
+        weights = np.array([a for a, _ in members])
+        out.append((poly, list(np.average([v for _, v in members], axis=0, weights=weights))))
+    return out
 
 
 def fill_at(regions: Regions, i: int, pt: Point | None) -> Fill:
