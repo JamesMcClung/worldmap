@@ -22,9 +22,6 @@ FINE_STEP_DEG = 1 / 60  # ETOPO's own cells, read for a crop whose 3' cells woul
 TILE_STEP_DEG = 1 / 240  # ETOPO's 15" tiles, for a crop whose 1' cells would too
 TILE_DEG = 15  # each tile's side
 FINE_ABOVE_PX = 2
-SEAM_COLS = (2, 3)  # 15" columns west and east of +-180 where ETOPO's tiles stitch their sources roughly (a line once shaded)
-SEAM_BLEND_COLS = 15  # ... and each side of it the tiles are blurred along the row over this many (~7 km), fading out
-SEAM_BLUR_PASSES = 16  # [1, 2, 1] passes of that blur
 FINE_PAD_DEG = 0.25  # the window read reaches this far past the pixels it was asked for
 ELEVATION_RULE = "etopo2022-60s-mean-3min/v1"  # bump when the reduction changes, to rebuild the cached grid
 
@@ -168,29 +165,8 @@ def read_tiles(row0: int, row1: int, runs: list[tuple[int, int]], per_deg: int) 
                 with rasterio.open(path_of[name(tj, ti)]) as src:
                     block = src.read(1, window=Window(c_a - ti * t, r_a - tj * t, c_b - c_a, r_b - r_a))
                 out[r_a - row0:r_b - row0, offset + c_a - c:offset + c_b - c] = np.round(block)
-        if c == 0:
-            mend_seam(out, offset, wraps=out.shape[1] == 360 * per_deg)
         offset += n
     return out
-
-
-def mend_seam(z: np.ndarray, col: int, wraps: bool) -> None:
-    """Hide ETOPO's stitch at window column `col` (lon -180), in place: a straight line across the SEAM_COLS, then a
-    blur along each row over SEAM_BLEND_COLS either side, fading out over the outer half (the two sides' sources still
-    differ in height there). A window that doesn't wrap and stops near the seam keeps it (it's in FINE_PAD_DEG)."""
-    half = SEAM_BLEND_COLS
-    if not wraps and (col - half < 0 or col + half > z.shape[1]):
-        return
-    idx = np.arange(col - half, col + half) % z.shape[1]
-    band = z[:, idx].astype(np.float32)
-    a, b = half - SEAM_COLS[0] - 1, half + SEAM_COLS[1]  # the clean columns either side
-    t = np.arange(1, b - a, dtype=np.float32) / (b - a)
-    band[:, a + 1:b] = band[:, [a]] * (1 - t) + band[:, [b]] * t
-    smooth = band.copy()
-    for _ in range(SEAM_BLUR_PASSES):
-        smooth[:, 1:-1] = (smooth[:, :-2] + 2 * smooth[:, 1:-1] + smooth[:, 2:]) / 4
-    keep = np.clip(2 * np.abs(np.arange(2 * half) - half + 0.5) / half - 1, 0, 1)  # 0 in the middle half, 1 at the ends
-    z[:, idx] = np.round(smooth * (1 - keep) + band * keep)
 
 
 def sample(grid: Grid, lon: np.ndarray, lat: np.ndarray) -> np.ndarray:
