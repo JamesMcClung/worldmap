@@ -122,6 +122,8 @@ def elevation_window(lon: np.ndarray, lat: np.ndarray, step: float = FINE_STEP_D
         runs.append((c, n))
         c, left = 0, left - n
     z = read_etopo(row0, row1, runs) if step == FINE_STEP_DEG else read_tiles(row0, row1, runs, per_deg)
+    if z is not None and step == TILE_STEP_DEG and (len(runs) > 1 or cols == total_cols):
+        print("note: ETOPO's 15\" heights join their sources at +-180, which can show as a line in the shading")
     return None if z is None else Grid(z, step, -180 + col0 / per_deg, 90 - row0 / per_deg)
 
 

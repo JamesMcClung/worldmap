@@ -297,3 +297,15 @@ def test_zoomed_crops_use_15s_tiles() -> None:
     alps_tiles()
     alps = crop_frame(box_region((5, 40, 17, 49)), 0)
     assert elevation_for(alps, poster_grid(alps, 80)).step == TILE_STEP_DEG
+
+
+def test_15s_tiles_across_the_antimeridian_print_a_note(capsys: pytest.CaptureFixture[str]) -> None:
+    from worldmap.data import CACHE, etopo15_tile
+    from worldmap.topographic import TILE_STEP_DEG, elevation_window
+
+    if not all((CACHE / etopo15_tile(-15, w)).exists() for w in (165, -180)):
+        pytest.skip("the 15\" ETOPO tiles around Fiji aren't downloaded")
+    elevation_window(np.array([179.0, -179.0]), np.array([-17.0, -16.0]), TILE_STEP_DEG)
+    assert "+-180" in capsys.readouterr().out
+    elevation_window(np.array([178.0, 179.0]), np.array([-17.0, -16.0]), TILE_STEP_DEG)
+    assert capsys.readouterr().out == ""
