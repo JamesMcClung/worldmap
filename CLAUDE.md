@@ -59,7 +59,7 @@ Importing any module has no side effects; only `cli.main` (after choosing the ba
 | `disputed.py` | `--disputed`: `parse_note`, `ALIASES`, `HAND_CLAIMS`, `LABEL_TEXT`, `Dispute`, `load_disputes`, `dispute_edges`, `dispute_fills`, `stripe_parts`, `border_lines`, `disputed_label_args` |
 | `topographic.py` | `--type topographic`: `elevation_grid` (ETOPO -> cached 3' grid), `Grid` (a window has an origin), `elevation_window`, `read_etopo`, `read_tiles`, `elevation_for`, `sample`, `Scale` (`LAND`, `SEA`, `ICE`), `Contours`, `colorize`, `relief`, `shade`, `soften`, `poster_grid`, `polygon_mask`, `coastline`, `draw_topography` |
 | `colorbars.py` | `--type topographic`: `bar_region`, `globe_side`, `inner_side`, `curved_title`, `draw_colorbar` (right-triangle bars in the canvas corners; rectangles in a crop) |
-| `earth.py` | `--color earth`: `earth_values` (raster sampling, cache), `earth_fill`, `build_regions`, `fill_at` |
+| `earth.py` | `--color earth`: `earth_values` (raster sampling, cache), `earth_fill`, `build_regions`, `join_touching`, `fill_at` |
 | `pins.py` | `load_pins`, `PinStyle` (every sprite shading constant), `pin_sprite`, `draw_pins`, `pick_pins` |
 | `labels/label.py` | `Label` dataclass, `make_labels` (anchors, sizes, exclaves), `decide_out_and_wrap` |
 | `labels/regions.py` | `--label territories`: `ChildRegion`, `HAND_PICKED` (parent + lon/lat boxes), `child_regions` |
@@ -213,7 +213,8 @@ oceans) gets Equal Earth centred on its longitude instead, clipped a hair either
 - Drawing: ocean fills the canvas, no globe stroke; `child_regions` skips hand-picked regions out of frame (it
   raises only on the globe); out-of-frame disputes are dropped after the colouring; the Pacific is one body (one
   name candidate too).
-  `--color earth`: `build_regions(countries, frame)` projects polygon by polygon so each keeps its value.
+  `--color earth`: `build_regions(countries, frame)` projects polygon by polygon so each keeps its value, then joins
+  a country's touching polygons (`join_touching`, area-weighted mean value): the +-180 halves of Chukotka and Wrangel.
 - Topographic: `elevation_for` steps up from the cached 3' grid to a window of the 60" file when 3' cells span >
   `FINE_ABOVE_PX` = 2 pixels, and to the 15" tiles when 1' cells do too (`elevation_window`, from the lon/lat of every
   8th shown pixel, + `FINE_PAD_DEG`; runs across +-180 are read in two pieces). `soften` still blurs heights over
