@@ -59,7 +59,7 @@ Importing any module has no side effects; only `cli.main` (after choosing the ba
 | `disputed.py` | `--disputed`: `parse_note`, `ALIASES`, `HAND_CLAIMS`, `LABEL_TEXT`, `Dispute`, `load_disputes`, `dispute_edges`, `dispute_fills`, `stripe_parts`, `border_lines`, `disputed_label_args` |
 | `topographic.py` | `--type topographic`: `elevation_grid` (ETOPO -> cached 3' grid), `Grid` (a window has an origin), `elevation_window`, `read_etopo`, `read_tiles`, `elevation_for`, `sample`, `Scale` (`LAND`, `SEA`, `ICE`), `Contours`, `colorize`, `relief`, `shade`, `soften`, `poster_grid`, `polygon_mask`, `coastline`, `draw_topography` |
 | `colorbars.py` | `--type topographic`: `bar_region`, `globe_side`, `inner_side`, `curved_title`, `draw_colorbar` (right-triangle bars in the canvas corners; rectangles in a crop) |
-| `earth.py` | `--color earth`: `earth_values` (raster sampling, cache), `earth_fill`, `build_regions`, `join_touching`, `fill_at` |
+| `earth.py` | `--color earth`: `earth_values` (raster sampling, cache), `earth_fill`, `build_regions`, `share_across_seam`, `join_touching`, `fill_at` |
 | `pins.py` | `load_pins`, `PinStyle` (every sprite shading constant), `pin_sprite`, `draw_pins`, `pick_pins` |
 | `labels/label.py` | `Label` dataclass, `make_labels` (anchors, sizes, exclaves), `decide_out_and_wrap` |
 | `labels/regions.py` | `--label territories`: `ChildRegion`, `HAND_PICKED` (parent + lon/lat boxes), `child_regions` |
@@ -113,7 +113,8 @@ Replaces the graph colouring with a natural palette derived from real imagery: t
 (`.cache/ne1/NE1_LR_LC.tif`, from https://naciscdn.org/naturalearth/10m/raster/NE1_LR_LC.zip, fetched automatically).
 `earth_values()` rasterises each *polygon* (not country) and takes the mean of (G - R) over its land pixels (ocean = white) plus
 its fraction of bluish-white "ice" pixels. `earth_fill()` maps G-R linearly (`GR_DESERT`..`GR_LUSH`) onto an OKLCH sand -> light-green
-ramp and blends toward ice. Every disjoint polygon is coloured independently (Alaska, French Guiana, Kaliningrad, Baikonur, islands);
+ramp and blends toward ice. Every disjoint polygon is coloured independently (Alaska, French Guiana, Kaliningrad, Baikonur, islands), except
+that pieces Natural Earth splits at +-180 (Chukotka, Wrangel, Fiji) share their area-weighted mean (`share_across_seam`);
 polygons with < `MIN_PIX` pixels sample a 7x7 window at their centroid, then fall back to the whole country. Labels take the colour
 of the polygon they sit on (`fill_at(regions, i, pt)`; `Regions` maps country -> [(projected polygon, fill)]). Results are cached in `earth.json`
 (keyed on file sizes + `EARTH_RULE`; bump it if the sampling logic changes). The graph colouring still runs but is unused; Baikonur's stripes are off.
