@@ -21,8 +21,8 @@ from worldmap.coloring import Coloring, load_or_compute_coloring, make_palette, 
 from worldmap.colorspace import RGB
 from worldmap.data import is_labeled, load_countries, load_disputed, load_lakes, load_rivers, load_states, parent_index
 from worldmap.disputed import DISPUTED_GREY, STRIPE_WIDTH_IN, border_lines, dispute_edges, disputed_label_args, load_disputes
-from worldmap.crop import (CROP_MARGIN, box_region, box_spec, candidates, centre_frame, centre_recipe, centre_spec, choose,
-                           crop_frame, matches, parse_box, parse_centre, recipe_box)
+from worldmap.crop import (CROP_MARGIN, box_region, candidates, centre_frame, centre_recipe, centre_spec, choose, crop_frame, matches,
+                           parse_box, parse_centre)
 from worldmap.earth import Fill, build_regions, fill_at
 from worldmap.frame import DPI, MapFrame, make_frame
 from worldmap.labels.label import decide_out_and_wrap, make_labels
@@ -118,8 +118,8 @@ def make_map_frame(args: argparse.Namespace) -> MapFrame:
         chosen = [c for name in names for c in choose(name, matches(name, cands))]
         region = shapely.union_all([c.geom for c in chosen])
         centre = centre_recipe(region, CROP_MARGIN)
-        also = "" if centre is None else f" or --crop {centre_spec(centre)}"
-        print(f"cropping to {', '.join(c.text for c in chosen)}; the same as --crop {box_spec(recipe_box(region, CROP_MARGIN))}{also}")
+        same = "" if centre is None else f"; the same as --crop {centre_spec(centre)}"
+        print(f"cropping to {', '.join(c.text for c in chosen)}{same}")
         return crop_frame(region, CROP_MARGIN)
     except ValueError as e:
         sys.exit(f"make_map: {e}")

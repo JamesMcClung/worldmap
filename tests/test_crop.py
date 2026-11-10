@@ -3,7 +3,7 @@ import sys
 import numpy as np
 import pytest
 import shapely
-from shapely.geometry import LineString, Point, box
+from shapely.geometry import Point, box
 
 from worldmap.cli import make_map_frame, parse_args
 from worldmap.frame import MapFrame, make_frame
@@ -119,16 +119,22 @@ def same_map(a: MapFrame, b: MapFrame, tolerance: float) -> bool:
     return bool(abs(b.width / a.width - 1) < tolerance and abs(b.height / a.height - 1) < tolerance and off < tolerance)
 
 
-def test_describe_shows_a_box_that_reproduces_the_crop() -> None:
-    from worldmap.crop import CROP_MARGIN
+def test_describe_shows_a_centre_crop_that_reproduces_the_crop() -> None:
+    from worldmap.crop import CROP_MARGIN, centre_frame, parse_centre
 
     for c in (Candidate("France", "country", box(-5, 42, 9, 51)), Candidate("Norway", "country", box(5, 58, 31, 71)),
               Candidate("Fiji", "country", shapely.union_all([box(177, -19, 180, -16), box(-180, -17, -179, -16)]))):
         name, spec = describe(c).split(") ")
         assert name == f"{c.text} ({c.kind}"
-        b = parse_box(spec)
-        assert b is not None
-        assert same_map(crop_frame(c.geom, CROP_MARGIN), crop_frame(box_region(b), 0), 0.01)
+        crop = parse_centre(spec)
+        assert crop is not None and same_map(crop_frame(c.geom, CROP_MARGIN), centre_frame(crop), 0.01)
+
+
+def test_describe_without_a_centre_crop(monkeypatch: pytest.MonkeyPatch) -> None:
+    from worldmap import crop
+
+    monkeypatch.setattr(crop, "centre_recipe", lambda region, margin: None)  # US Minor Outlying Islands: none fits
+    assert describe(Candidate("France", "country", box(-5, 42, 9, 51))) == "France (country)"
 
 
 def test_territories_match_their_parents_full_name() -> None:
@@ -159,8 +165,8 @@ def test_country_candidate_excludes_territories() -> None:
 
 def test_ambiguous_name_without_tty_exits_with_list(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sys.stdin, "isatty", lambda: False)
-    found = matches("niger", [Candidate("Niger", "country", Point(9, 17)), Candidate("Nigeria", "country", Point(8, 9))])
-    with pytest.raises(SystemExit, match=r"Niger \(country\) [-\d.,:]+\n.*Nigeria \(country\)"):
+    found = matches("niger", [Candidate("Niger", "country", box(0, 12, 16, 23)), Candidate("Nigeria", "country", box(3, 4, 14, 14))])
+    with pytest.raises(SystemExit, match=r"lon,lat/width,height:\nNiger \(country\) [-\d.]+,[-\d.]+/\d+km,\d+km\n.*Nigeria \(country\)"):
         choose("niger", found)
 
 
@@ -256,25 +262,11 @@ def test_several_names() -> None:
 def test_describe_reproduces_ocean_crops(name: str) -> None:
     from worldmap.crop import CROP_MARGIN
 
+    from worldmap.crop import centre_frame, parse_centre
+
     c = next(c for c in candidates({"oceans"}, False) if c.text == name)
-    b = parse_box(describe(c).rsplit(" ", 1)[1])
-    assert b is not None
-    assert same_map(crop_frame(c.geom, CROP_MARGIN), crop_frame(box_region(b), 0), 0.05)
-
-
-def test_frame_extent_of_a_crop_round_the_globe() -> None:
-    from worldmap.crop import CROP_MARGIN, frame_extent
-
-    west, south, east, north = frame_extent(crop_frame(box(-180, -70, 180, -55), CROP_MARGIN))
-    assert (west, east) == (-180, 180) and south < -70 and north > -55
-
-
-def test_name_crop_prints_its_box(capsys: pytest.CaptureFixture[str]) -> None:
-    frame = make_map_frame(parse_args(["--crop", "france,germany"]))
-    out = capsys.readouterr().out
-    spec = out.split("--crop ")[1].split()[0]
-    b = parse_box(spec)
-    assert b is not None and crop_frame(box_region(b), 0).width == pytest.approx(frame.width, rel=0.01)
+    crop = parse_centre(describe(c).rsplit(" ", 1)[1])
+    assert crop is not None and same_map(crop_frame(c.geom, CROP_MARGIN), centre_frame(crop), 0.01)
 
 
 
@@ -290,11 +282,13 @@ def test_centre_recipe_reproduces_the_crop(name: str) -> None:
     assert crop is not None and same_map(crop_frame(c.geom, CROP_MARGIN), centre_frame(crop), 0.01)
 
 
-def test_name_crop_prints_its_centre_too(capsys: pytest.CaptureFixture[str]) -> None:
+def test_name_crop_prints_its_centre_crop(capsys: pytest.CaptureFixture[str]) -> None:
     from worldmap.crop import centre_frame, parse_centre
 
     frame = make_map_frame(parse_args(["--crop", "france,germany"]))
-    crop = parse_centre(capsys.readouterr().out.split(" or --crop ")[1].split()[0])
+    out = capsys.readouterr().out
+    assert out.count("--crop ") == 1  # the centre form only, no box
+    crop = parse_centre(out.split("--crop ")[1].split()[0])
     assert crop is not None and same_map(frame, centre_frame(crop), 0.01)
 
 

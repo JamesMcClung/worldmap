@@ -32,9 +32,8 @@ SEGMENT_DEG = 0.5  # lon/lat edges are split this finely before projecting (they
 EDGE_NUDGE = 1e-9  # relative: ~2 cm on the Robinson globe
 CLIP_SAMPLES = 65  # points per side of the grid sampled to find the canvas's lon/lat extent
 AZIMUTHAL_MAX_DEG = 60  # a region reaching further than this from its centre gets Equal Earth: azimuthal shapes would stretch
-RECIPE_ROUNDS, RECIPE_TOLERANCE = 12, 0.002  # recipe_box: rounds of fitting, and how close the size must come
+RECIPE_TOLERANCE = 0.002  # centre_recipe: how close a centre crop's size must come
 CENTRE_BISECTIONS = 30  # centre_recipe: halvings of each size's range (0..120 or 360 degrees)
-WRAP_GAP_DEG = 15  # frame_extent: a crop whose shown longitudes leave no gap this wide goes all the way round (samples can be ~7 degrees apart)
 POLE_DEG = 0.1  # round_pole: reaching this close to a pole counts
 RECENTRE_ROUNDS, RECENTRE_TOLERANCE = 8, 1e-4  # crop_frame: rounds of moving the centre to the map's middle, and how close
 LABEL_SCALE_MAX = 2.5  # a crop's label_scale: the square root of its zoom over the world map, up to this
@@ -89,17 +88,6 @@ def parse_centre(s: str) -> CentreCrop | None:
     if not all(0 < size <= 360 for size in sizes):
         raise ValueError(f"--crop {s}: the width and height must be above 0 and at most 360 degrees")
     return float(lon), float(lat), sizes[0], sizes[1]
-
-
-def box_spec(b: CropBox) -> str:
-    """The box as --crop takes it (west:east,south:north), leaving out edges that are the globe's."""
-    west, south, east, north = b
-
-    def num(v: float, edge: float) -> str:
-        return "" if v == edge else f"{v:.1f}"
-
-    lon = ":" if (west, east) == (-180, 180) else f"{west:.1f}:{east:.1f}"
-    return f"{lon},{num(south, -90)}:{num(north, 90)}"
 
 
 def box_region(b: CropBox) -> BaseGeometry:
@@ -303,54 +291,10 @@ def canvas_frame(crs: str, lon0: float, lat0: float, canvas: Polygon) -> MapFram
     return MapFrame(to_map, to_lonlat, outline, x0, y0, x1, y1, crs=crs, globe=False, clip=clip)
 
 
-def frame_extent(frame: MapFrame) -> CropBox:
-    """The lon/lat extent of what the crop shows (west > east: across +-180)."""
-    lon, lat, poles = sample_lonlat(frame.to_lonlat, frame.to_map, frame.canvas)
-    wraps = poles or lon_ranges(lon, WRAP_GAP_DEG / 2) == [(-180, 180)]  # gaps that small are between samples
-    ranges = [(-180.0, 180.0)] if wraps else lon_ranges(lon, 0)
-    south, north = -90.0 if -90 in poles else float(lat.min()), 90.0 if 90 in poles else float(lat.max())
-    return float(ranges[0][0]), south, float(ranges[-1][1]), north
-
-
 def canvas_centre(frame: MapFrame) -> tuple[float, float]:
     """The lon/lat at the middle of the frame's canvas."""
     lon, lat = frame.to_lonlat.transform((frame.xmin + frame.xmax) / 2, (frame.ymin + frame.ymax) / 2)
     return float(lon), float(lat)
-
-
-def recipe_box(region: BaseGeometry, margin: float) -> CropBox:
-    """A box that, given to --crop, reproduces the crop to `region` with `margin`: moved until a box crop's canvas
-    is centred where the crop's is, its spans scaled until it's the same size (the map's corners reach past it,
-    since a projected rectangle isn't a lon/lat box). Of that and the lon/lat extent the map covers, whichever
-    crops closer (round a pole, no box fits)."""
-    target = crop_frame(region, margin)
-    tx, ty = (target.xmin + target.xmax) / 2, (target.ymin + target.ymax) / 2
-
-    def miss(got: MapFrame) -> float:
-        """How far a box crop is from the target: size, and centre offset, as fractions of the target's size."""
-        x, y = target.to_map.transform(*canvas_centre(got))
-        return max(abs(got.width / target.width - 1), abs(got.height / target.height - 1), np.hypot(x - tx, y - ty) / target.width)
-
-    tlon, tlat = lon0, lat0 = canvas_centre(target)
-    west, south, east, north = extent(region)
-    half_lon, half_lat = ((east - west) % 360 or 360) / 2, (north - south) / 2
-    best, best_miss = frame_extent(target), float("inf")
-    for _ in range(RECIPE_ROUNDS):
-        lons = (-180.0, 180.0) if half_lon >= 180 - RECIPE_TOLERANCE else ((lon0 - half_lon + 180) % 360 - 180, (lon0 + half_lon + 180) % 360 - 180)
-        b = (lons[0], max(-90.0, lat0 - half_lat), lons[1], min(90.0, lat0 + half_lat))
-        got = crop_frame(box_region(b), 0)
-        m = miss(got)
-        if m < best_miss:
-            best, best_miss = b, m
-        if m < RECIPE_TOLERANCE:
-            break
-        glon, glat = canvas_centre(got)
-        lon0 += (tlon - glon + 180) % 360 - 180
-        lat0 = float(np.clip(lat0 + tlat - glat, -90, 90))
-        half_lon = min(180.0, half_lon * target.width / got.width)
-        half_lat = min(90.0, half_lat * target.height / got.height)
-    covered = frame_extent(target)
-    return best if best_miss <= miss(crop_frame(box_region(covered), 0)) else covered
 
 
 def centre_recipe(region: BaseGeometry, margin: float) -> CentreCrop | None:
@@ -456,13 +400,13 @@ def matches(name: str, cands: list[Candidate]) -> list[Candidate]:
 
 
 def describe(c: Candidate) -> str:
-    """'France (country) -5.5:10.8,40.6:51.8': the text, the kind, and a box that crops to the same map (recipe_box),
-    as --crop takes it, to copy and adjust."""
+    """'France (country) 2.62,46.33/1375km,1270km': the text, the kind, and the centre crop that crops to the same
+    map (centre_recipe), as --crop takes it, to copy and adjust; without it if there's none."""
     try:
-        west, south, east, north = recipe_box(c.geom, CROP_MARGIN)
-    except ValueError:  # too big to crop: its own extent
-        west, south, east, north = extent(c.geom)
-    return f"{c.text} ({c.kind}) {box_spec((west, south, east, north))}"
+        crop = centre_recipe(c.geom, CROP_MARGIN)
+    except ValueError:  # too big to crop
+        crop = None
+    return f"{c.text} ({c.kind})" + ("" if crop is None else f" {centre_spec(crop)}")
 
 
 def checklist(message: str, lines: list[str]) -> "questionary.Question":
@@ -490,7 +434,7 @@ def choose(name: str, found: list[Candidate]) -> list[Candidate]:
         return found
     lines = [describe(c) for c in found]
     if not sys.stdin.isatty():
-        sys.exit(f"make_map: --crop {name} matches several labels; run in a terminal to choose, or use lon,lat:lon,lat:\n"
+        sys.exit(f"make_map: --crop {name} matches several labels; run in a terminal to choose, or crop to one with its lon,lat/width,height:\n"
                  + "\n".join(lines))
     picked = checklist(f"--crop {name} matches several labels. Crop to:", lines).ask()
     if not picked:
