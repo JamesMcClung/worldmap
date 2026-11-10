@@ -448,7 +448,7 @@ def matches(name: str, cands: list[Candidate]) -> list[Candidate]:
 
 
 def describe(c: Candidate) -> str:
-    """'France (country) -5.9,40.7:10.4,51.8': the text, the kind, and a box that crops to the same map (recipe_box),
+    """'France (country) -5.5:10.8,40.6:51.8': the text, the kind, and a box that crops to the same map (recipe_box),
     as --crop takes it, to copy and adjust."""
     try:
         west, south, east, north = recipe_box(c.geom, CROP_MARGIN)
