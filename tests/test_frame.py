@@ -67,3 +67,12 @@ def test_crop_projects_long_edges_along_their_parallel() -> None:
     band = gpd.GeoDataFrame(geometry=[box(-30, -62, 30, -58)], crs="EPSG:4326")  # 60 degrees of 58S in one edge
     projected = f.project(band).geometry[0]
     assert projected.boundary.distance(Point(*f.to_map.transform(0, -58))) < 1e3
+
+
+def test_crop_round_a_pole_has_no_seam_at_the_antimeridian() -> None:
+    from worldmap.crop import box_region, crop_frame
+
+    f = crop_frame(box_region((-180, -90, 180, -54.5)), 0)
+    cap = gpd.GeoDataFrame(geometry=[box(-180, -90, 180, -70)], crs="EPSG:4326")  # edges along +-180, like Antarctica's
+    projected = f.project(cap).geometry[0]
+    assert projected.boundary.distance(Point(*f.to_map.transform(180, -80))) > 1e5

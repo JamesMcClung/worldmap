@@ -21,6 +21,7 @@ PX_SIMPLIFY = 2.0  # default simplification tolerance (px) for geometry converte
 SEAM_GRID_DEG = 1e-7  # Natural Earth's pieces meet at 180 and -179.99999999999991: snap to this grid to join them
 CLIP_SEGMENT_DEG = 0.5  # a crop's data and clip boxes get a vertex this often before clipping
 PROJECT_PAD = 0.05  # a crop keeps projected data this far (fraction of its width/height) outside the canvas
+SEAM_SNAP_PX = 0.05  # a crop right round the globe snaps projected data to this grid (poster px), closing seams at +-180
 
 LonLatBox = tuple[float, float, float, float]  # lon0, lat0, lon1, lat1 with lon0 <= lon1, within +-180 / +-90
 WORLD: LonLatBox = (-180, -90, 180, 90)
@@ -127,6 +128,9 @@ class MapFrame:
             east_of_seam = self.clip[1][2]
             gdf["geometry"] = [join_at_antimeridian(g, east_of_seam) for g in gdf.geometry]
         gdf = gdf.to_crs(self.crs)
+        if not self.globe and self.clip[0][0] == -180 and self.clip[0][2] == 180:
+            # round a pole: a feature's edges along +-180 (Antarctica's) project onto one line, a slit from the pole
+            gdf["geometry"] = shapely.set_precision(gdf.geometry.values, SEAM_SNAP_PX / self.px_per_unit)
         if not self.globe:
             px, py = PROJECT_PAD * self.width, PROJECT_PAD * self.height
             gdf["geometry"] = cut(gdf.geometry, box(self.xmin - px, self.ymin - py, self.xmax + px, self.ymax + py))
