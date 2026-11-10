@@ -19,7 +19,7 @@ ANTIMERIDIAN_EPS = 1e-6  # degrees inside +-180, so the outline doesn't wrap
 CANVAS_PAD = 0.006  # canvas margin around the outline, as a fraction of its width (room for the stroke)
 PX_SIMPLIFY = 2.0  # default simplification tolerance (px) for geometry converted to pixels
 SEAM_GRID_DEG = 1e-7  # Natural Earth's pieces meet at 180 and -179.99999999999991: snap to this grid to join them
-CLIP_SEGMENT_DEG = 0.5  # a crop's clip boxes get a vertex this often before clipping
+CLIP_SEGMENT_DEG = 0.5  # a crop's data and clip boxes get a vertex this often before clipping
 PROJECT_PAD = 0.05  # a crop keeps projected data this far (fraction of its width/height) outside the canvas
 
 LonLatBox = tuple[float, float, float, float]  # lon0, lat0, lon1, lat1 with lon0 <= lon1, within +-180 / +-90
@@ -116,8 +116,10 @@ class MapFrame:
         feature at +-180, like the land, so the halves can be joined); the globe keeps its rows."""
         gdf = gdf.copy()
         clip = box(*self.clip[0]) if len(self.clip) == 1 else shapely.union_all([box(*b) for b in self.clip])
-        if not self.globe:  # its edges would project as straight chords, which can cut across the land near a pole
+        if not self.globe:  # long edges would project as straight chords (the clip's can cut across the land near a
+            # pole; Natural Earth's marine areas follow parallels with few vertices)
             clip = shapely.segmentize(clip, CLIP_SEGMENT_DEG)
+            gdf["geometry"] = shapely.segmentize(gdf.geometry.values, CLIP_SEGMENT_DEG)
         gdf["geometry"] = gdf.geometry.intersection(clip)
         if dissolve and not self.globe:
             gdf = gpd.GeoDataFrame(geometry=[shapely.union_all(gdf.geometry.values)], crs=gdf.crs)

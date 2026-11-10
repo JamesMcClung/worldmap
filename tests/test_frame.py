@@ -58,3 +58,12 @@ def test_crop_dissolve_joins_rows_split_at_the_antimeridian() -> None:
     assert len(projected) == 1 and projected.geometry.iloc[0].geom_type == "Polygon"
     world = make_frame()
     assert len(world.project(rows, dissolve=True)) == 2  # the world map is left as it was
+
+
+def test_crop_projects_long_edges_along_their_parallel() -> None:
+    from worldmap.crop import box_region, crop_frame
+
+    f = crop_frame(box_region((-180, -90, 180, -54.5)), 0)
+    band = gpd.GeoDataFrame(geometry=[box(-30, -62, 30, -58)], crs="EPSG:4326")  # 60 degrees of 58S in one edge
+    projected = f.project(band).geometry[0]
+    assert projected.boundary.distance(Point(*f.to_map.transform(0, -58))) < 1e3
