@@ -57,7 +57,7 @@ Importing any module has no side effects; only `cli.main` (after choosing the ba
 | `colorspace.py` | OKLab/OKLCH conversions, `fit_gamut`, `darken` |
 | `coloring.py` | `merge_into_parents`, `adjacency`, `add_proximity_edges`, `color_graph`, `make_palette`, `load_or_compute_coloring` (cache), `spot_check`, `OCEAN` |
 | `disputed.py` | `--disputed`: `parse_note`, `ALIASES`, `HAND_CLAIMS`, `LABEL_TEXT`, `Dispute`, `load_disputes`, `dispute_edges`, `dispute_fills`, `stripe_parts`, `border_lines`, `disputed_label_args` |
-| `topographic.py` | `--type topographic`: `elevation_grid` (ETOPO -> cached 3' grid), `Grid` (a window has an origin), `elevation_window`, `read_etopo`, `read_tiles`, `elevation_for`, `sample`, `Scale` (`LAND`, `SEA`, `ICE`), `Contours`, `colorize`, `relief`, `shade`, `soften`, `poster_grid`, `polygon_mask`, `coastline`, `draw_topography` |
+| `topographic.py` | `--type topographic`: `elevation_grid` (ETOPO -> cached 3' grid), `Grid` (a window has an origin), `elevation_window`, `read_etopo`, `read_tiles`, `mend_seam`, `elevation_for`, `sample`, `Scale` (`LAND`, `SEA`, `ICE`), `Contours`, `colorize`, `relief`, `shade`, `soften`, `poster_grid`, `polygon_mask`, `coastline`, `draw_topography` |
 | `colorbars.py` | `--type topographic`: `bar_region`, `globe_side`, `inner_side`, `curved_title`, `draw_colorbar` (right-triangle bars in the canvas corners; rectangles in a crop) |
 | `earth.py` | `--color earth`: `earth_values` (raster sampling, cache), `earth_fill`, `build_regions`, `share_across_seam`, `join_touching`, `fill_at` |
 | `pins.py` | `load_pins`, `PinStyle` (every sprite shading constant), `pin_sprite`, `draw_pins`, `pick_pins` |
@@ -218,7 +218,9 @@ oceans) gets Equal Earth centred on its longitude instead, clipped a hair either
   a country's touching polygons (`join_touching`, area-weighted mean value): the +-180 halves of Chukotka and Wrangel.
 - Topographic: `elevation_for` steps up from the cached 3' grid to a window of the 60" file when 3' cells span >
   `FINE_ABOVE_PX` = 2 pixels, and to the 15" tiles when 1' cells do too (`elevation_window`, from the lon/lat of every
-  8th shown pixel, + `FINE_PAD_DEG`; runs across +-180 are read in two pieces). `soften` still blurs heights over
+  8th shown pixel, + `FINE_PAD_DEG`; runs across +-180 are read in two pieces). The 15" tiles stitch their sources
+  roughly at +-180 (a line once shaded through Fiji; the 60" file, their block mean, hides it): `mend_seam` draws a
+  straight line across `SEAM_COLS` and blurs each row over `SEAM_BLEND_COLS` either side. `soften` still blurs heights over
   about a cell when a cell spans > 2 pixels (bilinear heights shade as flat facets). A 200 dpi square crop peaks
   ~4.3 GB (more pixels than the world poster). Colour bars are rectangles (`BAR_RECT_WIDTH_IN`, `BAR_RECT_LENGTH`) titled along `inner_side`,
   over the map: water labels are placed in `label_outline` (the canvas minus the bar corners), and a crop's water
