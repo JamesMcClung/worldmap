@@ -169,9 +169,7 @@ def crop_frame(region: BaseGeometry, margin: float) -> MapFrame:
     centred on the middle of the map: the bounds aren't symmetric about the region's own centre, so it's moved there
     and the bounds refitted, up to RECENTRE_ROUNDS times. A region round a pole gets a square map centred on it."""
     if (pole := round_pole(region)) is not None:
-        frame = fit_frame(region, margin, 0.0, pole, square=True)
-        zoom = frame.px_per_unit / make_frame().px_per_unit
-        return replace(frame, label_scale=float(np.clip(np.sqrt(zoom), 1, LABEL_SCALE_MAX)))
+        return with_label_scale(fit_frame(region, margin, 0.0, pole, square=True))
     lon0, lat0 = sphere_centre(region)
     for _ in range(RECENTRE_ROUNDS):
         frame = fit_frame(region, margin, lon0, lat0)
@@ -181,6 +179,11 @@ def crop_frame(region: BaseGeometry, margin: float) -> MapFrame:
             break
         lon, lat = frame.to_lonlat.transform(mid_x, mid_y if azimuthal else 0)
         lon0, lat0 = float(lon), float(lat) if azimuthal else lat0
+    return with_label_scale(frame)
+
+
+def with_label_scale(frame: MapFrame) -> MapFrame:
+    """The crop frame with its label_scale: the square root of its zoom over the world map, 1..LABEL_SCALE_MAX."""
     zoom = frame.px_per_unit / make_frame().px_per_unit  # both in metres
     return replace(frame, label_scale=float(np.clip(np.sqrt(zoom), 1, LABEL_SCALE_MAX)))
 
@@ -213,17 +216,23 @@ def fit_frame(region: BaseGeometry, margin: float, lon0: float, lat0: float, squ
         shown = region.intersection(shapely.union_all([box(*b) for b in seam_boxes(lon0)]))
         equator = shown.intersection(shapely.LineString([(-180, 0), (180, 0)]))
         xy = shapely.get_coordinates(shapely.segmentize(shapely.union_all([shown.boundary, equator]), SEGMENT_DEG))
-    to_map = Transformer.from_crs("EPSG:4326", crs, always_xy=True)
-    to_lonlat = Transformer.from_crs(crs, "EPSG:4326", always_xy=True)
-    x, y = to_map.transform(xy[:, 0], xy[:, 1])
+    x, y = Transformer.from_crs("EPSG:4326", crs, always_xy=True).transform(xy[:, 0], xy[:, 1])
     x0, y0, x1, y1 = x.min(), y.min(), x.max(), y.max()
     mx, my = margin * (x1 - x0), margin * (y1 - y0)
     x0, y0, x1, y1 = float(x0 - mx), float(y0 - my), float(x1 + mx), float(y1 + my)
     if square:
         half = max(abs(x0), abs(y0), abs(x1), abs(y1))
         x0, y0, x1, y1 = -half, -half, half, half
-    canvas = box(x0, y0, x1, y1)
-    if azimuthal:
+    return canvas_frame(crs, lon0, lat0, box(x0, y0, x1, y1))
+
+
+def canvas_frame(crs: str, lon0: float, lat0: float, canvas: Polygon) -> MapFrame:
+    """A crop frame showing `canvas` (map units) in `crs`, Lambert azimuthal equal-area or Equal Earth centred on
+    (lon0, lat0): clipped to what the canvas shows, and an Equal Earth canvas cut to the globe's outline."""
+    to_map = Transformer.from_crs("EPSG:4326", crs, always_xy=True)
+    to_lonlat = Transformer.from_crs(crs, "EPSG:4326", always_xy=True)
+    x0, y0, x1, y1 = canvas.bounds
+    if "+proj=laea" in crs:
         clip = clip_boxes(to_lonlat, to_map, canvas, (lon0, lat0))
         outline = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
     else:
