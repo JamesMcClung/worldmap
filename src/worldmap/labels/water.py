@@ -29,6 +29,7 @@ CLASSES |= {c: SEA for c in ("sea", "gulf", "bay", "sound", "fjord", "lagoon", "
 MAX_BEND_DEG = 40  # the most a label's curve may turn from one end to the other
 MAX_TILT_DEG = 90  # labels follow their body's shape up to vertical (oceans too: the Atlantic's runs pole to pole)
 CURVE_SAMPLES = 2000  # interior points sampled to find a body's long direction
+RING_HOLE_SHARE = 0.25  # a body round a hole holding its middle, this share of its outline or more, is labelled along it
 OCEAN_PT = 30  # oceans: letter-spaced, sized like seas but within these (the Arctic and Southern bands are narrow)
 OCEAN_MIN_PT = 18
 OCEAN_TRACKING_EM = 0.6  # extra space after each letter, in ems
@@ -235,12 +236,27 @@ def rotate(points: np.ndarray, centre: np.ndarray, deg: float) -> np.ndarray:
     return centre + (points - centre) @ np.array([[c, s], [-s, c]])
 
 
+def ring_arc(pts: np.ndarray, centre: np.ndarray, n: int, bend_deg: float) -> np.ndarray:
+    """An (n, 2) arc turning bend_deg round `centre`, below it so it reads left to right, at the median distance from
+    it of the points `pts` under it: along a body that surrounds its own middle."""
+    half = np.radians(bend_deg) / 2
+    rel = pts - centre
+    under = np.abs(np.arctan2(rel[:, 1], rel[:, 0]) + np.pi / 2) <= half
+    radius = float(np.median(np.hypot(*rel[under if under.any() else slice(None)].T)))
+    a = -np.pi / 2 + np.linspace(-half, half, n)
+    return centre + radius * np.column_stack([np.cos(a), np.sin(a)])
+
+
 def fit_curve(geom: Polygon, max_tilt_deg: float, n: int = 64, max_bend_deg: float = MAX_BEND_DEG) -> np.ndarray:
     """A smooth (n, 2) polyline along `geom`'s long direction through its middle: a quadratic in the frame of the
     principal axis, turning at most max_bend_deg, its chord at most max_tilt_deg from horizontal. It reads left to
-    right, or bottom to top when within 1 degree of vertical, so text along it is never upside down."""
+    right, or bottom to top when within 1 degree of vertical, so text along it is never upside down. A body round a
+    big hole holding its middle (the Southern Ocean in a polar crop) gets an arc along it instead (`ring_arc`)."""
     pts = interior_points(geom)
     mean = pts.mean(axis=0)
+    outline = Polygon(geom.exterior).area
+    if any(shapely.contains_xy(h := Polygon(r), *mean) and h.area >= RING_HOLE_SHARE * outline for r in geom.interiors):
+        return ring_arc(pts, mean, n, max_bend_deg)
     eigval, eigvec = np.linalg.eigh(np.cov((pts - mean).T))
     axis_x, axis_y = eigvec[:, np.argmax(eigval)]
     angle = np.clip((np.degrees(np.arctan2(axis_y, axis_x)) + 90) % 180 - 90, -max_tilt_deg, max_tilt_deg)

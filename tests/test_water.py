@@ -96,6 +96,22 @@ def test_fit_curve_follows_a_bend() -> None:
     assert c[len(c) // 2, 1] > c[0, 1] and c[len(c) // 2, 1] > c[-1, 1]
 
 
+
+def test_fit_curve_round_a_ring_follows_it_below_its_middle() -> None:
+    ring = Point(0, 0).buffer(10).difference(Point(0, 0).buffer(8))  # the Southern Ocean round the pole
+    c = fit_curve(ring, 90)
+    radius = np.hypot(c[:, 0], c[:, 1])
+    assert np.all((radius > 8.5) & (radius < 9.5))  # along the ring, never across its hole
+    assert c[0, 0] < c[-1, 0] and c[len(c) // 2, 1] < -8  # reads left to right, under the hole
+
+
+
+def test_fit_curve_island_at_the_middle_is_not_a_ring() -> None:
+    lake = shapely.affinity.scale(Point(0, 0).buffer(1), 10, 2).difference(Point(0, 0).buffer(0.5))  # Lake Kivu's island
+    c = fit_curve(lake, 90)
+    assert np.ptp(c[:, 0]) > 10 and np.ptp(c[:, 1]) < 0.5  # straight along it, as without the island
+
+
 @pytest.fixture(scope="module")
 def frame() -> MapFrame:
     return make_frame()
