@@ -33,6 +33,7 @@ EDGE_NUDGE = 1e-9  # relative: ~2 cm on the Robinson globe
 CLIP_SAMPLES = 65  # points per side of the grid sampled to find the canvas's lon/lat extent
 AZIMUTHAL_MAX_DEG = 60  # a region reaching further than this from its centre gets Equal Earth: azimuthal shapes would stretch
 RECIPE_ROUNDS, RECIPE_TOLERANCE = 12, 0.002  # recipe_box: rounds of fitting, and how close the size must come
+CENTRE_BISECTIONS = 30  # centre_recipe: halvings of each size's range (0..360 degrees)
 WRAP_GAP_DEG = 15  # frame_extent: a crop whose shown longitudes leave no gap this wide goes all the way round (samples can be ~7 degrees apart)
 POLE_DEG = 0.1  # round_pole: reaching this close to a pole counts
 RECENTRE_ROUNDS, RECENTRE_TOLERANCE = 8, 1e-4  # crop_frame: rounds of moving the centre to the map's middle, and how close
@@ -345,6 +346,28 @@ def recipe_box(region: BaseGeometry, margin: float) -> CropBox:
         half_lat = min(90.0, half_lat * target.height / got.height)
     covered = frame_extent(target)
     return best if best_miss <= miss(crop_frame(box_region(covered), 0)) else covered
+
+
+def centre_recipe(region: BaseGeometry, margin: float) -> CentreCrop | None:
+    """A centre crop that reproduces the crop to `region` with `margin`: its canvas's middle, with each size
+    bisected until a centre crop is the same size. None if none comes close (it would pick the other projection)."""
+    target = crop_frame(region, margin)
+    lon0, lat0 = canvas_centre(target)
+    (w_lo, w_hi), (h_lo, h_hi) = (0.0, 360.0), (0.0, 360.0)
+    for _ in range(CENTRE_BISECTIONS):
+        got = centre_frame((lon0, lat0, (w_lo + w_hi) / 2, (h_lo + h_hi) / 2))
+        w_lo, w_hi = ((w_lo + w_hi) / 2, w_hi) if got.width < target.width else (w_lo, (w_lo + w_hi) / 2)
+        h_lo, h_hi = ((h_lo + h_hi) / 2, h_hi) if got.height < target.height else (h_lo, (h_lo + h_hi) / 2)
+    crop = lon0, lat0, (w_lo + w_hi) / 2, (h_lo + h_hi) / 2
+    got = centre_frame(crop)
+    same = ("+proj=laea" in got.crs) == ("+proj=laea" in target.crs)
+    return crop if same and max(abs(got.width / target.width - 1), abs(got.height / target.height - 1)) < RECIPE_TOLERANCE else None
+
+
+def centre_spec(crop: CentreCrop) -> str:
+    """The centre crop as --crop takes it, lon,lat/width,height with the sizes in km."""
+    lon, lat, width, height = crop
+    return f"{round(lon, 2):g},{round(lat, 2):g}/{width * KM_PER_DEG:.0f}km,{height * KM_PER_DEG:.0f}km"
 
 
 KINDS = ("country", "territory", "disputed", "ocean", "sea", "lake", "strait", "river")  # the order a match list is in

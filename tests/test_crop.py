@@ -277,6 +277,26 @@ def test_name_crop_prints_its_box(capsys: pytest.CaptureFixture[str]) -> None:
     assert b is not None and crop_frame(box_region(b), 0).width == pytest.approx(frame.width, rel=0.01)
 
 
+
+@pytest.mark.parametrize("name", ["France", "PACIFIC OCEAN", "SOUTHERN OCEAN"])  # azimuthal, Equal Earth, round a pole
+def test_centre_recipe_reproduces_the_crop(name: str) -> None:
+    from worldmap.crop import CROP_MARGIN, centre_frame, centre_recipe, centre_spec, parse_centre
+
+    c = next(c for c in candidates({"countries", "oceans"}, False) if c.text == name)
+    recipe = centre_recipe(c.geom, CROP_MARGIN)
+    assert recipe is not None
+    crop = parse_centre(centre_spec(recipe))
+    assert crop is not None and same_map(crop_frame(c.geom, CROP_MARGIN), centre_frame(crop), 0.01)
+
+
+def test_name_crop_prints_its_centre_too(capsys: pytest.CaptureFixture[str]) -> None:
+    from worldmap.crop import centre_frame, parse_centre
+
+    frame = make_map_frame(parse_args(["--crop", "france,germany"]))
+    crop = parse_centre(capsys.readouterr().out.split(" or --crop ")[1].split()[0])
+    assert crop is not None and same_map(frame, centre_frame(crop), 0.01)
+
+
 def test_clip_edges_follow_their_parallels() -> None:
     from worldmap.data import load_countries
 
