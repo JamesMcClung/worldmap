@@ -278,7 +278,8 @@ def test_name_crop_prints_its_box(capsys: pytest.CaptureFixture[str]) -> None:
 
 
 
-@pytest.mark.parametrize("name", ["France", "PACIFIC OCEAN", "SOUTHERN OCEAN"])  # azimuthal, Equal Earth, round a pole
+@pytest.mark.parametrize("name", ["France", "PACIFIC OCEAN", "SOUTHERN OCEAN", "ATLANTIC OCEAN", "INDIAN OCEAN"])  # azimuthal,
+# Equal Earth, round a pole, past the poles (a centre crop's height goes on past them), wide and short
 def test_centre_recipe_reproduces_the_crop(name: str) -> None:
     from worldmap.crop import CROP_MARGIN, centre_frame, centre_recipe, centre_spec, parse_centre
 

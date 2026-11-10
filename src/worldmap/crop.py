@@ -33,7 +33,7 @@ EDGE_NUDGE = 1e-9  # relative: ~2 cm on the Robinson globe
 CLIP_SAMPLES = 65  # points per side of the grid sampled to find the canvas's lon/lat extent
 AZIMUTHAL_MAX_DEG = 60  # a region reaching further than this from its centre gets Equal Earth: azimuthal shapes would stretch
 RECIPE_ROUNDS, RECIPE_TOLERANCE = 12, 0.002  # recipe_box: rounds of fitting, and how close the size must come
-CENTRE_BISECTIONS = 30  # centre_recipe: halvings of each size's range (0..360 degrees)
+CENTRE_BISECTIONS = 30  # centre_recipe: halvings of each size's range (0..120 or 360 degrees)
 WRAP_GAP_DEG = 15  # frame_extent: a crop whose shown longitudes leave no gap this wide goes all the way round (samples can be ~7 degrees apart)
 POLE_DEG = 0.1  # round_pole: reaching this close to a pole counts
 RECENTRE_ROUNDS, RECENTRE_TOLERANCE = 8, 1e-4  # crop_frame: rounds of moving the centre to the map's middle, and how close
@@ -212,9 +212,11 @@ def crop_frame(region: BaseGeometry, margin: float) -> MapFrame:
     return with_label_scale(frame)
 
 
-def centre_frame(crop: CentreCrop) -> MapFrame:
+def centre_frame(crop: CentreCrop, azimuthal: bool | None = None) -> MapFrame:
     """A frame centred on the crop's centre, reaching half its width (height) along the ground east and west (north
-    and south) from it: Lambert azimuthal equal-area, or Equal Earth if a half size is over AZIMUTHAL_MAX_DEG."""
+    and south) from it: Lambert azimuthal equal-area, or Equal Earth if a half size is over AZIMUTHAL_MAX_DEG (or as
+    `azimuthal` says). Equal Earth's height runs along the meridian, past a pole at the meridian's scale there (only
+    margin: the canvas is cut to the globe)."""
     lon0, lat0, width, height = crop
     geod = Geod(ellps="WGS84")
 
@@ -223,7 +225,7 @@ def centre_frame(crop: CentreCrop) -> MapFrame:
         lon, lat, _ = geod.fwd([lon0, lon0], [lat0, lat0], azimuths, [half * KM_PER_DEG * 1000] * 2)
         return np.column_stack(to_map.transform(lon, lat))
 
-    if max(width, height) / 2 <= AZIMUTHAL_MAX_DEG:
+    if max(width, height) / 2 <= AZIMUTHAL_MAX_DEG if azimuthal is None else azimuthal:
         crs = f"+proj=laea +lat_0={lat0:.6f} +lon_0={lon0:.6f} +datum=WGS84"
         to_map = Transformer.from_crs("EPSG:4326", crs, always_xy=True)
         half_x = float(np.hypot(*ends((90, -90), width / 2).T).max())
@@ -233,8 +235,11 @@ def centre_frame(crop: CentreCrop) -> MapFrame:
     to_map = Transformer.from_crs("EPSG:4326", crs, always_xy=True)
     half_x = float(np.abs(ends((90, -90), width / 2)[:, 0]).max())
     _, yc = to_map.transform(lon0, lat0)
-    _, y = to_map.transform([lon0, lon0], np.clip([lat0 - height / 2, lat0 + height / 2], -90, 90))  # along the meridian
-    half_y = float(np.abs(np.asarray(y) - yc).max())
+    lats = np.array([lat0 - height / 2, lat0 + height / 2])
+    _, y = to_map.transform([lon0, lon0], np.clip(lats, -90, 90))
+    _, pole_scale = np.abs(np.diff(to_map.transform([lon0, lon0], [89.0, 90.0]), axis=1)).ravel()  # per degree
+    y = np.asarray(y) + np.sign(lats) * np.maximum(np.abs(lats) - 90, 0) * pole_scale
+    half_y = float(np.abs(y - yc).max())
     return with_label_scale(canvas_frame(crs, lon0, lat0, box(-half_x, yc - half_y, half_x, yc + half_y)))
 
 
@@ -350,12 +355,15 @@ def recipe_box(region: BaseGeometry, margin: float) -> CropBox:
 
 def centre_recipe(region: BaseGeometry, margin: float) -> CentreCrop | None:
     """A centre crop that reproduces the crop to `region` with `margin`: its canvas's middle, with each size
-    bisected until a centre crop is the same size. None if none comes close (it would pick the other projection)."""
+    bisected, in the crop's projection, until a centre crop is the same size. None if none comes close, or if one
+    that size would pick the other projection."""
     target = crop_frame(region, margin)
     lon0, lat0 = canvas_centre(target)
-    (w_lo, w_hi), (h_lo, h_hi) = (0.0, 360.0), (0.0, 360.0)
+    azimuthal = "+proj=laea" in target.crs
+    top = 2.0 * AZIMUTHAL_MAX_DEG if azimuthal else 360.0  # the most a centre crop in that projection can be
+    (w_lo, w_hi), (h_lo, h_hi) = (0.0, top), (0.0, top)
     for _ in range(CENTRE_BISECTIONS):
-        got = centre_frame((lon0, lat0, (w_lo + w_hi) / 2, (h_lo + h_hi) / 2))
+        got = centre_frame((lon0, lat0, (w_lo + w_hi) / 2, (h_lo + h_hi) / 2), azimuthal)
         w_lo, w_hi = ((w_lo + w_hi) / 2, w_hi) if got.width < target.width else (w_lo, (w_lo + w_hi) / 2)
         h_lo, h_hi = ((h_lo + h_hi) / 2, h_hi) if got.height < target.height else (h_lo, (h_lo + h_hi) / 2)
     crop = lon0, lat0, (w_lo + w_hi) / 2, (h_lo + h_hi) / 2
