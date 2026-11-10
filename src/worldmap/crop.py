@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import shapely
-from pyproj import Transformer
+from pyproj import Geod, Transformer
 from shapely.geometry import Polygon, box
 from shapely.geometry.base import BaseGeometry
 
@@ -25,6 +25,7 @@ if TYPE_CHECKING:
 
 CropBox = tuple[float, float, float, float]  # west lon, south lat, east lon, north lat; west > east crosses +-180,
 # -180..180 is all the way round
+CentreCrop = tuple[float, float, float, float]  # centre lon, lat; width, height in degrees of arc on the ground
 CROP_MARGIN = 0.10  # a named crop's margin on each side, as a fraction of the region's projected width/height
 CLIP_PAD_DEG = 5  # lon/lat clip boxes reach this far past what the canvas shows
 SEGMENT_DEG = 0.5  # lon/lat edges are split this finely before projecting (they curve in the crop's projection)
@@ -36,6 +37,8 @@ WRAP_GAP_DEG = 15  # frame_extent: a crop whose shown longitudes leave no gap th
 POLE_DEG = 0.1  # round_pole: reaching this close to a pole counts
 RECENTRE_ROUNDS, RECENTRE_TOLERANCE = 8, 1e-4  # crop_frame: rounds of moving the centre to the map's middle, and how close
 LABEL_SCALE_MAX = 2.5  # a crop's label_scale: the square root of its zoom over the world map, up to this
+KM_PER_DEG = 6371.0088 * np.pi / 180  # a degree of arc on the mean Earth sphere
+UNIT_KM = {"km": 1.0, "mi": 1.609344}  # a centre crop's size units (a bare size is in degrees)
 
 NUM = r"\s*(-?\d+(?:\.\d*)?)?\s*"  # may be left out
 BOX_RE = re.compile(f"^{NUM}:{NUM},{NUM}:{NUM}$")
@@ -59,6 +62,32 @@ def parse_box(s: str) -> CropBox | None:
     if west == east or south == north:
         raise ValueError(f"--crop {s}: the box has no area")
     return west, south, east, north
+
+
+SIZE = r"\s*(\d+(?:\.\d*)?)\s*([a-z]*)\s*"
+CENTRE_HEAD_RE = re.compile(r"^\s*-?\d[\d.]*\s*,\s*-?\d[\d.]*\s*/")  # lon,lat/ : meant as a centre crop
+CENTRE_RE = re.compile(r"^\s*(-?\d+(?:\.\d*)?)\s*,\s*(-?\d+(?:\.\d*)?)\s*/" + f"{SIZE},{SIZE}$", re.IGNORECASE)
+
+
+def parse_centre(s: str) -> CentreCrop | None:
+    """`lon,lat/width,height` -> CentreCrop, or None if `s` doesn't start lon,lat/ (a name or a box). Sizes are
+    degrees of arc, or with a unit (km, mi) a distance on the ground."""
+    if not CENTRE_HEAD_RE.match(s):
+        return None
+    m = CENTRE_RE.match(s)
+    if not m:
+        raise ValueError(f"--crop {s}: a centre crop is lon,lat/width,height (sizes in degrees, km or mi)")
+    lon, lat, width, w_unit, height, h_unit = m.groups()
+    sizes = []
+    for value, unit in ((width, w_unit), (height, h_unit)):
+        if unit and unit.lower() not in UNIT_KM:
+            raise ValueError(f"--crop {s}: unknown unit {unit!r} (use km, mi, or none for degrees)")
+        sizes.append(float(value) * UNIT_KM[unit.lower()] / KM_PER_DEG if unit else float(value))
+    if not (-180 <= float(lon) <= 180 and -90 <= float(lat) <= 90):
+        raise ValueError(f"--crop {s}: the longitude must be within +-180 and the latitude within +-90")
+    if not all(0 < size <= 360 for size in sizes):
+        raise ValueError(f"--crop {s}: the width and height must be above 0 and at most 360 degrees")
+    return float(lon), float(lat), sizes[0], sizes[1]
 
 
 def box_spec(b: CropBox) -> str:
@@ -180,6 +209,32 @@ def crop_frame(region: BaseGeometry, margin: float) -> MapFrame:
         lon, lat = frame.to_lonlat.transform(mid_x, mid_y if azimuthal else 0)
         lon0, lat0 = float(lon), float(lat) if azimuthal else lat0
     return with_label_scale(frame)
+
+
+def centre_frame(crop: CentreCrop) -> MapFrame:
+    """A frame centred on the crop's centre, reaching half its width (height) along the ground east and west (north
+    and south) from it: Lambert azimuthal equal-area, or Equal Earth if a half size is over AZIMUTHAL_MAX_DEG."""
+    lon0, lat0, width, height = crop
+    geod = Geod(ellps="WGS84")
+
+    def ends(azimuths: tuple[float, float], half: float) -> np.ndarray:
+        """The map coordinates of the points `half` degrees along the ground from the centre in each direction."""
+        lon, lat, _ = geod.fwd([lon0, lon0], [lat0, lat0], azimuths, [half * KM_PER_DEG * 1000] * 2)
+        return np.column_stack(to_map.transform(lon, lat))
+
+    if max(width, height) / 2 <= AZIMUTHAL_MAX_DEG:
+        crs = f"+proj=laea +lat_0={lat0:.6f} +lon_0={lon0:.6f} +datum=WGS84"
+        to_map = Transformer.from_crs("EPSG:4326", crs, always_xy=True)
+        half_x = float(np.hypot(*ends((90, -90), width / 2).T).max())
+        half_y = float(np.hypot(*ends((0, 180), height / 2).T).max())
+        return with_label_scale(canvas_frame(crs, lon0, lat0, box(-half_x, -half_y, half_x, half_y)))
+    crs = f"+proj=eqearth +lon_0={lon0:.6f} +datum=WGS84"
+    to_map = Transformer.from_crs("EPSG:4326", crs, always_xy=True)
+    half_x = float(np.abs(ends((90, -90), width / 2)[:, 0]).max())
+    _, yc = to_map.transform(lon0, lat0)
+    _, y = to_map.transform([lon0, lon0], np.clip([lat0 - height / 2, lat0 + height / 2], -90, 90))  # along the meridian
+    half_y = float(np.abs(np.asarray(y) - yc).max())
+    return with_label_scale(canvas_frame(crs, lon0, lat0, box(-half_x, yc - half_y, half_x, yc + half_y)))
 
 
 def with_label_scale(frame: MapFrame) -> MapFrame:

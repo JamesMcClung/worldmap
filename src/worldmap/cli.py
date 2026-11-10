@@ -21,7 +21,8 @@ from worldmap.coloring import Coloring, load_or_compute_coloring, make_palette, 
 from worldmap.colorspace import RGB
 from worldmap.data import is_labeled, load_countries, load_disputed, load_lakes, load_rivers, load_states, parent_index
 from worldmap.disputed import DISPUTED_GREY, STRIPE_WIDTH_IN, border_lines, dispute_edges, disputed_label_args, load_disputes
-from worldmap.crop import CROP_MARGIN, box_region, box_spec, candidates, choose, crop_frame, matches, parse_box, recipe_box
+from worldmap.crop import (CROP_MARGIN, box_region, box_spec, candidates, centre_frame, choose, crop_frame, matches, parse_box,
+                           parse_centre, recipe_box)
 from worldmap.earth import Fill, build_regions, fill_at
 from worldmap.frame import DPI, MapFrame, make_frame
 from worldmap.labels.label import decide_out_and_wrap, make_labels
@@ -86,8 +87,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         "the layout is the same at any resolution, only the pixel count changes")
     p.add_argument("--crop", metavar="SPEC",
                    help="zoom in on a region, redrawn in a projection centred on it: label names, comma-separated (or parts of "
-                        "them; only the --label kinds are searched), or edges west:east,south:north (any may be left out, "
-                        "e.g. :,60: is everything north of 60N; west past east crosses +-180)")
+                        "them; only the --label kinds are searched), edges west:east,south:north (any may be left out, "
+                        "e.g. :,60: is everything north of 60N; west past east crosses +-180), or a centre and size "
+                        "lon,lat/width,height (sizes along the ground, in degrees, or with km or mi, e.g. 2,46/1000km,800km)")
     p.add_argument("--pick", metavar="FILE",
                    help="click the rendered map to add pins; they are appended to FILE when the window closes")
     return p.parse_args(argv)
@@ -103,6 +105,9 @@ def make_map_frame(args: argparse.Namespace) -> MapFrame:
     if not args.crop:
         return make_frame()
     try:
+        centre = parse_centre(args.crop)
+        if centre is not None:
+            return centre_frame(centre)
         crop = parse_box(args.crop)
         if crop is not None:
             return crop_frame(box_region(crop), 0)

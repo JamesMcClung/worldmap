@@ -35,6 +35,44 @@ def test_parse_box_names_and_errors() -> None:
             parse_box(bad)
 
 
+
+def test_parse_centre() -> None:
+    from worldmap.crop import KM_PER_DEG, parse_centre
+
+    assert parse_centre("10,50/20,10") == (10, 50, 20, 10)  # lon,lat/width,height, bare sizes in degrees
+    lon, lat, w, h = parse_centre(" -70 , -30 / 1000km , 500 mi ")  # type: ignore[misc]
+    assert (lon, lat) == (-70, -30) and w == pytest.approx(1000 / KM_PER_DEG) and h == pytest.approx(500 * 1.609344 / KM_PER_DEG)
+    for name in ("France", "Clutha / Mata-Au", "5:17,43:49"):
+        assert parse_centre(name) is None
+
+
+def test_parse_centre_errors() -> None:
+    from worldmap.crop import parse_centre
+
+    for bad in ("200,0/5,5", "0,95/5,5", "10,50/0,5", "10,50/20", "10,50/20,10ft", "10,50/400,10"):
+        with pytest.raises(ValueError):
+            parse_centre(bad)
+
+
+def test_centre_crop_is_centred_and_sized_on_the_ground() -> None:
+    from pyproj import Geod
+
+    from worldmap.crop import KM_PER_DEG, canvas_centre, centre_frame
+
+    f = centre_frame((2, 46, 20, 10))
+    assert "+proj=laea" in f.crs and canvas_centre(f) == pytest.approx((2, 46), abs=1e-6)
+    for x, y, half in ((f.xmax, 0, 10), (f.xmin, 0, 10), (0, f.ymax, 5), (0, f.ymin, 5)):  # the edges' middles
+        lon, lat = f.to_lonlat.transform(x, y)
+        assert Geod(ellps="WGS84").inv(2, 46, lon, lat)[2] / 1000 == pytest.approx(half * KM_PER_DEG, rel=2e-3)
+
+
+def test_centre_crop_wider_than_azimuthal_is_equal_earth() -> None:
+    from worldmap.crop import canvas_centre, centre_frame
+
+    f = centre_frame((-160, 0, 160, 100))
+    assert "+proj=eqearth" in f.crs and canvas_centre(f) == pytest.approx((-160, 0), abs=1e-6)
+
+
 def test_box_region_splits_at_antimeridian() -> None:
     assert len(shapely.get_parts(box_region((170, 50, -160, 70)))) == 2
     assert len(shapely.get_parts(box_region((5, 43, 17, 49)))) == 1

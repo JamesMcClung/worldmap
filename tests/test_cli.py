@@ -65,3 +65,12 @@ def test_pick_uses_crop_frame(tmp_path, monkeypatch) -> None:  # type: ignore[no
     monkeypatch.setattr(cli, "pick_pins", lambda path, out, frame, *rest: seen.append(frame))
     cli.main(["--pick", str(tmp_path / "p.txt"), "--crop", "5:17,43:49", str(png)])
     assert len(seen) == 1 and not seen[0].globe and "+proj=laea" in seen[0].crs
+
+
+def test_centre_crop_from_the_command_line() -> None:
+    from worldmap.cli import make_map_frame, parse_args
+    from worldmap.crop import centre_frame
+
+    assert make_map_frame(parse_args(["--crop", "-70,-30/1000km,800km"])).crs == centre_frame((-70, -30, 1000 / 111.19508, 800 / 111.19508)).crs
+    with pytest.raises(SystemExit):
+        make_map_frame(parse_args(["--crop", "10,50/20"]))
