@@ -182,8 +182,10 @@ oceans) gets Equal Earth centred on its longitude instead, clipped a hair either
 - Every stage projects through the frame: `frame.project(gdf)` (there is no `data.project`). The world frame
   (`globe=True`) clips to the +-180/90 box and projects to Robinson exactly as before. A crop frame (`globe=False`)
   first clips to lon/lat `clip` boxes (`clip_boxes`: the canvas's lon/lat extent + `CLIP_PAD_DEG`; LAEA is singular
-  at the antipode), joins pieces Natural Earth splits at +-180 when the crop crosses it (`join_at_antimeridian`,
-  snapped to `SEAM_GRID_DEG`, or the cut shows as a border through Chukotka), then `cut`s to the canvas grown by
+  at the antipode; data and boxes get a vertex every `CLIP_SEGMENT_DEG` first, or long edges project as chords: the
+  marine areas follow parallels with few vertices), joins pieces Natural Earth splits at +-180 when the crop crosses it (`join_at_antimeridian`,
+  snapped to `SEAM_GRID_DEG`, or the cut shows as a border through Chukotka; a crop right round a pole snaps the projected data to
+  `SEAM_SNAP_PX` instead, merging Antarctica's +-180 edges, a slit from the pole), then `cut`s to the canvas grown by
   `PROJECT_PAD` (repairing invalid input: the marine areas). Layers whose rows split a feature at +-180 (the land:
   Wrangel Island) pass `dissolve=True`. `frame.visible` cuts to the canvas itself: labels use it,
   so a neighbour cut by the edge is labelled on its visible part.
@@ -253,7 +255,8 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
 - Curve (`fit_curve`): principal axis of interior sample points, tilt clamped, quadratic fit with the bend clamped
   (`MAX_BEND_DEG`, `MAX_TILT_DEG`), read left to right (bottom to top within 1 degree of vertical). Oceans too, fitted on
   the whole ocean, so ATLANTIC and the left PACIFIC run pole to pole (a level label at the widest water put them in the
-  south). Sizes fill `SEA_FILL` of the curve within `WATER_MIN_PT`..`SEA_MAX_PT` (oceans
+  south). A body round a hole holding its middle, >= `RING_HOLE_SHARE` of its outline (the Southern Ocean in a polar
+  crop), gets an arc below the hole instead (`ring_arc`). Sizes fill `SEA_FILL` of the curve within `WATER_MIN_PT`..`SEA_MAX_PT` (oceans
   `OCEAN_MIN_PT`..`OCEAN_PT`, letter-spaced caps; all upright).
 - `WaterLabel`: one bent `Path` per label plus a halo-padded box per glyph (`parts`), both relative to its position.
   Bodies whose name doesn't sit >= `WATER_MIN_INSIDE` over them at their anchor are left out up front (~160 of ~380 kept).
