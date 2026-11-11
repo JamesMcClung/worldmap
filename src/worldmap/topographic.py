@@ -351,18 +351,22 @@ def contour_lines(x: np.ndarray, y: np.ndarray, z: np.ma.MaskedArray, levels: np
     return lines
 
 
+def cell_px(step: float, frame: MapFrame, pg: PosterGrid) -> float:
+    """How many poster-grid pixels a cell of `step` degrees spans."""
+    return step * METRES_PER_DEG / (frame.width / len(pg.x))
+
+
 def elevation_for(frame: MapFrame, pg: PosterGrid) -> Grid:
     """The cached 3' grid, or for a crop where its cells would span over FINE_ABOVE_PX pixels, ETOPO's 1' cells over
     what the crop shows, or its 15" tiles where 1' cells would too (unless the user declines the download)."""
     grid = elevation_grid()
-    pixel_m = frame.width / len(pg.x)
-    if frame.globe or grid.step * METRES_PER_DEG / pixel_m <= FINE_ABOVE_PX:
+    if frame.globe or cell_px(grid.step, frame, pg) <= FINE_ABOVE_PX:
         return grid
     rows, cols = pg.inside.shape
     r, c = np.r_[0:rows:8, rows - 1], np.r_[0:cols:8, cols - 1]  # every 8th pixel and the far edges
     inside = pg.inside[np.ix_(r, c)]
     lon, lat = pg.lon[np.ix_(r, c)][inside], pg.lat[np.ix_(r, c)][inside]
-    if FINE_STEP_DEG * METRES_PER_DEG / pixel_m > FINE_ABOVE_PX and (tiles := elevation_window(lon, lat, TILE_STEP_DEG)):
+    if cell_px(FINE_STEP_DEG, frame, pg) > FINE_ABOVE_PX and (tiles := elevation_window(lon, lat, TILE_STEP_DEG)):
         return tiles
     fine = elevation_window(lon, lat, FINE_STEP_DEG)
     assert fine is not None  # the 60" file is fetched, not optional
@@ -376,7 +380,7 @@ def draw_topography(ax: Axes, frame: MapFrame, dpi: float, ocean: bool) -> None:
     grid = elevation_for(frame, pg)
     z = sample(grid, pg.lon, pg.lat)
     z[~pg.inside] = 0
-    z = soften(z, grid.step * METRES_PER_DEG / (frame.width / len(pg.x)))
+    z = soften(z, cell_px(grid.step, frame, pg))
     pg.lon = pg.lat = np.empty((0, 0), np.float32)  # done with them; ~200 MB at 200 dpi
     land_shapes, ice_shapes = frame.project(load_land(), dissolve=True), frame.project(load_ice(), dissolve=True)
     ice = polygon_mask(ice_shapes, frame, pg) & pg.inside  # ice wins: the shelves
