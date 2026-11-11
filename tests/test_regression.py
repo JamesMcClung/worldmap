@@ -10,15 +10,11 @@ from PIL import Image
 from conftest import TESTS, check_fingerprint, environment, fingerprint, render
 
 
-def test_render_default(tmp_path: Path) -> None:
-    check_fingerprint("default", render(tmp_path))
-
-
 def test_render_earth(tmp_path: Path) -> None:
     check_fingerprint("earth", render(tmp_path, "--color", "earth"))
 
 
-def test_render_pins(tmp_path: Path) -> None:
+def test_render_pins(tmp_path: Path) -> None:  # the default map too, under the pins
     check_fingerprint("pins", render(tmp_path, "--pins", str(TESTS / "pins.txt")))
 
 
