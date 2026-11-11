@@ -86,22 +86,27 @@ def test_version_mismatch_skips(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
         check_fingerprint("tiny", png, store=store)
 
 
+@pytest.mark.xdist_group("topographic_crop")  # 5 GB
 def test_render_topographic_crop(tmp_path: Path) -> None:
     check_fingerprint("topographic_crop", render(tmp_path, "--type", "topographic", "--ocean", "--crop", "5:17,40:49"))
 
 
+@pytest.mark.xdist_group("topographic")  # 3.3 GB each, one at a time
 def test_render_topographic(tmp_path: Path) -> None:
     check_fingerprint("topographic", render(tmp_path, "--type", "topographic"))
 
 
+@pytest.mark.xdist_group("topographic")  # 3.3 GB each, one at a time
 def test_render_topographic_ocean(tmp_path: Path) -> None:
     check_fingerprint("topographic_ocean", render(tmp_path, "--type", "topographic", "--ocean"))
 
 
+@pytest.mark.xdist_group("topographic")  # 3.3 GB each, one at a time
 def test_render_topographic_water(tmp_path: Path) -> None:
     check_fingerprint("topographic_water", render(tmp_path, "--type", "topographic", "--label", "water"))
 
 
+@pytest.mark.xdist_group("topographic")  # 3.3 GB each, one at a time
 def test_topographic_outside_is_transparent(tmp_path: Path) -> None:
     im = np.asarray(Image.open(render(tmp_path, "--type", "topographic", "--dpi", "50", "--pins", str(TESTS / "pins.txt"))))
     h, w = im.shape[:2]

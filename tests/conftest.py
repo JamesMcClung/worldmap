@@ -1,5 +1,6 @@
 """Shared helpers for the regression tests: render the map in a subprocess and compare pixel fingerprints."""
 
+import fcntl
 import hashlib
 import json
 import os
@@ -110,14 +111,17 @@ def check_fingerprint(mode: str, png: Path, store: Path = FINGERPRINTS) -> None:
     UPDATE_REFERENCE=1 records it instead. A missing entry fails; an entry made with different library
     versions skips, since the pixels legitimately depend on them. Every run keeps a copy of the PNG in
     .cache/reference/ so a mismatch can be compared by eye."""
-    entries = json.loads(store.read_text()) if store.exists() else {}
     current = {"sha256": fingerprint(png), "env": environment(mode)}
     REFERENCE_DIR.mkdir(parents=True, exist_ok=True)
     if os.environ.get("UPDATE_REFERENCE") == "1":
-        entries[mode] = current
-        store.write_text(json.dumps(entries, indent=2, sort_keys=True) + "\n")
+        with open(REFERENCE_DIR / "fingerprints.lock", "w") as lock:  # xdist workers record side by side
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            entries = json.loads(store.read_text()) if store.exists() else {}
+            entries[mode] = current
+            store.write_text(json.dumps(entries, indent=2, sort_keys=True) + "\n")
         shutil.copy(png, REFERENCE_DIR / f"{mode}.png")
         return
+    entries = json.loads(store.read_text()) if store.exists() else {}
     if mode not in entries:
         pytest.fail(f"no fingerprint for {mode!r} in {store.name}: run with UPDATE_REFERENCE=1 to record one")
     recorded = entries[mode]
