@@ -183,8 +183,8 @@ def cost_batch(p: Placement, labels: Sequence[Label | WaterLabel], i: int, cx: n
         if other_out.any():
             cost += weights.leader_crosses_leader * segments_cross(np.broadcast_to(start, (n_candidates, 1, 2)), end, their_start, their_end).sum(1)
     else:
-        shapes = shapely.box(boxes[:, 0], boxes[:, 1], boxes[:, 2], boxes[:, 3])
-        inside = shapely.area(shapely.intersection(shapes, label.geom)) / (w * h)
+        # clip_by_rect, not shapely.intersection: GEOS's overlay costs ~80 us a box, even against a small country
+        inside = np.array([shapely.area(shapely.clip_by_rect(label.geom, *b)) for b in boxes]) / (w * h)
         cost += weights.outside_country * (1 - inside) + weights.drift * np.hypot(cx - anchor_x, cy - anchor_y) / h
     cost += weights.outside_globe * ~shapely.contains(outline_px, shapely.box(boxes[:, 0], boxes[:, 1], boxes[:, 2], boxes[:, 3]))
     if p.water.any():  # water glyphs: overlap, and our own leader crossing them
