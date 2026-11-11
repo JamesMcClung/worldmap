@@ -51,8 +51,6 @@ def parse_box(s: str) -> CropBox | None:
     if not m:
         return None
     west, east, south, north = (None if v is None else float(v) for v in m.groups())
-    if west is None and east is None:
-        west, east = -180.0, 180.0
     west, east = -180.0 if west is None else west, 180.0 if east is None else east
     south, north = -90.0 if south is None else south, 90.0 if north is None else north
     if not all(-180 <= lon <= 180 for lon in (west, east)) or not all(-90 <= lat <= 90 for lat in (south, north)):
