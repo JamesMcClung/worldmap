@@ -1,3 +1,4 @@
+import functools
 import sys
 
 import numpy as np
@@ -7,7 +8,23 @@ from shapely.geometry import Point, box
 
 from worldmap.cli import make_map_frame, parse_args
 from worldmap.frame import MapFrame, make_frame
-from worldmap.crop import Candidate, box_region, candidates, choose, crop_frame, describe, matches, parse_box, sphere_centre
+from worldmap import cli, crop
+from worldmap.crop import Candidate, box_region, choose, crop_frame, describe, matches, parse_box, sphere_centre
+
+
+@functools.cache
+def cached_candidates(label: frozenset[str], disputed: bool) -> list[Candidate]:
+    return crop.candidates(set(label), disputed)
+
+
+def candidates(label: set[str], disputed: bool) -> list[Candidate]:
+    """crop.candidates, built once per set of kinds (~1.7 s each)."""
+    return cached_candidates(frozenset(label), disputed)
+
+
+@pytest.fixture(autouse=True)
+def reuse_candidates(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(cli, "candidates", candidates)  # name crops through make_map_frame too
 
 
 def test_parse_box_edges() -> None:
@@ -263,7 +280,7 @@ def test_several_names() -> None:
 def test_centre_recipe_reproduces_the_crop(name: str) -> None:
     from worldmap.crop import CROP_MARGIN, centre_frame, centre_recipe, centre_spec, parse_centre
 
-    c = next(c for c in candidates({"countries", "oceans"}, False) if c.text == name)
+    c = next(c for c in candidates({"countries", "oceans", "seas"}, False) if c.text == name)  # the set another test builds
     recipe = centre_recipe(c.geom, CROP_MARGIN)
     assert recipe is not None
     crop = parse_centre(centre_spec(recipe))
