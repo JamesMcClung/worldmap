@@ -114,12 +114,10 @@ def inner_side(region: Polygon, corner: Corner) -> np.ndarray:
     return np.array([[x, y0], [x, y1]])
 
 
-def curved_title(region: Polygon, title: str, unit: float, side: np.ndarray | None = None) -> Path:
-    """`title`'s glyphs bent along `side` (default: the bar's curved side), centred on it, inside the bar
+def curved_title(region: Polygon, title: str, unit: float, side: np.ndarray) -> Path:
+    """`title`'s glyphs bent along the bar's `side` (globe_side or inner_side), centred on it, inside the bar
     TITLE_INSET_IN from it. `unit` is map units per poster inch."""
-    if side is None:
-        side = globe_side(region)
-    s = arc_lengths(side)
+    s =arc_lengths(side)
     glyphs = TextPath((0, 0), title, size=TITLE_SIZE, prop=FontProperties(weight="bold"))
     scale = unit / 72  # map units per point
     u, v = glyphs.vertices[:, 0] * scale, glyphs.vertices[:, 1] * scale

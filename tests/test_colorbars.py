@@ -30,7 +30,7 @@ def test_title_curves_inside_the_bar_along_the_globe(corner: str) -> None:
     region, unit = bar_region(f, corner), f.units_per_in  # type: ignore[arg-type]
     side = globe_side(region)
     assert side[0, 0] < side[-1, 0] and LineString(side).distance(Polygon(f.outline)) < BAR_GAP_IN * unit * 1.01
-    glyphs = MultiPoint(curved_title(region, "Height", unit).vertices)
+    glyphs = MultiPoint(curved_title(region, "Height", unit, side).vertices)
     assert region.contains(glyphs)
     assert LineString(side).distance(glyphs) > 0.05 * unit  # inset from the curved side
 
