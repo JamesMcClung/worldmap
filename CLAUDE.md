@@ -180,8 +180,8 @@ oceans) gets Equal Earth centred on its longitude instead, clipped a hair either
   canvas middle (Equal Earth: longitude only) until it settles (`RECENTRE_ROUNDS`, `RECENTRE_TOLERANCE`), so the
   map's middle is the projection's centre. A region round a pole (`round_pole`: all the way round within one
   hemisphere, or reaching the pole and over 180 degrees round: the Arctic) gets a square canvas centred on the pole.
-- Every stage projects through the frame: `frame.project(gdf)` (there is no `data.project`). The world frame
-  (`globe=True`) clips to the +-180/90 box and projects to Robinson exactly as before. A crop frame (`globe=False`)
+- Every stage projects through the frame: `frame.project(gdf)`. The world frame
+  (`globe=True`) clips to the +-180/90 box and projects to Robinson. A crop frame (`globe=False`)
   first clips to lon/lat `clip` boxes (`clip_boxes`: the canvas's lon/lat extent + `CLIP_PAD_DEG`; LAEA is singular
   at the antipode; data and boxes get a vertex every `SEGMENT_DEG` first, or long edges project as chords: the
   marine areas follow parallels with few vertices), joins pieces Natural Earth splits at +-180 when the crop crosses it (`join_at_antimeridian`,
@@ -190,7 +190,7 @@ oceans) gets Equal Earth centred on its longitude instead, clipped a hair either
   `PROJECT_PAD` (repairing invalid input: the marine areas). Layers whose rows split a feature at +-180 (the land:
   Wrangel Island) pass `dissolve=True`. `frame.visible` cuts to the canvas itself: labels use it,
   so a neighbour cut by the edge is labelled on its visible part.
-- Size: the long side is `POSTER_WIDTH_IN` (`width_in`/`height_in`); the world map is unchanged.
+- Size: the long side is `POSTER_WIDTH_IN` (`width_in`/`height_in`).
 - Labels: `frame.label_scale` = sqrt(zoom over the world map), 1..`LABEL_SCALE_MAX` = 2.5, multiplies every size
   limit (country `MIN_PT`/`MAX_PT`, water and river sizes, `SHRINK_MIN_PT`, `WaterLabel.min_size`).
 - `--crop W:E,S:N`: edges, lon then lat; any end may be left out (lon -180/180, lat -90/90, so `:,60:` is everything
@@ -207,8 +207,7 @@ oceans) gets Equal Earth centred on its longitude instead, clipped a hair either
   Several matches: a `questionary` `checklist` (no select-all/invert keys; exact first, `describe` = text, kind,
   and the centre crop that reproduces the crop, to copy and adjust). Every name crop prints that of everything chosen
   (`cropping to France; the same as --crop 2.62,46.33/1375km,1270km`): `centre_recipe` takes the canvas's middle
-  (`canvas_centre`) and bisects each size in the crop's projection (`CENTRE_BISECTIONS`); exact, so no box form is
-  shown (a box only came close). Left out if a centre crop that size picks the other projection (only the US Minor
+  (`canvas_centre`) and bisects each size in the crop's projection (`CENTRE_BISECTIONS`). Left out if a centre crop that size picks the other projection (only the US Minor
   Outlying Islands: azimuthal, over 120 degrees wide). The crop covers all checked; without a tty, exit with the list. Margin `CROP_MARGIN` = 10%. Candidates are inverted from the Robinson world frame with x nudged
   by `EDGE_NUDGE` (points on +-180 don't invert).
 - Drawing: ocean fills the canvas, no globe stroke; `child_regions` skips hand-picked regions out of frame (it
