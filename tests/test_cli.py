@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from worldmap.cli import parse_args
+from worldmap.cli import draws_rivers, parse_args
 from worldmap.frame import DPI
 
 
@@ -44,6 +44,11 @@ def test_label_flag() -> None:
         with pytest.raises(SystemExit) as e:
             parse_args(bad)
         assert e.value.code == 2
+
+
+def test_rivers_are_drawn_with_the_flag_or_their_labels() -> None:
+    assert draws_rivers(parse_args(["--rivers"])) and draws_rivers(parse_args(["--label", "rivers"]))
+    assert not draws_rivers(parse_args([]))
 
 
 def test_type_flag() -> None:
