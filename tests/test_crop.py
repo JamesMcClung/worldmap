@@ -258,20 +258,8 @@ def test_several_names() -> None:
         make_map_frame(parse_args(["--crop", "france,atlantis"]))
 
 
-@pytest.mark.parametrize("name", ["PACIFIC OCEAN", "ATLANTIC OCEAN", "INDIAN OCEAN", "SOUTHERN OCEAN", "ARCTIC OCEAN"])  # round a pole too
-def test_describe_reproduces_ocean_crops(name: str) -> None:
-    from worldmap.crop import CROP_MARGIN
-
-    from worldmap.crop import centre_frame, parse_centre
-
-    c = next(c for c in candidates({"oceans"}, False) if c.text == name)
-    crop = parse_centre(describe(c).rsplit(" ", 1)[1])
-    assert crop is not None and same_map(crop_frame(c.geom, CROP_MARGIN), centre_frame(crop), 0.01)
-
-
-
-@pytest.mark.parametrize("name", ["France", "PACIFIC OCEAN", "SOUTHERN OCEAN", "ATLANTIC OCEAN", "INDIAN OCEAN"])  # azimuthal,
-# Equal Earth, round a pole, past the poles (a centre crop's height goes on past them), wide and short
+@pytest.mark.parametrize("name", ["France", "PACIFIC OCEAN", "SOUTHERN OCEAN", "ARCTIC OCEAN", "ATLANTIC OCEAN", "INDIAN OCEAN"])
+# azimuthal, Equal Earth, round a pole (both), past the poles (a centre crop's height goes on past them), wide and short
 def test_centre_recipe_reproduces_the_crop(name: str) -> None:
     from worldmap.crop import CROP_MARGIN, centre_frame, centre_recipe, centre_spec, parse_centre
 
