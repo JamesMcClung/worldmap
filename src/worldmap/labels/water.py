@@ -349,7 +349,7 @@ def extend(curve: np.ndarray, length: float) -> np.ndarray:
     return np.vstack([step(curve[1], curve[0]), curve, step(curve[-2], curve[-1])])
 
 
-def lay_out(body: WaterBody, curve: np.ndarray, size: float, geom_px: BaseGeometry, rise: float | None = None) -> WaterLabel:
+def lay_out(body: WaterBody, curve: np.ndarray, size: float, geom_px: BaseGeometry, label_scale: float, rise: float | None = None) -> WaterLabel:
     """`body`'s name at `size` pt, centred on `curve` (px), its x-height (cap height for oceans) centred on it; or,
     given `rise` (px), its baseline that far to the left of the curve (above, reading left to right). Rivers in italic."""
     prop = font(size, body.kind == "rivers")
@@ -379,7 +379,7 @@ def lay_out(body: WaterBody, curve: np.ndarray, size: float, geom_px: BaseGeomet
         pad = WATER_HALO_PX / 2
         parts.append([*(bent.min(axis=0) - pad), *(bent.max(axis=0) + pad)])
     glyphs = Path(np.vstack(vertices), np.concatenate(codes))
-    return WaterLabel(body.text, body.kind, body.rank, geom_px, float(anchor[0]), float(anchor[1]), size, glyphs, np.array(parts))
+    return WaterLabel(body.text, body.kind, body.rank, geom_px, float(anchor[0]), float(anchor[1]), size, glyphs, np.array(parts), label_scale)
 
 
 def body_curve(body: WaterBody) -> np.ndarray:
@@ -438,8 +438,7 @@ def river_label(body: WaterBody, frame: MapFrame) -> WaterLabel | None:
     stretch = best_stretch(pts, need)
     curve = fit_curve(LineString(stretch).buffer(1.0), MAX_TILT_DEG)
     rise = RIVER_GAP_EM * em + height_above(stretch, curve)
-    label = lay_out(body, curve, size, line.buffer(RIVER_CORRIDOR_EM * em), rise)
-    label.label_scale = frame.label_scale
+    label = lay_out(body, curve, size, line.buffer(RIVER_CORRIDOR_EM * em), frame.label_scale, rise)
     return label if label.inside_share(label.anchor_x, label.anchor_y) >= WATER_MIN_INSIDE else None
 
 
@@ -465,8 +464,7 @@ def make_water_labels(bodies: list[WaterBody], frame: MapFrame) -> list[WaterLab
             width_1pt += OCEAN_TRACKING_EM * (len(body.text) - 1) * PX_PER_PT
         low, high = (OCEAN_MIN_PT, OCEAN_PT) if body.kind == "oceans" else (WATER_MIN_PT, SEA_MAX_PT)
         size = float(np.clip(SEA_FILL * arc_lengths(curve)[-1] / width_1pt, low * frame.label_scale, high * frame.label_scale))
-        label = lay_out(body, curve, size, frame.to_px(body.geom))
-        label.label_scale = frame.label_scale
+        label = lay_out(body, curve, size, frame.to_px(body.geom), frame.label_scale)
         if label.inside_share(label.anchor_x, label.anchor_y) >= WATER_MIN_INSIDE:
             labels.append(label)
     return labels
