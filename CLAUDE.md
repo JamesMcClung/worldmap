@@ -6,7 +6,7 @@ large countries, non-overlapping country labels), or with `--type topographic` a
 ## Setup and run
 
 ```
-python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'   # deps in pyproject.toml; [dev] adds pytest, mypy
+python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'   # deps in pyproject.toml; [dev] adds pytest, pytest-xdist, mypy
 .venv/bin/make_map [out.png] [--type political|topographic] [--ocean] [--recolor] [--color colorblind|earth] [--label LIST] [--disputed] [--rivers] [--pins FILE] [--pin-size IN] [--dpi DPI] [--crop NAME[,NAME...]|W:E,S:N|LON,LAT/W,H] [--pick FILE]
 ```
 
@@ -25,9 +25,9 @@ tiles: the crop falls back to 1'). `coloring.json`, `earth.json` and `etopo_3min
 
 ## Tests
 
-`.venv/bin/pytest` (~250 s). Unit tests cover the pure pieces (colour maths, `color_graph`, pin parsing and sprite, label geometry,
+`.venv/bin/pytest` (~55 s on 4 pytest-xdist workers, `addopts` in `pyproject.toml`; `-n0` for serial, ~200 s). Unit tests cover the pure pieces (colour maths, `color_graph`, pin parsing and sprite, label geometry,
 CLI errors), and `test_import_has_no_pyplot` guards that importing any module doesn't pick a matplotlib backend (`--pick` needs to).
-`test_regression.py` renders the default, `--color earth`, `--pins`, `--label countries,territories`, `--label countries,water` (`water`), `--disputed`, `--rivers`, `--type topographic`, `--type topographic --ocean`, `--type topographic --label water` (`topographic_water`), `--crop France` (`crop`), a Bering Strait box crop with territories, water and `--disputed` (`crop_water`) an Alps box crop with `--type topographic --ocean` (`topographic_crop`; reads four 15" tiles, recorded in its
+`test_regression.py` renders `--pins` (the default map under the pins), `--color earth`, `--label countries,territories`, `--label countries,water` (`water`; draws the rivers too), `--disputed`, `--type topographic --ocean`, `--type topographic --label water` (`topographic_water`; also checks the outside is transparent), `--crop France` (`crop`), a Bering Strait box crop with territories, water and `--disputed` (`crop_water`) an Alps box crop with `--type topographic --ocean` (`topographic_crop`; reads four 15" tiles, recorded in its
 environment, so it skips where they aren't downloaded) and `--crop pacific --label countries,oceans,seas` (`crop_pacific_water`, Equal Earth) maps in a subprocess and compares a SHA-256 of the decoded pixels
 with `tests/fingerprints.json`:
 - A commit that changes the output on purpose re-records with `UPDATE_REFERENCE=1 .venv/bin/pytest` and commits `fingerprints.json`
@@ -39,8 +39,13 @@ with `tests/fingerprints.json`:
   (or deleting `earth.json`) to be exercised.
 - `conftest.private_caches` (session, autouse) points the in-process tests' `coloring.json`/`earth.json` at a temp copy, so a
   test with other inputs can't overwrite the real caches; the render subprocesses still read the real ones.
-- `conftest.environment(mode)` keys data files per mode (`raster` for earth, ETOPO etc. for topographic*, `marine` for *water*, `rivers` for *river* and *water*):
+- `conftest.environment(mode)` keys data files per mode (`raster` for earth, ETOPO etc. for topographic*, `marine` for *water*, `rivers` for *water*):
   a new key on an existing mode would make it skip, so add keys only for the modes that use them.
+- Parallel runs: `pytest_collection_modifyitems` schedules the renders first (else the long ones start last). The
+  topographic renders peak at 3.3 GB (world) and 5 GB (Alps crop), so each `xdist_group` (`topographic`,
+  `topographic_crop`) runs on one worker; the political ones peak near 0.5 GB. `UPDATE_REFERENCE` writes
+  `fingerprints.json` under a lock in `.cache/reference/`.
+- The crop tests build `crop.candidates` once per set of kinds (`test_crop.candidates`, also patched into `cli`).
 
 `.venv/bin/mypy src` should report no issues (default mode, missing stubs ignored).
 
