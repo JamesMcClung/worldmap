@@ -20,7 +20,7 @@ from worldmap.coloring import OCEAN
 from worldmap.data import RIVER_MAX_RANK
 from worldmap.disputed import Dispute, dispute_fills, stripe_parts
 from worldmap.earth import Fill, Regions
-from worldmap.frame import DPI, POSTER_WIDTH_IN, MapFrame
+from worldmap.frame import DPI, MapFrame
 from worldmap.labels.label import Label
 from worldmap.labels.label import LABEL_ZORDER
 from worldmap.labels.placement import Placement, leader_ends
@@ -63,7 +63,7 @@ def new_figure(frame: MapFrame) -> tuple[Figure, Axes]:
     """Poster-sized figure, transparent outside the globe, with the ocean and the globe's outline drawn."""
     import matplotlib.pyplot as plt
 
-    fig = plt.figure(figsize=(POSTER_WIDTH_IN, POSTER_WIDTH_IN * frame.height / frame.width), dpi=DPI)
+    fig = plt.figure(figsize=(frame.width_in, frame.height_in), dpi=DPI)
     ax = fig.add_axes((0, 0, 1, 1))
     ax.set_xlim(frame.xmin, frame.xmax)
     ax.set_ylim(frame.ymin, frame.ymax)
@@ -71,7 +71,8 @@ def new_figure(frame: MapFrame) -> tuple[Figure, Axes]:
     ax.axis("off")
     fig.patch.set_alpha(0)
     ax.add_patch(MplPolygon(frame.outline, closed=True, fc=OCEAN, ec="none", zorder=Z_OCEAN))
-    ax.add_patch(MplPolygon(frame.outline, closed=True, fc="none", ec=BORDER, lw=GLOBE_STROKE, zorder=Z_GLOBE))
+    if frame.globe:  # a crop is filled to its edges
+        ax.add_patch(MplPolygon(frame.outline, closed=True, fc="none", ec=BORDER, lw=GLOBE_STROKE, zorder=Z_GLOBE))
     return fig, ax
 
 
@@ -115,7 +116,9 @@ def draw_borders(ax: Axes, solid: BaseGeometry, dashed: BaseGeometry) -> None:
 def draw_states(ax: Axes, states_projected: gpd.GeoDataFrame, disputed: bool = False) -> None:
     """State/province lines. With `disputed` they go under the borders, which would otherwise lose their dashes where
     a disputed area's edge follows a state line (Kashmir and Himachal Pradesh)."""
-    states_projected.plot(ax=ax, color=STATE_LINE, linewidth=STATE_LINE_WIDTH, zorder=Z_STATES_UNDER_BORDERS if disputed else Z_STATES)
+    states_projected = states_projected[~states_projected.geometry.is_empty]  # a crop may show none
+    if len(states_projected):
+        states_projected.plot(ax=ax, color=STATE_LINE, linewidth=STATE_LINE_WIDTH, zorder=Z_STATES_UNDER_BORDERS if disputed else Z_STATES)
 
 
 def draw_lakes(ax: Axes, lakes_projected: gpd.GeoDataFrame) -> None:

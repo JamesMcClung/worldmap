@@ -13,11 +13,16 @@ from matplotlib.patches import Polygon as MplPolygon
 import shapely
 
 from worldmap.coloring import OCEAN
-from worldmap.data import CACHE, ETOPO, fetch, load_ice, load_lakes, load_land, project
-from worldmap.frame import DPI, POSTER_WIDTH_IN, MapFrame
+from worldmap.data import CACHE, ETOPO, etopo15_tile, fetch, fetch_all, load_ice, load_lakes, load_land
+from worldmap.frame import DPI, MapFrame, lon_ranges
 from worldmap.render import BORDER, BORDER_WIDTH, Z_BORDERS, Z_COUNTRY, draw_lakes
 
 GRID_STEP_DEG = 0.05  # 3 arc-minutes: about one poster pixel at 200 dpi
+FINE_STEP_DEG = 1 / 60  # ETOPO's own cells, read for a crop whose 3' cells would span over FINE_ABOVE_PX pixels
+TILE_STEP_DEG = 1 / 240  # ETOPO's 15" tiles, for a crop whose 1' cells would too
+TILE_DEG = 15  # each tile's side
+FINE_ABOVE_PX = 2
+FINE_PAD_DEG = 0.25  # the window read reaches this far past the pixels it was asked for
 ELEVATION_RULE = "etopo2022-60s-mean-3min/v1"  # bump when the reduction changes, to rebuild the cached grid
 
 
@@ -58,6 +63,7 @@ LAND_CONTOURS = Contours(1000, "#5a4a3a", 0.6)
 ICE_CONTOURS = Contours(1000, "#7a8fa3", 0.6)
 SEA_CONTOURS = Contours(2000, "#1f4466", 0.5, "dashed")
 CONTOUR_WIDTH = 0.3
+METRES_PER_DEG = 111_195  # along a meridian
 SAMPLE_BLOCK = 1 << 17  # points per block in sample() and colorize()
 VERT_EXAG = 6.0  # hill-shading exaggeration of heights (z and pixel size both in metres); tuned on crops
 SLIVER_M2 = 1.0  # outline parts smaller than this (m^2) are slivers left by the union; the smallest islet is ~2,300
@@ -66,8 +72,15 @@ SLIVER_HOLE_M2 = 1e8  # holes smaller than this are gaps between ice shelves and
 
 @dataclass
 class Grid:
-    z: np.ndarray  # int16 metres, row 0 = northmost; cell (i, j) is centred on (-180 + (j + .5) step, 90 - (i + .5) step)
+    z: np.ndarray  # int16 metres, row 0 = northmost; cell (i, j) is centred on (west + (j + .5) step, north - (i + .5) step)
     step: float  # degrees per cell
+    west: float = -180  # a window of the globe (elevation_window) starts elsewhere, and may run east across +-180
+    north: float = 90
+
+    @property
+    def wraps(self) -> bool:
+        """It goes all the way round."""
+        return self.z.shape[1] * self.step >= 360 - 1e-9
 
 
 def elevation_grid() -> Grid:
@@ -88,6 +101,76 @@ def elevation_grid() -> Grid:
     return Grid(z, GRID_STEP_DEG)
 
 
+def elevation_window(lon: np.ndarray, lat: np.ndarray, step: float = FINE_STEP_DEG) -> Grid | None:
+    """ETOPO at FINE_STEP_DEG (the 60" file) or TILE_STEP_DEG (15" tiles) over the lon/lat extent of the points (a
+    crop's pixels) plus FINE_PAD_DEG: finer than the cached 3' grid, for a crop. None if the user declines to
+    download the tiles it needs."""
+    per_deg = round(1 / step)
+    total_cols, total_rows = 360 * per_deg, 180 * per_deg
+    row0 = max(0, int(np.floor((90 - float(lat.max()) - FINE_PAD_DEG) * per_deg)))
+    row1 = min(total_rows, int(np.ceil((90 - float(lat.min()) + FINE_PAD_DEG) * per_deg)))
+    ranges = lon_ranges(lon, FINE_PAD_DEG)
+    if ranges == [(-180, 180)]:
+        col0, cols = 0, total_cols
+    else:
+        west, east = ranges[0][0], ranges[-1][1]
+        col0 = int(np.floor((west + 180) * per_deg)) % total_cols
+        cols = min(total_cols, int(np.ceil(((east - west) % 360) * per_deg)) + 2)
+    runs, c, left = [], col0, cols
+    while left > 0:  # past +-180, carry on from the west edge
+        n = min(left, total_cols - c)
+        runs.append((c, n))
+        c, left = 0, left - n
+    z = read_etopo(row0, row1, runs) if step == FINE_STEP_DEG else read_tiles(row0, row1, runs, per_deg)
+    if z is not None and step == TILE_STEP_DEG and (len(runs) > 1 or cols == total_cols):
+        print("note: ETOPO's 15\" heights join their sources at +-180, which can show as a line in the shading")
+    return None if z is None else Grid(z, step, -180 + col0 / per_deg, 90 - row0 / per_deg)
+
+
+def read_etopo(row0: int, row1: int, runs: list[tuple[int, int]]) -> np.ndarray:
+    """Rows row0..row1 of the 60" file, for each (first column, count) run, side by side, as int16."""
+    import rasterio
+    from rasterio.windows import Window
+
+    with rasterio.open(fetch(ETOPO)) as src:
+        return np.hstack([np.round(src.read(1, window=Window(c, row0, n, row1 - row0))).astype(np.int16) for c, n in runs])
+
+
+def read_tiles(row0: int, row1: int, runs: list[tuple[int, int]], per_deg: int) -> np.ndarray | None:
+    """Like read_etopo, from the 15" tiles (rows and columns counted over the whole globe), downloading any it
+    needs once the user agrees; None if they decline."""
+    import rasterio
+    from rasterio.windows import Window
+
+    t = TILE_DEG * per_deg  # cells per tile side
+    tile_rows = range(row0 // t, (row1 - 1) // t + 1)
+
+    def tile_cols(c: int, n: int) -> range:
+        return range(c // t, (c + n - 1) // t + 1)
+
+    def name(tj: int, ti: int) -> str:
+        return etopo15_tile(90 - TILE_DEG * tj, -180 + TILE_DEG * ti)
+
+    names = list(dict.fromkeys(name(tj, ti) for c, n in runs for tj in tile_rows for ti in tile_cols(c, n)))
+    paths = fetch_all(names, optional=True)
+    if paths is None:
+        print("using ETOPO's 1' heights instead")
+        return None
+    path_of = dict(zip(names, paths))
+    out = np.empty((row1 - row0, sum(n for _, n in runs)), np.int16)
+    offset = 0
+    for c, n in runs:
+        for tj in tile_rows:
+            for ti in tile_cols(c, n):
+                r_a, r_b = max(row0, tj * t), min(row1, (tj + 1) * t)
+                c_a, c_b = max(c, ti * t), min(c + n, (ti + 1) * t)
+                with rasterio.open(path_of[name(tj, ti)]) as src:
+                    block = src.read(1, window=Window(c_a - ti * t, r_a - tj * t, c_b - c_a, r_b - r_a))
+                out[r_a - row0:r_b - row0, offset + c_a - c:offset + c_b - c] = np.round(block)
+        offset += n
+    return out
+
+
 def sample(grid: Grid, lon: np.ndarray, lat: np.ndarray) -> np.ndarray:
     """Heights at (lon, lat) in metres (float32), bilinear between cell centres; longitude wraps across +-180.
     Works through the points in blocks, so the float64 temporaries stay small on a whole-poster grid."""
@@ -101,15 +184,47 @@ def sample(grid: Grid, lon: np.ndarray, lat: np.ndarray) -> np.ndarray:
 
 def sample_block(grid: Grid, lon: np.ndarray, lat: np.ndarray) -> np.ndarray:
     rows, cols = grid.z.shape
-    fx = (np.asarray(lon, np.float64) + 180) / grid.step - 0.5
-    fy = np.clip((90 - np.asarray(lat, np.float64)) / grid.step - 0.5, 0, rows - 1)
+    east = (np.asarray(lon, np.float64) - grid.west) % 360  # degrees east of the grid's west edge
+    if not grid.wraps:  # a window: just west of it is negative, not nearly 360
+        east = np.where(east > (cols * grid.step + 360) / 2, east - 360, east)
+    fx = east / grid.step - 0.5
+    fy = np.clip((grid.north - np.asarray(lat, np.float64)) / grid.step - 0.5, 0, rows - 1)
+    if not grid.wraps:
+        fx = np.clip(fx, 0, cols - 1)
     x0, y0 = np.floor(fx).astype(np.int64), np.minimum(np.floor(fy).astype(np.int64), rows - 2)
+    if not grid.wraps:
+        x0 = np.minimum(x0, cols - 2)
     tx, ty = (fx - x0).astype(np.float32), (fy - y0).astype(np.float32)
     x0, x1 = x0 % cols, (x0 + 1) % cols
     z = grid.z
     top = z[y0, x0] * (1 - tx) + z[y0, x1] * tx
     bottom = z[y0 + 1, x0] * (1 - tx) + z[y0 + 1, x1] * tx
     return (top * (1 - ty) + bottom * ty).astype(np.float32)
+
+
+def box_blur(z: np.ndarray, radius: int, axis: int) -> None:
+    """Mean over 2 * radius + 1 cells along `axis`, edges extended, in place; in bands, so the float64 running sums
+    stay small on a whole-poster grid."""
+    zt = np.moveaxis(z, axis, 1)
+    for r0 in range(0, zt.shape[0], 256):
+        band = zt[r0:r0 + 256].astype(np.float64)
+        padded = np.concatenate([np.repeat(band[:, :1], radius + 1, 1), band, np.repeat(band[:, -1:], radius, 1)], axis=1)
+        sums = np.cumsum(padded, axis=1)
+        zt[r0:r0 + 256] = (sums[:, 2 * radius + 1:] - sums[:, :-2 * radius - 1]) / (2 * radius + 1)
+
+
+def soften(z: np.ndarray, cell_px: float) -> np.ndarray:
+    """In a crop one elevation cell covers many pixels, and bilinear heights shade as a flat facet per cell: blur
+    them over about a cell (two box passes each way). Grids with cells of <= 2 pixels (the world map) are returned
+    as they are."""
+    if cell_px <= 2:
+        return z
+    radius = max(1, round(cell_px / 2))
+    out = z.astype(np.float32, copy=True)
+    for _ in range(2):
+        box_blur(out, radius, 1)
+        box_blur(out, radius, 0)
+    return out
 
 
 def ramp_colors(cmap: LinearSegmentedColormap, x: np.ndarray) -> np.ndarray:
@@ -183,7 +298,7 @@ class PosterGrid:
 
 def poster_grid(frame: MapFrame, dpi: float) -> PosterGrid:
     """One cell per output pixel at min(dpi, DPI) (the elevation grid has no finer detail), with each cell's lon/lat."""
-    cols = round(POSTER_WIDTH_IN * min(dpi, DPI))
+    cols = round(frame.width_in * min(dpi, DPI))
     rows = round(cols * frame.height / frame.width)
     pw, ph = frame.width / cols, frame.height / rows
     x = frame.xmin + (np.arange(cols) + 0.5) * pw
@@ -236,14 +351,38 @@ def contour_lines(x: np.ndarray, y: np.ndarray, z: np.ma.MaskedArray, levels: np
     return lines
 
 
+def cell_px(step: float, frame: MapFrame, pg: PosterGrid) -> float:
+    """How many poster-grid pixels a cell of `step` degrees spans."""
+    return step * METRES_PER_DEG / (frame.width / len(pg.x))
+
+
+def elevation_for(frame: MapFrame, pg: PosterGrid) -> Grid:
+    """The cached 3' grid, or for a crop where its cells would span over FINE_ABOVE_PX pixels, ETOPO's 1' cells over
+    what the crop shows, or its 15" tiles where 1' cells would too (unless the user declines the download)."""
+    grid = elevation_grid()
+    if frame.globe or cell_px(grid.step, frame, pg) <= FINE_ABOVE_PX:
+        return grid
+    rows, cols = pg.inside.shape
+    r, c = np.r_[0:rows:8, rows - 1], np.r_[0:cols:8, cols - 1]  # every 8th pixel and the far edges
+    inside = pg.inside[np.ix_(r, c)]
+    lon, lat = pg.lon[np.ix_(r, c)][inside], pg.lat[np.ix_(r, c)][inside]
+    if cell_px(FINE_STEP_DEG, frame, pg) > FINE_ABOVE_PX and (tiles := elevation_window(lon, lat, TILE_STEP_DEG)):
+        return tiles
+    fine = elevation_window(lon, lat, FINE_STEP_DEG)
+    assert fine is not None  # the 60" file is fetched, not optional
+    return fine
+
+
 def draw_topography(ax: Axes, frame: MapFrame, dpi: float, ocean: bool) -> None:
     """Everything on the globe for --type topographic: the coloured, hill-shaded heights (sea depths with `ocean`),
     contours, the coastline and the lakes."""
     pg = poster_grid(frame, dpi)
-    z = sample(elevation_grid(), pg.lon, pg.lat)
+    grid = elevation_for(frame, pg)
+    z = sample(grid, pg.lon, pg.lat)
     z[~pg.inside] = 0
+    z = soften(z, cell_px(grid.step, frame, pg))
     pg.lon = pg.lat = np.empty((0, 0), np.float32)  # done with them; ~200 MB at 200 dpi
-    land_shapes, ice_shapes = project(load_land()), project(load_ice())
+    land_shapes, ice_shapes = frame.project(load_land(), dissolve=True), frame.project(load_ice(), dissolve=True)
     ice = polygon_mask(ice_shapes, frame, pg) & pg.inside  # ice wins: the shelves
     land = polygon_mask(land_shapes, frame, pg) & pg.inside & ~ice
     sea = ~land & ~ice & pg.inside
@@ -267,4 +406,4 @@ def draw_topography(ax: Axes, frame: MapFrame, dpi: float, ocean: bool) -> None:
     if ocean:
         contours(sea, -np.arange(SEA_CONTOURS.step, -z.min() + 1, SEA_CONTOURS.step)[::-1], SEA_CONTOURS)
     ax.add_collection(LineCollection(coastline(land_shapes, ice_shapes), colors=BORDER, linewidths=BORDER_WIDTH, zorder=Z_BORDERS))
-    draw_lakes(ax, project(load_lakes()))
+    draw_lakes(ax, frame.project(load_lakes()))

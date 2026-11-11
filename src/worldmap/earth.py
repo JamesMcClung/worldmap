@@ -10,11 +10,14 @@ import os
 
 import geopandas as gpd
 import numpy as np
+import shapely
 from matplotlib.colors import to_rgb
+from shapely import affinity
 from shapely.geometry import MultiPolygon, Point, Polygon, box
 
 from worldmap.colorspace import RGB, fit_gamut
 from worldmap.data import CACHE, COUNTRIES, RASTER, fetch
+from worldmap.frame import SEAM_GRID_DEG, SEAM_SNAP_PX, WORLD, MapFrame
 
 GR_DESERT, GR_LUSH = -12.0, 20.0  # mean (G - R) mapped to pure sand and pure green
 MIN_PIX = 6  # polygons with fewer raster pixels borrow from a window around their centroid, then from their country
@@ -41,7 +44,7 @@ def pixel_stats(pixels: np.ndarray) -> PixelStats | None:
 
 
 def earth_values(countries: gpd.GeoDataFrame) -> list[list[list[float]]]:
-    """[[(mean G-R, icy fraction) per polygon] per country], in the polygon order of `project(countries)`. Cached in earth.json."""
+    """[[(mean G-R, icy fraction) per polygon] per country], in the polygon order of `frame.project(countries)`. Cached in earth.json."""
     cache = CACHE / "earth.json"
     raster = fetch(RASTER)
     key = {"raster": os.path.getsize(raster), "countries": os.path.getsize(fetch(COUNTRIES)), "rule": EARTH_RULE, "min_pix": MIN_PIX}
@@ -63,7 +66,7 @@ def earth_values(countries: gpd.GeoDataFrame) -> list[list[list[float]]]:
         return [((lon + 180) / 360 * width, (90 - lat) / 180 * height) for lon, lat in coords]
 
     values = []
-    for geom in countries.geometry.intersection(box(-180, -90, 180, 90)):
+    for geom in countries.geometry.intersection(box(*WORLD)):
         polys = list(geom.geoms) if isinstance(geom, MultiPolygon) else [geom]
         per_poly: list[PixelStats | None] = []
         all_pixels = []
@@ -104,16 +107,73 @@ def earth_fill(green_minus_red: float, ice_fraction: float) -> RGB:
     return (r, g, b)
 
 
-def build_regions(countries_projected: gpd.GeoDataFrame, countries: gpd.GeoDataFrame) -> Regions:
-    """Each country's projected polygons with their land-cover fill."""
-    regions: Regions = {}
-    for (i, row), values in zip(countries_projected.iterrows(), earth_values(countries)):
-        geom = row.geometry
-        polys = list(geom.geoms) if isinstance(geom, MultiPolygon) else [geom]
-        regions[i] = [(p, earth_fill(*v)) for p, v in zip(polys, values) if not p.is_empty]
-        if not regions[i]:
+def build_regions(countries: gpd.GeoDataFrame, frame: MapFrame) -> Regions:
+    """Each country's projected polygons with their land-cover fill. The polygons are projected one by one, so each
+    keeps its own value when a crop cuts some away or in two; those Natural Earth splits at +-180 (Chukotka, Wrangel
+    Island) share one (`share_across_seam`). A crop then joins those that touch (`join_touching`), or their halves
+    showed a seam."""
+    owner, polys, values = [], [], []
+    for i, geom, vals in zip(countries.index, countries.geometry.intersection(box(*WORLD)), earth_values(countries)):
+        parts = list(geom.geoms) if isinstance(geom, MultiPolygon) else [geom]
+        for p, v in zip(parts, share_across_seam(parts, vals)):
+            owner.append(i)
+            polys.append(p)
+            values.append(v)
+    projected = frame.project(gpd.GeoDataFrame(geometry=polys, crs=countries.crs)).geometry
+    shown: dict[int, list[tuple[Polygon, list[float]]]] = {i: [] for i in countries.index}
+    for i, geom, v in zip(owner, projected, values):
+        shown[i] += [(p, v) for p in shapely.get_parts(geom) if p.geom_type == "Polygon" and not p.is_empty]
+    if not frame.globe:
+        shown = {i: join_touching(parts, SEAM_SNAP_PX / frame.px_per_unit) for i, parts in shown.items()}
+    regions: Regions = {i: [(p, earth_fill(*v)) for p, v in parts] for i, parts in shown.items()}
+    for i, regs in regions.items():
+        if not regs:
             regions[i] = [(Polygon(), "#ffffff")]
     return regions
+
+
+def share_across_seam(parts: list[Polygon], values: list[list[float]]) -> list[list[float]]:
+    """The polygons' values, those of polygons Natural Earth splits at +-180 (one ends at 180 where the other starts
+    at -180) replaced by their mean, weighted by area on the ground: they're one piece of land, coloured as one."""
+    east = [k for k, p in enumerate(parts) if not p.is_empty and p.bounds[2] >= 180 - SEAM_GRID_DEG]
+    west = [k for k, p in enumerate(parts) if not p.is_empty and p.bounds[0] <= -180 + SEAM_GRID_DEG]
+    group = list(range(len(parts)))
+
+    def root(k: int) -> int:
+        while group[k] != k:
+            k = group[k]
+        return k
+
+    for w in west:
+        moved = affinity.translate(parts[w], 360)
+        for e in east:
+            if e != w and moved.distance(parts[e]) <= SEAM_GRID_DEG:
+                group[root(w)] = root(e)
+    out = [list(v) for v in values]
+    for g in {root(k) for k in range(len(parts))}:
+        members = [k for k in range(len(values)) if root(k) == g]
+        if len(members) > 1:
+            weights = [parts[k].area * np.cos(np.radians(parts[k].centroid.y)) for k in members]
+            mean = list(np.average([values[k] for k in members], axis=0, weights=weights))
+            for k in members:
+                out[k] = mean
+    return out
+
+
+def join_touching(parts: list[tuple[Polygon, list[float]]], grid: float) -> list[tuple[Polygon, list[float]]]:
+    """The polygons, snapped to `grid` and those that touch joined, each with the area-weighted mean of its parts'
+    values."""
+    if len(parts) < 2:
+        return parts
+    joined = shapely.union_all([p for p, _ in parts], grid_size=grid)
+    out = []
+    for poly in shapely.get_parts(joined):
+        members = [(p.area, v) for p, v in parts if poly.intersects(p.representative_point())]
+        if not members:
+            continue
+        weights = np.array([a for a, _ in members])
+        out.append((poly, list(np.average([v for _, v in members], axis=0, weights=weights))))
+    return out
 
 
 def fill_at(regions: Regions, i: int, pt: Point | None) -> Fill:

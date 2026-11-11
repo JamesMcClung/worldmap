@@ -5,20 +5,24 @@ Pins: --pick pins.txt (click the rendered map to add pins) and --pins pins.txt [
 """
 
 import argparse
+import dataclasses
 import os
 import sys
 import time
 
 import geopandas as gpd
 import matplotlib
+import shapely
 from matplotlib.axes import Axes
 from shapely.geometry import Point
 
-from worldmap.colorbars import draw_colorbar
+from worldmap.colorbars import Corner, draw_colorbar, label_outline
 from worldmap.coloring import Coloring, load_or_compute_coloring, make_palette, spot_check
 from worldmap.colorspace import RGB
-from worldmap.data import is_labeled, load_countries, load_disputed, load_lakes, load_rivers, load_states, parent_index, project
+from worldmap.data import is_labeled, load_countries, load_disputed, load_lakes, load_rivers, load_states, parent_index
 from worldmap.disputed import DISPUTED_GREY, STRIPE_WIDTH_IN, border_lines, dispute_edges, disputed_label_args, load_disputes
+from worldmap.crop import (CROP_MARGIN, box_region, candidates, centre_frame, centre_recipe, centre_spec, choose, crop_frame, matches,
+                           parse_box, parse_centre)
 from worldmap.earth import Fill, build_regions, fill_at
 from worldmap.frame import DPI, MapFrame, make_frame
 from worldmap.labels.label import decide_out_and_wrap, make_labels
@@ -81,6 +85,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--dpi", metavar="DPI", type=positive_float, default=DPI,
                    help="output dots per inch on the 36 in poster (default %(default)s); "
                         "the layout is the same at any resolution, only the pixel count changes")
+    p.add_argument("--crop", metavar="SPEC",
+                   help="zoom in on a region, redrawn in a projection centred on it: label names, comma-separated (or parts of "
+                        "them; only the --label kinds are searched), edges west:east,south:north (any may be left out, "
+                        "e.g. :,60: is everything north of 60N; west past east crosses +-180), or a centre and size "
+                        "lon,lat/width,height (sizes along the ground, in degrees, or with km or mi, e.g. 2,46/1000km,800km)")
     p.add_argument("--pick", metavar="FILE",
                    help="click the rendered map to add pins; they are appended to FILE when the window closes")
     return p.parse_args(argv)
@@ -89,6 +98,31 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def draws_rivers(args: argparse.Namespace) -> bool:
     """--rivers, or --label rivers or water (a name needs its river)."""
     return bool(args.rivers or "rivers" in kinds_from_labels(args.label))
+
+
+def make_map_frame(args: argparse.Namespace) -> MapFrame:
+    """The whole globe, or the --crop region."""
+    if not args.crop:
+        return make_frame()
+    try:
+        centre = parse_centre(args.crop)
+        if centre is not None:
+            return centre_frame(centre)
+        crop = parse_box(args.crop)
+        if crop is not None:
+            return crop_frame(box_region(crop), 0)
+        if not args.label:
+            sys.exit(f"make_map: --crop {args.crop}: a name is looked up among the labels, but --label is none")
+        cands = candidates(args.label, args.disputed)
+        names = [n.strip() for n in args.crop.split(",") if n.strip()]  # no label has a comma in it
+        chosen = [c for name in names for c in choose(name, matches(name, cands))]
+        region = shapely.union_all([c.geom for c in chosen])
+        centre = centre_recipe(region, CROP_MARGIN)
+        same = "" if centre is None else f"; the same as --crop {centre_spec(centre)}"
+        print(f"cropping to {', '.join(c.text for c in chosen)}{same}")
+        return crop_frame(region, CROP_MARGIN)
+    except ValueError as e:
+        sys.exit(f"make_map: {e}")
 
 
 def graph_fills(countries: gpd.GeoDataFrame, coloring: Coloring) -> dict[int, RGB]:
@@ -110,7 +144,7 @@ def main(argv: list[str] | None = None) -> None:
     if args.pick and not os.path.exists(out):
         sys.exit("--pick shows the rendered map: run make_map first to create %s" % out)
 
-    frame = make_frame()
+    frame = make_map_frame(args)
     if args.pick:
         pick_pins(args.pick, out, frame, args.pin_size, DPI)
         return
@@ -120,11 +154,12 @@ def main(argv: list[str] | None = None) -> None:
 
     countries = load_countries()
     major = [is_labeled(row) for _, row in countries.iterrows()]
-    disputes = load_disputes(countries, project(load_disputed()))
+    disputes = load_disputes(countries, frame.project(load_disputed()))
     fills = graph_fills(countries, load_or_compute_coloring(countries, major, args.recolor, parent_index(countries), dispute_edges(disputes)))
+    disputes = [d for d in disputes if not d.geometry.is_empty]  # a crop leaves out those it doesn't show
     states, lakes = load_states(), load_lakes()
-    countries_p, states_p, lakes_p = project(countries), project(states), project(lakes)
-    regions = build_regions(countries_p, countries) if args.color == "earth" else None
+    countries_p, states_p, lakes_p = frame.project(countries), frame.project(states), frame.project(lakes)
+    regions = build_regions(countries, frame) if args.color == "earth" else None
 
     def fill_of(i: int, pt: Point | None = None) -> Fill:
         """Country i's fill; with --color earth, that of its polygon containing (or nearest) `pt`, else its largest."""
@@ -139,7 +174,7 @@ def main(argv: list[str] | None = None) -> None:
         draw_borders(ax, *border_lines(countries_p, disputes, parent_index(countries)))
     draw_states(ax, states_p, args.disputed)
     if draws_rivers(args):
-        draw_rivers(ax, project(load_rivers()))
+        draw_rivers(ax, frame.project(load_rivers()))
     draw_lakes(ax, lakes_p)
     countries_p = subtract_lakes(countries_p, lakes_p)
     ax.set_xlim(frame.xmin, frame.xmax)
@@ -148,11 +183,14 @@ def main(argv: list[str] | None = None) -> None:
     # Labels are measured in rendered pixels, so draw once first.
     fig.canvas.draw()
     renderer = fig.canvas.get_renderer()  # type: ignore[attr-defined]  # Agg canvas
-    children = child_regions(countries, countries_p, frame) if "territories" in args.label else []
+    shown = frame.visible(countries_p)  # labels go on what the frame shows
+    children = child_regions(countries, shown, frame) if "territories" in args.label else []
+    if not frame.globe:
+        disputes = [dataclasses.replace(d, geometry=d.geometry.intersection(frame.canvas)) for d in disputes]
     relabel, extra = disputed_label_args(disputes, lambda i, pt: fill_of(i, pt) if regions else DISPUTED_GREY) if args.disputed else ({}, [])
-    labels = make_labels(countries_p, frame, ax, renderer, fill_of, children, "countries" in args.label, relabel, extra)
+    labels = make_labels(shown, frame, ax, renderer, fill_of, children, "countries" in args.label, relabel, extra)
     decide_out_and_wrap(labels, renderer)
-    water = make_water_labels(load_water_bodies(kinds_from_labels(args.label), lakes_p), frame) if kinds_from_labels(args.label) else []
+    water = make_water_labels(load_water_bodies(kinds_from_labels(args.label), lakes_p, frame), frame) if kinds_from_labels(args.label) else []
     placement, water = place_all(labels, water, frame)
     draw_labels(ax, labels, placement, frame)
     draw_water_labels(ax, water, placement, frame)
@@ -179,14 +217,17 @@ def draw_topographic(args: argparse.Namespace, out: str, frame: MapFrame) -> Non
     fig, ax = new_figure(frame)
     draw_topography(ax, frame, args.dpi, args.ocean)
     if draws_rivers(args):
-        draw_rivers(ax, project(load_rivers()))
+        draw_rivers(ax, frame.project(load_rivers()))
     draw_colorbar(ax, frame, "br", LAND, "Height", LAND_CONTOURS)
     if args.ocean:
         draw_colorbar(ax, frame, "tr", SEA, "Depth", SEA_CONTOURS)
     draw_colorbar(ax, frame, "bl", ICE, "Ice", ICE_CONTOURS)
     kinds = kinds_from_labels(args.label)
     if kinds:  # without water kinds no label stage runs
-        placement, water = place_all([], make_water_labels(load_water_bodies(kinds, project(load_lakes())), frame), frame)
+        # A crop's bars sit over the map: keep the labels off them.
+        bars: list[Corner] = ["br", "tr", "bl"] if args.ocean else ["br", "bl"]
+        room = frame if frame.globe else dataclasses.replace(frame, outline=label_outline(frame, bars))
+        placement, water = place_all([], make_water_labels(load_water_bodies(kinds, frame.project(load_lakes()), frame), frame), room)
         draw_water_labels(ax, water, placement, frame)
     ax.set_xlim(frame.xmin, frame.xmax)
     ax.set_ylim(frame.ymin, frame.ymax)

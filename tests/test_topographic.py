@@ -4,7 +4,7 @@ import shapely
 from matplotlib.colors import to_rgb
 
 from worldmap.coloring import OCEAN
-from worldmap.data import load_ice, load_lakes, load_land, project
+from worldmap.data import load_ice, load_lakes, load_land
 from worldmap.frame import make_frame
 from worldmap.topographic import (LAND_BELOW_SEA, Grid, PosterGrid, coastline, colorize, draw_topography, elevation_grid,
                                   polygon_mask, poster_grid, relief, sample, shade)
@@ -106,7 +106,7 @@ def test_inside_mask(pg: PosterGrid) -> None:
 
 
 def test_ice_mask(pg: PosterGrid) -> None:
-    ice = polygon_mask(project(load_ice()), make_frame(), pg)
+    ice = polygon_mask(make_frame().project(load_ice()), make_frame(), pg)
     assert ice[px(pg, -40, 75)] and ice[px(pg, 0, -85)]  # Greenland, Antarctica
     assert ice[px(pg, -170, -80)]  # Ross Ice Shelf: ice over sea
     assert not ice[px(pg, 10, 25)] and not ice[px(pg, -30, 0)]  # Sahara, Atlantic
@@ -114,12 +114,12 @@ def test_ice_mask(pg: PosterGrid) -> None:
 
 def test_islands_in_ice_shelves_are_ice(pg: PosterGrid) -> None:
     """Natural Earth cuts the islands out of the ice shelves, but they are ice-covered too (Roosevelt, Berkner)."""
-    ice = polygon_mask(project(load_ice()), make_frame(), pg)
+    ice = polygon_mask(make_frame().project(load_ice()), make_frame(), pg)
     assert ice[px(pg, -162.22, -79.28)] and ice[px(pg, -60.55, -80.31)]
 
 
 def test_land_mask(pg: PosterGrid) -> None:
-    land = polygon_mask(project(load_land()), make_frame(), pg)
+    land = polygon_mask(make_frame().project(load_land()), make_frame(), pg)
     assert land[px(pg, 27.5, 29.8)] and land[px(pg, -116.85, 36.25)] and land[px(pg, 5.5, 52.5)]  # Qattara, Death Valley, polders
     assert not land[px(pg, 51, 42)] and not land[px(pg, -30, 0)]  # Caspian, Atlantic
 
@@ -142,7 +142,7 @@ def coast():
     """The coastline, as one geometry in map units."""
     from shapely.geometry import MultiLineString
 
-    return MultiLineString(coastline(project(load_land()), project(load_ice())))
+    return MultiLineString(coastline(make_frame().project(load_land()), make_frame().project(load_ice())))
 
 
 def test_coastline_follows_land_and_ice(coast) -> None:
@@ -220,3 +220,92 @@ def test_draw_topography_holds_little_memory() -> None:
     plt.close(fig)
     pixels = 1800 * 923
     assert held < 40 * pixels  # the RGBA image is 16 bytes a pixel; the rest is lines and patches
+
+
+def test_soften_leaves_fine_grids_alone() -> None:
+    from worldmap.topographic import soften
+
+    z = np.arange(20, dtype=np.float32).reshape(4, 5)
+    assert soften(z, 1.5) is z
+
+
+def test_soften_smooths_cell_facets_in_a_crop() -> None:
+    from worldmap.topographic import soften
+
+    z = np.zeros((60, 60), np.float32)
+    z[:, 30:] = 1000  # a cliff
+    out = soften(z, 10)
+    assert np.abs(np.diff(out, axis=1)).max() < 150  # spread over ~ a cell
+    assert out[:, :10].max() == 0 and out[:, -10:].min() == 1000  # flat ground stays flat, to the edges
+    assert out.mean() == pytest.approx(z.mean(), rel=1e-3)
+
+
+def test_elevation_window_is_full_resolution() -> None:
+    from worldmap.topographic import FINE_STEP_DEG, elevation_window
+
+    w = elevation_window(np.array([86.0, 88.0]), np.array([27.0, 29.0]))
+    assert w.step == FINE_STEP_DEG and w.z.shape[1] < 200
+    everest = sample(w, np.array([86.925]), np.array([27.988]))[0]
+    assert everest > sample(elevation_grid(), np.array([86.925]), np.array([27.988]))[0] + 300
+
+
+def test_elevation_window_across_the_antimeridian() -> None:
+    from worldmap.topographic import elevation_window
+
+    w = elevation_window(np.array([179.0, -179.0]), np.array([64.0, 66.0]))
+    assert w.z.shape[1] < 200  # 2 degrees of longitude, not 358
+    a, b = sample(w, np.array([179.99, -179.99]), np.array([65.0, 65.0]))  # Chukotka
+    coarse = sample(elevation_grid(), np.array([179.99]), np.array([65.0]))[0]
+    assert abs(a - b) < 150 and abs(a - coarse) < 100
+
+
+def test_crops_use_full_resolution() -> None:
+    from worldmap.crop import box_region, crop_frame
+    from worldmap.topographic import FINE_STEP_DEG, GRID_STEP_DEG, elevation_for
+
+    alps = crop_frame(box_region((5, 40, 17, 49)), 0)
+    assert elevation_for(alps, poster_grid(alps, 20)).step == FINE_STEP_DEG
+    world = make_frame()
+    assert elevation_for(world, poster_grid(world, 20)).step == GRID_STEP_DEG
+
+
+def alps_tiles() -> None:
+    from worldmap.data import CACHE, etopo15_tile
+
+    if not all((CACHE / etopo15_tile(n, w)).exists() for n in (45, 60) for w in (0, 15)):
+        pytest.skip("the four 15\" ETOPO tiles around the Alps aren't downloaded")
+
+
+def test_elevation_window_reads_15s_tiles_across_their_corners() -> None:
+    from worldmap.topographic import FINE_STEP_DEG, TILE_STEP_DEG, elevation_window
+
+    alps_tiles()
+    fine, tiles = (elevation_window(np.array([14.0, 16.0]), np.array([44.0, 46.0]), step) for step in (FINE_STEP_DEG, TILE_STEP_DEG))
+    assert fine is not None and tiles is not None and tiles.step == TILE_STEP_DEG
+    rng = np.random.default_rng(0)
+    lon, lat = rng.uniform(14.2, 15.8, 400), rng.uniform(44.2, 45.8, 400)  # all four tiles
+    assert np.median(np.abs(sample(tiles, lon, lat) - sample(fine, lon, lat))) < 30
+    blanc = (np.array([6.865]), np.array([45.832]))
+    peak = elevation_window(np.array([6.5, 7.2]), np.array([45.5, 46.2]), TILE_STEP_DEG)
+    assert peak is not None and sample(peak, *blanc)[0] > sample(elevation_window(*blanc, FINE_STEP_DEG), *blanc)[0] + 100
+
+
+def test_zoomed_crops_use_15s_tiles() -> None:
+    from worldmap.crop import box_region, crop_frame
+    from worldmap.topographic import TILE_STEP_DEG, elevation_for
+
+    alps_tiles()
+    alps = crop_frame(box_region((5, 40, 17, 49)), 0)
+    assert elevation_for(alps, poster_grid(alps, 80)).step == TILE_STEP_DEG
+
+
+def test_15s_tiles_across_the_antimeridian_print_a_note(capsys: pytest.CaptureFixture[str]) -> None:
+    from worldmap.data import CACHE, etopo15_tile
+    from worldmap.topographic import TILE_STEP_DEG, elevation_window
+
+    if not all((CACHE / etopo15_tile(-15, w)).exists() for w in (165, -180)):
+        pytest.skip("the 15\" ETOPO tiles around Fiji aren't downloaded")
+    elevation_window(np.array([179.0, -179.0]), np.array([-17.0, -16.0]), TILE_STEP_DEG)
+    assert "+-180" in capsys.readouterr().out
+    elevation_window(np.array([178.0, 179.0]), np.array([-17.0, -16.0]), TILE_STEP_DEG)
+    assert capsys.readouterr().out == ""

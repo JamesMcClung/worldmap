@@ -5,7 +5,7 @@ import matplotlib
 import pytest
 from shapely.geometry import Point
 
-from worldmap.data import CACHE, RASTER, is_labeled, load_countries, load_lakes, project
+from worldmap.data import CACHE, RASTER, is_labeled, load_countries, load_lakes
 from worldmap.earth import Fill, build_regions, fill_at
 from worldmap.frame import MapFrame, make_frame
 from worldmap.labels.label import RENAME, Label, make_labels
@@ -22,7 +22,7 @@ def countries() -> gpd.GeoDataFrame:
 @pytest.fixture(scope="module")
 def countries_projected(countries: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     """As cli.main passes it: projected, with the big lakes cut out."""
-    return subtract_lakes(project(countries), project(load_lakes()))
+    return subtract_lakes(make_frame().project(countries), make_frame().project(load_lakes()))
 
 
 @pytest.fixture(scope="module")
@@ -36,11 +36,11 @@ def regions(countries: gpd.GeoDataFrame, countries_projected: gpd.GeoDataFrame, 
 
 
 def test_counts(regions: list[ChildRegion]) -> None:
-    assert len(regions) == 66
+    assert len(regions) == 78
     names = {r.name for r in regions}
-    assert len(names) == 66
+    assert len(names) == 78
     assert not {"Hong Kong", "Macau"} & names
-    assert {"Gibraltar", "Greenland", "Alaska", "Easter Island"} <= names
+    assert {"Gibraltar", "Greenland", "Alaska", "Easter Island", "Mayotte", "Bouvet Island"} <= names
 
 
 def test_text(regions: list[ChildRegion]) -> None:
@@ -92,7 +92,7 @@ def test_child_labels_are_italic(countries: gpd.GeoDataFrame, countries_projecte
 
     with_children = build_labels(countries, countries_projected, frame, regions, grey)
     italic = [label for label in with_children if label.text.get_fontstyle() == "italic"]
-    assert len(italic) == 66
+    assert len(italic) == 78
     assert {label.name for label in italic} == {r.text for r in regions}
     assert not [label for label in build_labels(countries, countries_projected, frame, [], grey) if label.text.get_fontstyle() == "italic"]
 
@@ -100,7 +100,7 @@ def test_child_labels_are_italic(countries: gpd.GeoDataFrame, countries_projecte
 def test_earth_child_label_uses_its_own_polygon(countries: gpd.GeoDataFrame, countries_projected: gpd.GeoDataFrame, frame: MapFrame, regions: list[ChildRegion]) -> None:
     if not (CACHE / RASTER).exists():
         pytest.skip("land-cover raster not downloaded")
-    earth = build_regions(countries_projected, countries)
+    earth = build_regions(countries, frame)
     labels = build_labels(countries, countries_projected, frame, regions, lambda i, pt: fill_at(earth, i, pt))
     color = {label.name: label.color for label in labels}
     assert color["Hawaii (US)"] != color["United States"]

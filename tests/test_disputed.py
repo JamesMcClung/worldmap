@@ -5,7 +5,7 @@ from pyproj import Transformer
 from shapely.geometry.base import BaseGeometry
 from shapely.geometry import Point, box
 
-from worldmap.data import CRS, load_countries, load_disputed, parent_index, project
+from worldmap.data import CRS, load_countries, load_disputed, parent_index
 from worldmap.frame import make_frame
 from worldmap.labels.label import make_labels
 from worldmap.render import new_figure
@@ -108,12 +108,12 @@ def test_dispute_fills() -> None:
 
 @pytest.fixture(scope="module")
 def disputes_projected(countries: gpd.GeoDataFrame) -> list[Dispute]:
-    return load_disputes(countries, project(load_disputed()))
+    return load_disputes(countries, make_frame().project(load_disputed()))
 
 
 @pytest.fixture(scope="module")
 def lines(countries: gpd.GeoDataFrame, disputes_projected: list[Dispute]) -> tuple[BaseGeometry, BaseGeometry]:
-    return border_lines(project(countries), disputes_projected, parent_index(countries))
+    return border_lines(make_frame().project(countries), disputes_projected, parent_index(countries))
 
 
 def at(lon: float, lat: float) -> Point:
@@ -149,7 +149,7 @@ def disputed_labels(countries: gpd.GeoDataFrame, disputes: list[Dispute], with_c
     fig, ax = new_figure(frame)
     fig.canvas.draw()
     relabel, extra = disputed_label_args(disputes, lambda i, pt: (0.5, 0.5, 0.5))
-    labels = make_labels(project(countries), frame, ax, fig.canvas.get_renderer(), lambda i, pt: (0.5, 0.5, 0.5),  # type: ignore[attr-defined]
+    labels = make_labels(make_frame().project(countries), frame, ax, fig.canvas.get_renderer(), lambda i, pt: (0.5, 0.5, 0.5),  # type: ignore[attr-defined]
                          countries=with_countries, relabel=relabel, extra=extra)
     import matplotlib.pyplot as plt
     plt.close(fig)

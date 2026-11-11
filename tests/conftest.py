@@ -1,5 +1,6 @@
 """Shared helpers for the regression tests: render the map in a subprocess and compare pixel fingerprints."""
 
+import fcntl
 import hashlib
 import json
 import os
@@ -34,6 +35,11 @@ def private_caches(tmp_path_factory: pytest.TempPathFactory):
         patch.setattr(coloring, "CACHE", private)
         patch.setattr(earth, "CACHE", private)
         yield private
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """The renders first (5-40 s each), so xdist workers don't wait at the end on one that started late."""
+    items.sort(key=lambda item: item.path.name != "test_regression.py")
 
 
 def render(tmp_path: Path, *args: str) -> Path:
@@ -79,8 +85,9 @@ def environment(mode: str = "default") -> dict[str, str]:
         "disputed": str(os.path.getsize(fetch(DISPUTED))),  # the colouring keeps 2-country disputes apart
         **({"raster": str(os.path.getsize(fetch(RASTER)))} if mode == "earth" else {}),
         **({"marine": str(os.path.getsize(fetch(MARINE)))} if "water" in mode else {}),  # only modes with water labels
-        **({"rivers": str(os.path.getsize(fetch(RIVERS)))} if "river" in mode or "water" in mode else {}),
+        **({"rivers": str(os.path.getsize(fetch(RIVERS)))} if "water" in mode else {}),
         **(topographic_environment() if mode.startswith("topographic") else {}),
+        **(alps_tiles() if mode == "topographic_crop" else {}),
     }
 
 
@@ -95,20 +102,31 @@ def topographic_environment() -> dict[str, str]:
             "rasterio": rasterio.__version__, "gdal": rasterio.__gdal_version__}
 
 
+def alps_tiles() -> dict[str, str]:
+    """The 15" ETOPO tiles the Alps crop reads (missing ones make it skip: they're downloaded only on request)."""
+    from worldmap.data import CACHE, etopo15_tile
+
+    names = [etopo15_tile(n, w) for n in (45, 60) for w in (0, 15)]
+    return {name: str(os.path.getsize(CACHE / name)) if (CACHE / name).exists() else "missing" for name in names}
+
+
 def check_fingerprint(mode: str, png: Path, store: Path = FINGERPRINTS) -> None:
     """Compare png's fingerprint with the one stored for `mode`.
 
     UPDATE_REFERENCE=1 records it instead. A missing entry fails; an entry made with different library
     versions skips, since the pixels legitimately depend on them. Every run keeps a copy of the PNG in
     .cache/reference/ so a mismatch can be compared by eye."""
-    entries = json.loads(store.read_text()) if store.exists() else {}
     current = {"sha256": fingerprint(png), "env": environment(mode)}
     REFERENCE_DIR.mkdir(parents=True, exist_ok=True)
     if os.environ.get("UPDATE_REFERENCE") == "1":
-        entries[mode] = current
-        store.write_text(json.dumps(entries, indent=2, sort_keys=True) + "\n")
+        with open(REFERENCE_DIR / "fingerprints.lock", "w") as lock:  # xdist workers record side by side
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            entries = json.loads(store.read_text()) if store.exists() else {}
+            entries[mode] = current
+            store.write_text(json.dumps(entries, indent=2, sort_keys=True) + "\n")
         shutil.copy(png, REFERENCE_DIR / f"{mode}.png")
         return
+    entries = json.loads(store.read_text()) if store.exists() else {}
     if mode not in entries:
         pytest.fail(f"no fingerprint for {mode!r} in {store.name}: run with UPDATE_REFERENCE=1 to record one")
     recorded = entries[mode]

@@ -170,7 +170,7 @@ def disputed_label_args(disputes: list[Dispute], breakaway_fill: Callable[[int, 
     relabel = {d.countries[0]: d.label for d in disputes if d.label and not d.breakaway}
     extra = []
     for d in disputes:
-        if d.label and d.breakaway:
+        if d.label and d.breakaway and not d.geometry.is_empty:
             largest = max(shapely.get_parts(d.geometry), key=lambda g: g.area)
             extra.append((d.label, largest, breakaway_fill(d.countries[0], largest.representative_point())))
     return relabel, extra

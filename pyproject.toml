@@ -19,15 +19,19 @@ dependencies = [
     "pillow>=10",
     "pyogrio>=0.7",
     "pyproj>=3.6",
+    "questionary>=2.0",  # --crop: choose among the labels a name matches
     "rasterio>=1.4",  # reads the ETOPO (--type topographic) and land-cover (--color earth) GeoTIFFs
     "shapely>=2.1",  # maximum_inscribed_circle
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "mypy>=1.10"]
+dev = ["pytest>=8", "pytest-xdist>=3.5", "mypy>=1.10"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# 4 workers: two topographic renders (3.3 and 5 GB peak) may run at once beside the political ones (~0.5 GB);
+# each xdist_group runs on one worker. -n0 runs serially.
+addopts = "-n 4 --dist loadgroup"
 
 [tool.mypy]
 ignore_missing_imports = true  # geopandas, shapely, pyproj ship no stubs

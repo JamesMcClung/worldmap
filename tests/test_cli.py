@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from worldmap.cli import parse_args
+from worldmap.cli import draws_rivers, parse_args
 from worldmap.frame import DPI
 
 
@@ -46,9 +46,36 @@ def test_label_flag() -> None:
         assert e.value.code == 2
 
 
+def test_rivers_are_drawn_with_the_flag_or_their_labels() -> None:
+    assert draws_rivers(parse_args(["--rivers"])) and draws_rivers(parse_args(["--label", "rivers"]))
+    assert not draws_rivers(parse_args([]))
+
+
 def test_type_flag() -> None:
     assert (parse_args([]).type, parse_args([]).ocean) == ("political", False)
     assert (parse_args(["--type", "topographic", "--ocean"]).type, parse_args(["--ocean"]).ocean) == ("topographic", True)
     with pytest.raises(SystemExit) as e:
         parse_args(["--type", "sky"])
     assert e.value.code == 2
+
+
+def test_pick_uses_crop_frame(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    from PIL import Image
+
+    from worldmap import cli
+
+    png = tmp_path / "crop.png"
+    Image.new("RGBA", (4, 4)).save(png)
+    seen = []
+    monkeypatch.setattr(cli, "pick_pins", lambda path, out, frame, *rest: seen.append(frame))
+    cli.main(["--pick", str(tmp_path / "p.txt"), "--crop", "5:17,43:49", str(png)])
+    assert len(seen) == 1 and not seen[0].globe and seen[0].azimuthal
+
+
+def test_centre_crop_from_the_command_line() -> None:
+    from worldmap.cli import make_map_frame, parse_args
+    from worldmap.crop import centre_frame
+
+    assert make_map_frame(parse_args(["--crop", "-70,-30/1000km,800km"])).crs == centre_frame((-70, -30, 1000 / 111.19508, 800 / 111.19508)).crs
+    with pytest.raises(SystemExit):
+        make_map_frame(parse_args(["--crop", "10,50/20"]))

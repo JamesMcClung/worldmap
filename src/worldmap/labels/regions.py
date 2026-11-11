@@ -32,14 +32,27 @@ HAND_PICKED: list[tuple[str, str, list[Box]]] = [
     ("Musandam", "Oman", [(55.9, 25.6, 56.6, 26.5)]),
     ("Canary Islands", "Spain", [(-18.5, 27.5, -13.3, 29.5)]),
     ("Azores", "Portugal", [(-31.5, 36.8, -24.9, 40)]),
-    ("Madeira", "Portugal", [(-17.4, 32.3, -16.2, 33.2)]),
+    ("Madeira", "Portugal", [(-17.4, 32.3, -16.2, 33.2), (-16.2, 29.9, -15.8, 30.2)]),  # with the Savage Islands
     ("Zanzibar", "Tanzania", [(39, -6.6, 40, -4.8)]),
     ("Socotra", "Yemen", [(52, 11.9, 54.6, 12.8)]),
-    ("Andaman & Nicobar", "India", [(92, 6.5, 94, 14)]),
+    ("Andaman & Nicobar", "India", [(92, 6.5, 94.5, 14)]),
     ("Bioko", "Equatorial Guinea", [(8.4, 3.1, 9.0, 3.9)]),
     ("Réunion", "France", [(55.1, -21.5, 55.9, -20.8)]),
     ("Guadeloupe", "France", [(-61.9, 15.8, -61.0, 16.6)]),
     ("Martinique", "France", [(-61.3, 14.3, -60.8, 14.9)]),
+    # Far-flung islands, so a --crop of their country doesn't stretch to them
+    ("Mayotte", "France", [(44.9, -13.1, 45.4, -12.5)]),
+    ("Jan Mayen", "Norway", [(-9.2, 70.7, -7.8, 71.2)]),
+    ("Bouvet Island", "Norway", [(3.2, -54.6, 3.6, -54.3)]),
+    ("Macquarie Island", "Australia", [(158.7, -54.8, 159.0, -54.4)]),
+    ("Sala y Gómez", "Chile", [(-105.6, -26.6, -105.3, -26.3)]),
+    ("Trindade", "Brazil", [(-29.5, -20.7, -28.7, -20.4)]),
+    ("Caribbean Netherlands", "Netherlands", [(-68.5, 11.9, -68.1, 12.4), (-63.4, 17.4, -62.9, 17.7)]),
+    ("Tokelau", "New Zealand", [(-172.7, -9.6, -171.0, -8.4)]),
+    ("Chatham Islands", "New Zealand", [(-177.0, -44.6, -175.8, -43.5)]),
+    ("Kermadec Islands", "New Zealand", [(-179.0, -31.6, -177.5, -29.0)]),
+    ("Prince Edward Islands", "South Africa", [(37.5, -47.1, 38.1, -46.5)]),
+    ("Ogasawara Islands", "Japan", [(140.5, 20.0, 154.5, 28.0)]),
 ]
 
 
@@ -81,7 +94,8 @@ def child_regions(countries: gpd.GeoDataFrame, countries_projected: gpd.GeoDataF
             lon, lat = frame.to_lonlat.transform(*p.representative_point().coords[0])
             if any(lon0 <= lon <= lon1 and lat0 <= lat <= lat1 for lon0, lat0, lon1, lat1 in boxes):
                 picked.append(p)
-        if not picked:
+        if not picked and frame.globe:
             raise ValueError(f"hand-picked region {name!r} selected no polygons of {parent_name!r}: check its HAND_PICKED boxes")
-        regions.append(ChildRegion(name, label_name(parent), parent, picked))
+        if picked:
+            regions.append(ChildRegion(name, label_name(parent), parent, picked))
     return regions

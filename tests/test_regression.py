@@ -10,15 +10,11 @@ from PIL import Image
 from conftest import TESTS, check_fingerprint, environment, fingerprint, render
 
 
-def test_render_default(tmp_path: Path) -> None:
-    check_fingerprint("default", render(tmp_path))
-
-
 def test_render_earth(tmp_path: Path) -> None:
     check_fingerprint("earth", render(tmp_path, "--color", "earth"))
 
 
-def test_render_pins(tmp_path: Path) -> None:
+def test_render_pins(tmp_path: Path) -> None:  # the default map too, under the pins
     check_fingerprint("pins", render(tmp_path, "--pins", str(TESTS / "pins.txt")))
 
 
@@ -34,8 +30,16 @@ def test_render_water(tmp_path: Path) -> None:
     check_fingerprint("water", render(tmp_path, "--label", "countries,water"))
 
 
-def test_render_rivers(tmp_path: Path) -> None:
-    check_fingerprint("rivers", render(tmp_path, "--rivers"))
+def test_render_crop(tmp_path: Path) -> None:
+    check_fingerprint("crop", render(tmp_path, "--crop", "France"))
+
+
+def test_render_crop_water(tmp_path: Path) -> None:
+    check_fingerprint("crop_water", render(tmp_path, "--crop", "160:-150,48:72", "--label", "countries,territories,water", "--disputed"))
+
+
+def test_render_crop_pacific_water(tmp_path: Path) -> None:  # Equal Earth; "water" in the name keys the marine file
+    check_fingerprint("crop_pacific_water", render(tmp_path, "--crop", "pacific", "--label", "countries,oceans,seas"))
 
 
 def test_render_failure_shows_stderr(tmp_path: Path) -> None:
@@ -48,7 +52,7 @@ def test_environment_includes_map_data() -> None:
     assert {"countries", "states", "lakes", "raster"} <= env.keys()
     assert "raster" not in environment("default")
     assert "marine" in environment("water") and "marine" not in environment("default")
-    assert "rivers" in environment("rivers") and "rivers" not in environment("default")
+    assert "rivers" in environment("water") and "rivers" not in environment("default")
 
 
 def tiny_png(tmp_path: Path) -> Path:
@@ -74,22 +78,24 @@ def test_version_mismatch_skips(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
         check_fingerprint("tiny", png, store=store)
 
 
-def test_render_topographic(tmp_path: Path) -> None:
-    check_fingerprint("topographic", render(tmp_path, "--type", "topographic"))
+@pytest.mark.xdist_group("topographic_crop")  # 5 GB
+def test_render_topographic_crop(tmp_path: Path) -> None:
+    check_fingerprint("topographic_crop", render(tmp_path, "--type", "topographic", "--ocean", "--crop", "5:17,40:49"))
 
 
+@pytest.mark.xdist_group("topographic")  # 3.3 GB each, one at a time
 def test_render_topographic_ocean(tmp_path: Path) -> None:
     check_fingerprint("topographic_ocean", render(tmp_path, "--type", "topographic", "--ocean"))
 
 
+@pytest.mark.xdist_group("topographic")  # 3.3 GB each, one at a time
 def test_render_topographic_water(tmp_path: Path) -> None:
-    check_fingerprint("topographic_water", render(tmp_path, "--type", "topographic", "--label", "water"))
-
-
-def test_topographic_outside_is_transparent(tmp_path: Path) -> None:
-    im = np.asarray(Image.open(render(tmp_path, "--type", "topographic", "--dpi", "50", "--pins", str(TESTS / "pins.txt"))))
+    png = render(tmp_path, "--type", "topographic", "--label", "water")
+    check_fingerprint("topographic_water", png)
+    im = np.asarray(Image.open(png))
     h, w = im.shape[:2]
-    assert im[h // 2, 2, 3] == 0 and im[2, w // 10, 3] == 0  # left edge at the equator; top-left corner (no bar there)
+    assert im[h // 2, 2, 3] == 0 and im[2, w // 10, 3] == 0  # transparent outside the globe: left edge at the equator;
+    # top-left corner (no bar there)
 
 
 def test_environment_includes_topographic_data() -> None:

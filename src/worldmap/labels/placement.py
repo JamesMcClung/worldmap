@@ -183,8 +183,8 @@ def cost_batch(p: Placement, labels: Sequence[Label | WaterLabel], i: int, cx: n
         if other_out.any():
             cost += weights.leader_crosses_leader * segments_cross(np.broadcast_to(start, (n_candidates, 1, 2)), end, their_start, their_end).sum(1)
     else:
-        shapes = shapely.box(boxes[:, 0], boxes[:, 1], boxes[:, 2], boxes[:, 3])
-        inside = shapely.area(shapely.intersection(shapes, label.geom)) / (w * h)
+        # clip_by_rect, not shapely.intersection: GEOS's overlay costs ~80 us a box, even against a small country
+        inside = np.array([shapely.area(shapely.clip_by_rect(label.geom, *b)) for b in boxes]) / (w * h)
         cost += weights.outside_country * (1 - inside) + weights.drift * np.hypot(cx - anchor_x, cy - anchor_y) / h
     cost += weights.outside_globe * ~shapely.contains(outline_px, shapely.box(boxes[:, 0], boxes[:, 1], boxes[:, 2], boxes[:, 3]))
     if p.water.any():  # water glyphs: overlap, and our own leader crossing them
@@ -305,7 +305,7 @@ def place_labels(labels: list[Label], frame: MapFrame, seed: int = SEED, weights
             break
         for i in bad:
             size = float(labels[i].text.get_fontsize())
-            if size > SHRINK_MIN_PT:
+            if size > SHRINK_MIN_PT * frame.label_scale:
                 labels[i].text.set_fontsize(size * SHRINK_FACTOR)
                 p.width[i] *= SHRINK_FACTOR
                 p.height[i] *= SHRINK_FACTOR
@@ -343,6 +343,14 @@ def place_all(labels: list[Label], water: list[WaterLabel], frame: MapFrame) -> 
     return place_with_water(labels, kept + rivers, frame, start, fixed=p.n)
 
 
+def outside_outline(p: Placement, frame: MapFrame) -> set[int]:
+    """Water labels with a glyph box not wholly inside the frame's outline."""
+    outline_px = frame.to_px(Polygon(frame.outline), simplify=OUTLINE_SIMPLIFY_PX)
+    g = glyph_boxes(p)
+    inside = shapely.contains(outline_px, shapely.box(g[:, 0], g[:, 1], g[:, 2], g[:, 3]))
+    return {int(i) for i in p.owner[~inside]}
+
+
 def place_with_water(labels: list[Label], water: list[WaterLabel], frame: MapFrame,
                      start: tuple[np.ndarray, np.ndarray] | None = None, fixed: int = 0) -> tuple[Placement, list[WaterLabel]]:
     """Place country and water labels together, dropping water labels until none fails, and return the placement
@@ -363,8 +371,9 @@ def place_with_water(labels: list[Label], water: list[WaterLabel], frame: MapFra
             return p, kept
         n_country = len(labels)
         clashing = {i for i in clashes(p)[1] if i >= fixed}
+        outside = set() if frame.globe else outside_outline(p, frame)  # in a crop: under a colour bar
         failing = [i for i in range(max(n_country, fixed), p.n)
-                   if kept[i - n_country].inside_share(p.x[i], p.y[i]) < WATER_MIN_INSIDE
+                   if kept[i - n_country].inside_share(p.x[i], p.y[i]) < WATER_MIN_INSIDE or i in outside
                    or (i in clashing and (kept[i - n_country].size <= kept[i - n_country].min_size * (1 + 1e-9)
                                           or kept[i - n_country].size == sizes_before[i - n_country]))]  # can't or didn't shrink
         if not failing and not clashing:
