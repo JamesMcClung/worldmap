@@ -189,12 +189,11 @@ def crop_frame(region: BaseGeometry, margin: float) -> MapFrame:
     lon0, lat0 = sphere_centre(region)
     for _ in range(RECENTRE_ROUNDS):
         frame = fit_frame(region, margin, lon0, lat0)
-        mid_x, mid_y = (frame.xmin + frame.xmax) / 2, (frame.ymin + frame.ymax) / 2
-        azimuthal = "+proj=laea" in frame.crs
-        if np.hypot(mid_x, mid_y if azimuthal else 0) < RECENTRE_TOLERANCE * min(frame.width, frame.height):
+        mid_x, mid_y = (frame.xmin + frame.xmax) / 2, (frame.ymin + frame.ymax) / 2 if frame.azimuthal else 0.0
+        if np.hypot(mid_x, mid_y) < RECENTRE_TOLERANCE * min(frame.width, frame.height):
             break
-        lon, lat = frame.to_lonlat.transform(mid_x, mid_y if azimuthal else 0)
-        lon0, lat0 = float(lon), float(lat) if azimuthal else lat0
+        lon, lat = frame.to_lonlat.transform(mid_x, mid_y)
+        lon0, lat0 = float(lon), float(lat) if frame.azimuthal else lat0
     return with_label_scale(frame)
 
 
@@ -301,16 +300,15 @@ def centre_recipe(region: BaseGeometry, margin: float) -> CentreCrop | None:
     that size would pick the other projection."""
     target = crop_frame(region, margin)
     lon0, lat0 = canvas_centre(target)
-    azimuthal = "+proj=laea" in target.crs
-    top = 2.0 * AZIMUTHAL_MAX_DEG if azimuthal else 360.0  # the most a centre crop in that projection can be
+    top = 2.0 * AZIMUTHAL_MAX_DEG if target.azimuthal else 360.0  # the most a centre crop in that projection can be
     (w_lo, w_hi), (h_lo, h_hi) = (0.0, top), (0.0, top)
     for _ in range(CENTRE_BISECTIONS):
-        got = centre_frame((lon0, lat0, (w_lo + w_hi) / 2, (h_lo + h_hi) / 2), azimuthal)
+        got = centre_frame((lon0, lat0, (w_lo + w_hi) / 2, (h_lo + h_hi) / 2), target.azimuthal)
         w_lo, w_hi = ((w_lo + w_hi) / 2, w_hi) if got.width < target.width else (w_lo, (w_lo + w_hi) / 2)
         h_lo, h_hi = ((h_lo + h_hi) / 2, h_hi) if got.height < target.height else (h_lo, (h_lo + h_hi) / 2)
     crop = lon0, lat0, (w_lo + w_hi) / 2, (h_lo + h_hi) / 2
     got = centre_frame(crop)
-    same = ("+proj=laea" in got.crs) == ("+proj=laea" in target.crs)
+    same = got.azimuthal == target.azimuthal
     return crop if same and max(abs(got.width / target.width - 1), abs(got.height / target.height - 1)) < RECIPE_TOLERANCE else None
 
 

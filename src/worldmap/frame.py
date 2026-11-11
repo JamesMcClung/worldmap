@@ -108,6 +108,11 @@ class MapFrame:
         return DPI / self.px_per_unit
 
     @property
+    def azimuthal(self) -> bool:
+        """A crop in Lambert azimuthal equal-area (else the Robinson globe or an Equal Earth crop)."""
+        return "+proj=laea" in self.crs
+
+    @property
     def canvas(self) -> Polygon:
         return box(self.xmin, self.ymin, self.xmax, self.ymax)
 

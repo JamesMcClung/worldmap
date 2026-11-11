@@ -77,7 +77,7 @@ def test_centre_crop_is_centred_and_sized_on_the_ground() -> None:
     from worldmap.crop import KM_PER_DEG, canvas_centre, centre_frame
 
     f = centre_frame((2, 46, 20, 10))
-    assert "+proj=laea" in f.crs and canvas_centre(f) == pytest.approx((2, 46), abs=1e-6)
+    assert f.azimuthal and canvas_centre(f) == pytest.approx((2, 46), abs=1e-6)
     for x, y, half in ((f.xmax, 0, 10), (f.xmin, 0, 10), (0, f.ymax, 5), (0, f.ymin, 5)):  # the edges' middles
         lon, lat = f.to_lonlat.transform(x, y)
         assert Geod(ellps="WGS84").inv(2, 46, lon, lat)[2] / 1000 == pytest.approx(half * KM_PER_DEG, rel=2e-3)
@@ -102,7 +102,7 @@ def test_sphere_centre_across_antimeridian() -> None:
 
 def test_crop_frame_france_box() -> None:
     f = crop_frame(box_region((-5, 42, 9, 51)), 0)
-    assert not f.globe and "+proj=laea" in f.crs
+    assert not f.globe and f.azimuthal
     assert len(f.clip) == 1 and f.clip[0][0] < -5 and f.clip[0][2] > 9
     assert len(f.outline) == 4
 
@@ -238,7 +238,7 @@ def test_label_sizes_scale_in_a_crop() -> None:
 def test_wide_regions_use_equal_earth() -> None:
     from worldmap.crop import CROP_MARGIN
 
-    assert "+proj=laea" in crop_frame(box_region((-179, 18, -66, 72)), CROP_MARGIN).crs  # US with Alaska and Hawaii
+    assert crop_frame(box_region((-179, 18, -66, 72)), CROP_MARGIN).azimuthal  # US with Alaska and Hawaii
     pacific = crop_frame(box_region((120, -60, -70, 60)), 0)
     assert "+proj=eqearth" in pacific.crs and "+lon_0=-155" in pacific.crs
     assert len(pacific.outline) == 4  # the canvas, well inside the globe
@@ -310,7 +310,7 @@ def test_clip_edges_follow_their_parallels() -> None:
 def test_crops_are_centred_on_their_map(region: shapely.Geometry) -> None:
     f = crop_frame(region, 0.1)
     assert abs(f.xmin + f.xmax) / 2 < 1e-3 * f.width
-    if "+proj=laea" in f.crs:
+    if f.azimuthal:
         assert abs(f.ymin + f.ymax) / 2 < 1e-3 * f.height
 
 
