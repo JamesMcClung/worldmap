@@ -37,6 +37,11 @@ def private_caches(tmp_path_factory: pytest.TempPathFactory):
         yield private
 
 
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """The renders first (5-40 s each), so xdist workers don't wait at the end on one that started late."""
+    items.sort(key=lambda item: item.path.name != "test_regression.py")
+
+
 def render(tmp_path: Path, *args: str) -> Path:
     """Run `python -m worldmap out.png ARGS...` in tmp_path and return the output path. A failed run fails the
     test with the end of its stderr (the traceback)."""
