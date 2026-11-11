@@ -98,14 +98,12 @@ def test_render_topographic_ocean(tmp_path: Path) -> None:
 
 @pytest.mark.xdist_group("topographic")  # 3.3 GB each, one at a time
 def test_render_topographic_water(tmp_path: Path) -> None:
-    check_fingerprint("topographic_water", render(tmp_path, "--type", "topographic", "--label", "water"))
-
-
-@pytest.mark.xdist_group("topographic")  # 3.3 GB each, one at a time
-def test_topographic_outside_is_transparent(tmp_path: Path) -> None:
-    im = np.asarray(Image.open(render(tmp_path, "--type", "topographic", "--dpi", "50", "--pins", str(TESTS / "pins.txt"))))
+    png = render(tmp_path, "--type", "topographic", "--label", "water")
+    check_fingerprint("topographic_water", png)
+    im = np.asarray(Image.open(png))
     h, w = im.shape[:2]
-    assert im[h // 2, 2, 3] == 0 and im[2, w // 10, 3] == 0  # left edge at the equator; top-left corner (no bar there)
+    assert im[h // 2, 2, 3] == 0 and im[2, w // 10, 3] == 0  # transparent outside the globe: left edge at the equator;
+    # top-left corner (no bar there)
 
 
 def test_environment_includes_topographic_data() -> None:
