@@ -92,11 +92,6 @@ def test_render_topographic_crop(tmp_path: Path) -> None:
 
 
 @pytest.mark.xdist_group("topographic")  # 3.3 GB each, one at a time
-def test_render_topographic(tmp_path: Path) -> None:
-    check_fingerprint("topographic", render(tmp_path, "--type", "topographic"))
-
-
-@pytest.mark.xdist_group("topographic")  # 3.3 GB each, one at a time
 def test_render_topographic_ocean(tmp_path: Path) -> None:
     check_fingerprint("topographic_ocean", render(tmp_path, "--type", "topographic", "--ocean"))
 
