@@ -66,7 +66,7 @@ def earth_values(countries: gpd.GeoDataFrame) -> list[list[list[float]]]:
         return [((lon + 180) / 360 * width, (90 - lat) / 180 * height) for lon, lat in coords]
 
     values = []
-    for geom in countries.geometry.intersection(box(-180, -90, 180, 90)):
+    for geom in countries.geometry.intersection(box(*WORLD)):
         polys = list(geom.geoms) if isinstance(geom, MultiPolygon) else [geom]
         per_poly: list[PixelStats | None] = []
         all_pixels = []
