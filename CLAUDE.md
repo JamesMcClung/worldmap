@@ -183,7 +183,7 @@ oceans) gets Equal Earth centred on its longitude instead, clipped a hair either
 - Every stage projects through the frame: `frame.project(gdf)` (there is no `data.project`). The world frame
   (`globe=True`) clips to the +-180/90 box and projects to Robinson exactly as before. A crop frame (`globe=False`)
   first clips to lon/lat `clip` boxes (`clip_boxes`: the canvas's lon/lat extent + `CLIP_PAD_DEG`; LAEA is singular
-  at the antipode; data and boxes get a vertex every `CLIP_SEGMENT_DEG` first, or long edges project as chords: the
+  at the antipode; data and boxes get a vertex every `SEGMENT_DEG` first, or long edges project as chords: the
   marine areas follow parallels with few vertices), joins pieces Natural Earth splits at +-180 when the crop crosses it (`join_at_antimeridian`,
   snapped to `SEAM_GRID_DEG`, or the cut shows as a border through Chukotka; a crop right round a pole snaps the projected data to
   `SEAM_SNAP_PX` instead, merging Antarctica's +-180 edges, a slit from the pole), then `cut`s to the canvas grown by

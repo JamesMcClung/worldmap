@@ -15,7 +15,8 @@ from shapely.geometry.base import BaseGeometry
 from worldmap.data import is_labeled, load_countries, load_disputed, load_lakes
 from worldmap.disputed import disputed_label_args, load_disputes
 from worldmap.earth import Fill
-from worldmap.frame import ANTIMERIDIAN_EPS, OUTLINE_POINTS, PROJECT_PAD, LonLatBox, MapFrame, lon_ranges, make_frame
+from worldmap.frame import (ANTIMERIDIAN_EPS, OUTLINE_POINTS, PROJECT_PAD, SEGMENT_DEG, LonLatBox, MapFrame, lon_ranges,
+                            make_frame)
 from worldmap.labels.label import RENAME
 from worldmap.labels.regions import PARENT_SHORT, child_regions, polygons
 from worldmap.labels.water import kinds_from_labels, load_water_bodies
@@ -28,7 +29,6 @@ CropBox = tuple[float, float, float, float]  # west lon, south lat, east lon, no
 CentreCrop = tuple[float, float, float, float]  # centre lon, lat; width, height in degrees of arc on the ground
 CROP_MARGIN = 0.10  # a named crop's margin on each side, as a fraction of the region's projected width/height
 CLIP_PAD_DEG = 5  # lon/lat clip boxes reach this far past what the canvas shows
-SEGMENT_DEG = 0.5  # lon/lat edges are split this finely before projecting (they curve in the crop's projection)
 EDGE_NUDGE = 1e-9  # relative: ~2 cm on the Robinson globe
 CLIP_SAMPLES = 65  # points per side of the grid sampled to find the canvas's lon/lat extent
 AZIMUTHAL_MAX_DEG = 60  # a region reaching further than this from its centre gets Equal Earth: azimuthal shapes would stretch
