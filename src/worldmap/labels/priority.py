@@ -53,7 +53,7 @@ def steps(kinds: Sequence[str], sizes: Sequence[float], order: Sequence[str], ra
     return out
 
 
-N_DROPPED = 3  # the rank table names this many of each kind's dropped labels
+DROPPED_WIDTH = 20  # the rank table's dropped labels of a kind are cut to this many characters, "..." included
 
 GREEN, YELLOW, RED, PLAIN = "\x1b[32m", "\x1b[33m", "\x1b[31m", "\x1b[0m"
 
@@ -62,7 +62,7 @@ def rank_table(plan: list[tuple[int, list[int]]], kinds: Sequence[str], order: S
                names: Sequence[str] = ()) -> str:
     """How many of each rank's labels were placed, as text: a row per kind (in `order`, those with any), then of
     all kinds, then that as a percentage; on the right, of every rank, then as a percentage, then (with `names`) a
-    kind's N_DROPPED biggest dropped labels ('-' if none, '...' if more; the plan has a kind's labels by size). In
+    kind's dropped labels, biggest first, cut to DROPPED_WIDTH ('-' if none; the plan has a kind's labels by size). In
     colour a cell is green if all were placed, red if none, else yellow; of the rank cells of a kind, only a yellow
     one shows how many ('28/36'). Lines set off the header and the totals, and the rank, total and dropped columns."""
     total = {kind: np.zeros(N_RANKS, int) for kind in [*order, "all"]}
@@ -86,8 +86,8 @@ def rank_table(plan: list[tuple[int, list[int]]], kinds: Sequence[str], order: S
         return f"{hue}{str(of) if short and hue != YELLOW else text:>8}{PLAIN}"
 
     def gone(kind: str) -> str:
-        out = dropped[kind]
-        return " " + (", ".join(out[:N_DROPPED]) + (", ..." if len(out) > N_DROPPED else "") if out else "-")
+        text = ", ".join(dropped[kind]) or "-"
+        return " " + (text if len(text) <= DROPPED_WIDTH else text[:DROPPED_WIDTH - 3].rstrip(", ") + "...")
 
     def line(parts: list[str]) -> str:
         return " │".join(parts).rstrip()

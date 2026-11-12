@@ -54,17 +54,17 @@ def test_rank_table() -> None:
         "%            │     67%       -      0%       -       - │     50%")
 
 
-def test_rank_table_names_the_biggest_three_dropped() -> None:
-    """A kind's in plan order (by size), '...' if there are more, '-' if none; none for all kinds together."""
+def test_rank_table_names_the_biggest_dropped() -> None:
+    """A kind's in plan order (by size), cut to 20 characters, '...' included, '-' if none; none for all kinds together."""
     plan = [(1, [0, 1, 2, 3, 4]), (1, [5]), (2, [6])]
     kinds = ["seas"] * 5 + ["rivers", "lakes"]
-    assert rank_table(plan, kinds, ["seas", "rivers", "lakes"], placed={1, 6}, color=False, names="ABCDEFG") == (
+    assert rank_table(plan, kinds, ["seas", "rivers", "lakes"], placed={1, 6}, color=False, names=["Aaaa", "B", "Cccc", "Ddddd", "Eeeeeeee", "F", "G"]) == (
         "rank         │       1       2       3       4       5 │     all       % │ dropped\n"
-        "─────────────┼─────────────────────────────────────────┼─────────────────┼─────────────\n"
-        "seas         │     1/5       -       -       -       - │     1/5     20% │ A, C, D, ...\n"
+        "─────────────┼─────────────────────────────────────────┼─────────────────┼─────────────────────\n"
+        "seas         │     1/5       -       -       -       - │     1/5     20% │ Aaaa, Cccc, Ddddd...\n"
         "rivers       │     0/1       -       -       -       - │     0/1      0% │ F\n"
         "lakes        │       -     1/1       -       -       - │     1/1    100% │ -\n"
-        "─────────────┼─────────────────────────────────────────┼─────────────────┼─────────────\n"
+        "─────────────┼─────────────────────────────────────────┼─────────────────┼─────────────────────\n"
         "all          │     1/6     1/1       -       -       - │     2/7     29% │\n"
         "%            │     17%    100%       -       -       - │     29%         │")
 
