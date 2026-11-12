@@ -4,15 +4,17 @@ river's length) against the biggest of that kind in the frame; rank by rank, the
 from collections.abc import Callable, Sequence
 
 import numpy as np
+import shapely
 
 from worldmap.frame import MapFrame
 from worldmap.labels.label import Label
 from worldmap.labels.placement import FIXED, FREE, NUDGE, SHRINK_MIN_PT, Placement, clash, outside_outline, place_labels, rects_of, subset
-from worldmap.labels.water import WATER_KINDS, WATER_MIN_INSIDE, WaterLabel
+from worldmap.labels.water import WATER_KINDS, WaterLabel
 
 N_RANKS = 5
 RANK_STEP = 10.0  # rank k holds the labels down to 1 / RANK_STEP^k of their kind's biggest; the last, the rest
 
+IN_MIN_INSIDE = 0.5  # a label on its feature (not 'out') must be at least this much over it: a country's box, a water label's glyphs
 NUDGE_MIN_SCALE = 0.9  # a nudged label shrinks no further than this share of the size it settled at
 
 Ranker = Callable[[Sequence[str], Sequence[float]], np.ndarray]
@@ -51,14 +53,21 @@ def steps(kinds: Sequence[str], sizes: Sequence[float], order: Sequence[str], ra
     return out
 
 
+def inside_share(p: Placement, k: int, label: Label) -> float:
+    """The share of country label k's box over its country."""
+    x0, y0 = p.x[k] - p.width[k] / 2, p.y[k] - p.height[k] / 2
+    return float(shapely.area(shapely.clip_by_rect(label.geom, x0, y0, x0 + p.width[k], y0 + p.height[k])) / (p.width[k] * p.height[k]))
+
+
 def place_by_priority(labels: list[Label], water: list[WaterLabel], frame: MapFrame, order: Sequence[str],
                       rank: Ranker = ranks_per_kind) -> tuple[Placement, list[Label], list[WaterLabel]]:
     """Place the labels step by step (steps, with `rank`), returning the placement of those kept (country labels first, then
     water labels, as the draw functions take them) and the kept labels. In each step the step's labels are free,
     the labels already placed of its rank and the rank before are nudged (they pay for leaving where they settled
     and shrink to no less than NUDGE_MIN_SCALE of their settled size), and the rest stay put. Then the step's
-    labels are checked, smallest first: one clashing with a label still kept, or a water label mostly off its
-    water (or, in a crop, outside the outline), is skipped for good."""
+    labels are checked, smallest first: one clashing with a label still kept, or a water label under
+    IN_MIN_INSIDE over its water (or, in a crop, outside the outline), is skipped for good; a country label under
+    IN_MIN_INSIDE over its country becomes an 'out' label, with a leader, and the step is solved again."""
     items: list[Label | WaterLabel] = [*labels, *water]
     n_country = len(labels)
     plan = steps([item.kind for item in items], [item.full_size for item in items], order, rank)
@@ -115,10 +124,14 @@ def place_by_priority(labels: list[Label], water: list[WaterLabel], frame: MapFr
             among = np.ones(len(at), bool)
             outside = set() if frame.globe else outside_outline(p, frame)
             index = {int(i): k for k, i in enumerate(at)}
-            retry, failed = False, []
+            retry, failed, to_leader = False, [], False
             for n, i in reversed(list(enumerate(new))):  # smallest first: of two clashing, the smaller goes
                 k, item = index[i], items[i]
-                off = isinstance(item, WaterLabel) and (item.inside_share(p.x[k], p.y[k]) < WATER_MIN_INSIDE or k in outside)
+                if isinstance(item, Label) and not item.out and inside_share(p, k, item) < IN_MIN_INSIDE:
+                    item.out = True  # mostly off its country: beside it, with a leader, from the next solve
+                    to_leader = True
+                    continue
+                off = isinstance(item, WaterLabel) and (item.inside_share(p.x[k], p.y[k]) < IN_MIN_INSIDE or k in outside)
                 if off:  # pushed off its water by a smaller label of this step? then that one goes, and again
                     j = rival(p, k, [index[m] for m in new[n + 1:] if among[index[m]]])
                     if j is not None:
@@ -130,7 +143,7 @@ def place_by_priority(labels: list[Label], water: list[WaterLabel], frame: MapFr
                 if off or clash(p, k, among):
                     among[k] = False
                     failed.append(name(i))
-            if not retry:
+            if not retry and not to_leader:
                 skipped.extend(failed)
                 break
         kept = [int(i) for i in at[among]]

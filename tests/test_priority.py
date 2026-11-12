@@ -121,3 +121,20 @@ def test_crop_skips_water_labels_outside_the_outline() -> None:
 def test_nothing_to_place() -> None:
     p, labels, water = place_by_priority([], [], FRAME, ["countries"])
     assert p.n == 0 and labels == [] and water == []
+
+
+def test_water_label_mostly_off_its_water_is_skipped() -> None:
+    """Its body is 40% of its name's width wherever it goes."""
+    x, y = mid_atlantic_px(FRAME)
+    sea = water_label("Sea", (x, y), shapely.box(x - 12, y - 7, x + 12, y + 7), np.array([[-30.0, -7, 30, 7]]), WATER_MIN_PT)
+    assert place_by_priority([], [sized(sea, 1)], FRAME, ["seas"])[2] == []
+
+
+def test_country_pushed_off_its_country_gets_a_leader() -> None:
+    """A sea fixed over all of Atlantis and round it: its name goes outside, with a leader to it."""
+    country = atlantis(1)
+    x, y = mid_atlantic_px(FRAME)
+    sea = water_label("Sea", (x, y), shapely.box(x - 700, y - 700, x + 700, y + 700), np.array([[-700.0, -700, 700, 700]]), WATER_MIN_PT)
+    p, labels, kept = place_by_priority([country], [sized(sea, 1e6)], FRAME, ["countries", "seas"], rank=lambda kinds, sizes: np.array([3, 1]))
+    assert labels == [country] and country.out and bool(p.out[0])
+    assert [w.text for w in kept] == ["Sea"] and clashes(p) == []
