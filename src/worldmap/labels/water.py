@@ -47,8 +47,8 @@ _ocean_hue = srgb_to_oklch(to_rgb(OCEAN))[2]
 _fitted = fit_gamut(0.50, 0.08, _ocean_hue)
 assert _fitted is not None
 WATER_TEXT: RGB = _fitted[0]  # a deeper blue in the ocean's hue
-RIVER_LABEL_MAX_RANK = 6  # rivers of Natural Earth scalerank up to this get a name
-RIVER_MAX_PT, RIVER_MIN_PT = 8.5, 7  # river names: italic, this size at scalerank <= 1 down to RIVER_LABEL_MAX_RANK
+RIVER_SIZE_MAX_RANK = 6  # river names shrink with Natural Earth scalerank down to this, then stay at RIVER_MIN_PT
+RIVER_MAX_PT, RIVER_MIN_PT = 8.5, 7  # river names: italic, this size at scalerank <= 1 down to RIVER_SIZE_MAX_RANK
 RIVER_SCALE_MAX = 1.2  # river names grow with a crop's label_scale up to this, no more: they stay small
 RIVER_GAP_EM = 0.3  # baseline height over the river
 RIVER_CORRIDOR_EM = 1.6  # a river name's glyph centres should be within this of its river
@@ -238,7 +238,7 @@ def river_length(text: str, part: LineString, frame: MapFrame) -> float:
 
 
 def load_river_bodies(frame: MapFrame) -> list[WaterBody]:
-    """One body per river name of scalerank <= RIVER_LABEL_MAX_RANK: the longest path through its features
+    """One body per drawn river name: the longest path through its features
     (longest_paths), plus any other path at least RIVER_REPEAT_M from those kept (two rivers with one name). Rank =
     the path's most important feature."""
     rivers = frame.visible(frame.project(load_rivers()))
@@ -246,8 +246,6 @@ def load_river_bodies(frame: MapFrame) -> list[WaterBody]:
     rivers["text"] = rivers.name_en.map(river_name)
     bodies = []
     for text, group in rivers[rivers.text.notna()].groupby("text"):
-        if group.scalerank.min() > RIVER_LABEL_MAX_RANK:
-            continue
         parts = longest_paths(list(shapely.get_parts(shapely.line_merge(shapely.union_all(group.geometry.values)))), RIVER_JOIN_M)
         kept: list[LineString] = []
         for part in parts:
@@ -255,8 +253,7 @@ def load_river_bodies(frame: MapFrame) -> list[WaterBody]:
                 kept.append(part)
         for part in kept:
             rank = int(group.scalerank[shapely.dwithin(group.geometry.values, part, 1.0)].min())
-            if rank <= RIVER_LABEL_MAX_RANK:
-                bodies.append(WaterBody(str(text), "rivers", rank, part, river_length(str(text), part, frame)))
+            bodies.append(WaterBody(str(text), "rivers", rank, part, river_length(str(text), part, frame)))
     return bodies
 
 
@@ -440,7 +437,7 @@ def body_curve(body: WaterBody) -> np.ndarray:
 
 def river_size(rank: int) -> float:
     """A river name's size (pt) from its scalerank."""
-    t = min(max(rank - 1, 0), RIVER_LABEL_MAX_RANK - 1) / (RIVER_LABEL_MAX_RANK - 1)
+    t = min(max(rank - 1, 0), RIVER_SIZE_MAX_RANK - 1) / (RIVER_SIZE_MAX_RANK - 1)
     return RIVER_MAX_PT + t * (RIVER_MIN_PT - RIVER_MAX_PT)
 
 

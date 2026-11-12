@@ -190,6 +190,15 @@ def test_river_names_stay_small_in_a_crop() -> None:
     assert max(r.min_size for r in rivers) <= WATER_MIN_PT * RIVER_SCALE_MAX
 
 
+def test_every_drawn_river_is_a_candidate() -> None:
+    """Rivers of every drawn scalerank get a body (and so may be named), not only the bigger ones."""
+    from worldmap.crop import box_region, crop_frame
+    from worldmap.labels.water import load_river_bodies
+
+    bodies = load_river_bodies(crop_frame(box_region((5, 45, 15, 52)), 0))
+    assert max(b.rank for b in bodies) > 6
+
+
 def test_longest_paths_joins_gaps_and_takes_the_trunk() -> None:
     trunk = [LineString([(0, 0), (10, 0)]), LineString([(10.5, 0), (20, 0)])]  # a 0.5 gap (a lake)
     tributary = LineString([(10, 0), (10, 3)])
