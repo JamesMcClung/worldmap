@@ -11,7 +11,7 @@ from shapely.geometry import Polygon
 from worldmap.frame import MapFrame
 from worldmap.labels.geometry import nearest_point_on_rect, segment_hits_rects, segments_cross
 from worldmap.labels.label import Label
-from worldmap.labels.water import PX_PER_PT, WATER_MIN_INSIDE, WaterLabel
+from worldmap.labels.water import PX_PER_PT, WaterLabel
 
 SEED = 7
 OUTLINE_SIMPLIFY_PX = 0.5
@@ -53,7 +53,8 @@ class CostWeights:
     outside_globe: float = 1000  # any part of the label outside the globe outline
     outside_water: float = 20  # share of a water label's glyph boxes off its water body
     water_drift: float = 0.15  # a water label's distance from its anchor, in ems
-    nudge: float = 2.0  # a nudged label's distance from its home, in heights (water labels: ems)
+    nudge: float = 2.0  # a nudged label's distance from its home, in heights (water labels: ems)...
+    nudge_max: float = 2.0  # ...which can't be more than this
 
 
 @dataclass
@@ -322,7 +323,8 @@ def place_labels(labels: list[Label], frame: MapFrame, seed: int = SEED, weights
         if freedom[i] == NUDGE:
             item = items[i]
             unit = item.size * PX_PER_PT if isinstance(item, WaterLabel) else p.height[i]
-            cost += weights.nudge * np.hypot(cx - home_x[i], cy - home_y[i]) / unit
+            away = np.hypot(cx - home_x[i], cy - home_y[i]) / unit
+            cost += np.where(away <= weights.nudge_max, weights.nudge * away, np.inf)
         cost[0] -= stay_bias
         j = int(np.argmin(cost))
         p.x[i], p.y[i] = cx[j], cy[j]
@@ -372,76 +374,9 @@ def subset(p: Placement, keep: np.ndarray) -> Placement:
                      p.water[keep], p.parts[glyph_kept], new_index[p.owner[glyph_kept]])
 
 
-def water_touching(p: Placement, i: int, x: float, y: float) -> list[int]:
-    """The other water labels whose glyph boxes overlap water label i's when i is at (x, y)."""
-    mine = p.owner == i
-    g = p.parts[mine] + np.array([x, y, x, y])
-    others, owners = glyph_boxes(p)[~mine], p.owner[~mine]
-    ox = np.minimum(g[:, None, 2], others[:, 2]) - np.maximum(g[:, None, 0], others[:, 0])
-    oy = np.minimum(g[:, None, 3], others[:, 3]) - np.maximum(g[:, None, 1], others[:, 1])
-    return sorted({int(j) for j in owners[((ox > 0) & (oy > 0)).any(0)]})
-
-
-def place_all(labels: list[Label], water: list[WaterLabel], frame: MapFrame) -> tuple[Placement, list[WaterLabel]]:
-    """Country and water labels (place_with_water), then, if there are any, the river names around them: rivers
-    give way to everything else, so they can't push a country's name off it."""
-    rivers = [w for w in water if w.kind == "rivers"]
-    p, kept = place_with_water(labels, [w for w in water if w.kind != "rivers"], frame)
-    if not rivers:
-        return p, kept
-    start = (np.concatenate([p.x, [r.anchor_x for r in rivers]]), np.concatenate([p.y, [r.anchor_y for r in rivers]]))
-    return place_with_water(labels, kept + rivers, frame, start, fixed=p.n)
-
-
 def outside_outline(p: Placement, frame: MapFrame) -> set[int]:
     """Water labels with a glyph box not wholly inside the frame's outline."""
     outline_px = frame.to_px(Polygon(frame.outline), simplify=OUTLINE_SIMPLIFY_PX)
     g = glyph_boxes(p)
     inside = shapely.contains(outline_px, shapely.box(g[:, 0], g[:, 1], g[:, 2], g[:, 3]))
     return {int(i) for i in p.owner[~inside]}
-
-
-def place_with_water(labels: list[Label], water: list[WaterLabel], frame: MapFrame,
-                     start: tuple[np.ndarray, np.ndarray] | None = None, fixed: int = 0) -> tuple[Placement, list[WaterLabel]]:
-    """Place country and water labels together, dropping water labels until none fails, and return the placement
-    and the water labels kept. A water label fails when it ends mostly off its body, or still clashes at its
-    minimum size (or without having shrunk in that run: so every round drops or shrinks something, and the loop
-    ends). Each failing label and the water labels it touches (where it is, or would at its anchor) form a
-    group; the least important water label of each group is dropped and the rest re-placed from where they were.
-    Country labels are never dropped, and start each run at their own size. `start`: as in
-    place_labels; the first `fixed` labels stay put (FIXED) and are never dropped."""
-    sizes = [label.text.get_fontsize() for label in labels]
-    kept, dropped = list(water), []
-    while True:
-        for label, size in zip(labels, sizes):
-            label.text.set_fontsize(size)
-        sizes_before = [w.size for w in kept]
-        p = place_labels(labels, frame, water=kept, start=start, freedom=np.where(np.arange(len(labels) + len(kept)) < fixed, FIXED, FREE))
-        if not water:
-            return p, kept
-        n_country = len(labels)
-        clashing = {i for i in clashes(p) if i >= max(n_country, fixed)}
-        outside = set() if frame.globe else outside_outline(p, frame)  # in a crop: under a colour bar
-        failing = [i for i in range(max(n_country, fixed), p.n)
-                   if kept[i - n_country].inside_share(p.x[i], p.y[i]) < WATER_MIN_INSIDE or i in outside
-                   or (i in clashing and (kept[i - n_country].size <= kept[i - n_country].min_size * (1 + 1e-9)
-                                          or kept[i - n_country].size == sizes_before[i - n_country]))]  # can't or didn't shrink
-        if not failing and not clashing:
-            break
-        group = {i: i for i in range(n_country, p.n)}  # union-find over the water labels
-
-        def root(i: int) -> int:
-            while group[i] != i:
-                i = group[i]
-            return i
-
-        for f in failing:
-            for j in water_touching(p, f, p.x[f], p.y[f]) + water_touching(p, f, p.anchor_x[f], p.anchor_y[f]):
-                group[root(j)] = root(f)
-        drop = {max(i for i in group if root(i) == r) for r in {root(f) for f in failing}}
-        dropped += [kept[i - n_country].text for i in sorted(drop)]
-        stay = np.array([i not in drop for i in range(p.n)])
-        kept = [w for k, w in enumerate(kept) if n_country + k not in drop]
-        start = (p.x[stay], p.y[stay])  # clashing labels that can still shrink just go round again
-    print("water labels dropped:", dropped)
-    return p, kept

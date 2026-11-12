@@ -5,7 +5,7 @@ from matplotlib.path import Path
 
 from worldmap.frame import MapFrame, make_frame
 from worldmap.labels.label import Label, new_label
-from worldmap.labels.placement import FIXED, FREE, NUDGE, clashes, glyph_boxes, place_all, place_labels, place_with_water, subset
+from worldmap.labels.placement import FIXED, FREE, NUDGE, clashes, glyph_boxes, place_labels, subset
 from worldmap.labels import placement
 from worldmap.labels.water import OCEAN_MIN_PT, WATER_MIN_PT, WaterLabel
 from worldmap.render import new_figure
@@ -110,29 +110,6 @@ def water_label_far_from_its_geom(frame: MapFrame) -> WaterLabel:
     return water_label("Lonely", (x, y), shapely.box(x + 5000, y, x + 5010, y + 10), np.array([[-30.0, -7, 30, 7]]), WATER_MIN_PT)
 
 
-def test_drop_least_important(frame: MapFrame) -> None:
-    sea, bay = crossing_water_labels(frame)
-    p, kept = place_with_water([], [sea, bay], frame)
-    assert [w.text for w in kept] == ["Sea"]
-    assert clashes(p) == []
-
-
-def test_off_water_is_dropped(frame: MapFrame) -> None:
-    _, kept = place_with_water([], [water_label_far_from_its_geom(frame)], frame)
-    assert kept == []
-
-
-def test_country_labels_never_dropped(frame: MapFrame, one_label: list[Label], water_on_top_of_it: WaterLabel) -> None:
-    p, _ = place_with_water(one_label, [water_on_top_of_it], frame)
-    assert (~p.water).sum() == 1
-
-
-def test_no_water_is_place_labels(frame: MapFrame, two_labels: list[Label]) -> None:
-    a = place_labels(two_labels, frame)
-    b, kept = place_with_water(two_labels_copy(), [], frame)
-    assert kept == [] and np.array_equal(a.x, b.x) and np.array_equal(a.y, b.y)
-
-
 def always_clashing(p: placement.Placement, among: np.ndarray | None = None) -> list[int]:
     return [int(i) for i in np.flatnonzero(p.water)]
 
@@ -143,21 +120,6 @@ def test_oceans_shrink_no_smaller_than_ocean_floor(frame: MapFrame, monkeypatch:
     monkeypatch.setattr(placement, "clashes", always_clashing)  # every shrink round shrinks it
     place_labels([], frame, water=[ocean])
     assert ocean.size == pytest.approx(OCEAN_MIN_PT)
-
-
-def test_drop_loop_ends_when_nothing_can_shrink(frame: MapFrame, monkeypatch: pytest.MonkeyPatch) -> None:
-    import threading
-
-    x, y = mid_atlantic_px(frame)
-    sea = water_label("Sea", (x, y), shapely.box(x - 100, y - 20, x + 100, y + 20), np.array([[-60.0, -10, 60, 10]]), 14)
-    monkeypatch.setattr(placement, "clashes", always_clashing)  # a clash the solver never sees during its shrink rounds...
-    monkeypatch.setattr(placement, "SHRINK_ROUNDS", 0)  # ...so it is never shrunk
-    result: list = []
-    worker = threading.Thread(target=lambda: result.append(place_with_water([], [sea], frame)), daemon=True)
-    worker.start()
-    worker.join(timeout=30)
-    assert not worker.is_alive(), "place_with_water went round forever"
-    assert result[0][1] == []
 
 
 def test_fixed_labels_stay_put(frame: MapFrame, one_label: list[Label], water_on_top_of_it: WaterLabel) -> None:
@@ -195,30 +157,18 @@ def test_subset(frame: MapFrame, one_label: list[Label]) -> None:
     assert np.array_equal(glyph_boxes(q), glyph_boxes(p)[p.owner == 2])
 
 
-def test_rivers_give_way_to_countries(frame: MapFrame, one_label: list[Label], water_on_top_of_it: WaterLabel) -> None:
-    alone = place_labels([country_label(frame, "Atlantis", -35, 30, 500)], frame)
-    w = water_on_top_of_it
-    river = water_label("River", (w.anchor_x, w.anchor_y), w.geom, w.parts, 10, "rivers")
-    p, _ = place_all(one_label, [river], frame)
-    assert (p.x[0], p.y[0]) == (alone.x[0], alone.y[0])
-
-
-def test_crop_drops_water_labels_outside_the_outline(frame: MapFrame) -> None:
-    """A crop's outline can leave water under a colour bar: its name can't go there, so it is dropped."""
-    from dataclasses import replace
-
-    sea, _ = crossing_water_labels(frame)
-    x, y = frame.px_to_map(np.array(mid_atlantic_px(frame)[0]), np.array(mid_atlantic_px(frame)[1]))
-    half = 2000 / frame.px_per_unit  # an outline that leaves out the sea, far off to one side
-    cropped = replace(frame, globe=False, outline=[(x + half, y - half), (x + 3 * half, y - half), (x + 3 * half, y + half), (x + half, y + half)])
-    _, kept = place_with_water([], [sea], cropped)
-    assert kept == []
-    _, kept = place_with_water([], [crossing_water_labels(frame)[0]], frame)
-    assert [w.text for w in kept] == ["Sea"]  # on the globe it stays
-
-
 def test_water_floor_scales_with_the_frame() -> None:
     parts = np.array([[0.0, 0.0, 10.0, 10.0]])
     sea = water_label("Sea", (0, 0), shapely.box(0, 0, 10, 10), parts, 20)
     sea.label_scale = 2
     assert sea.min_size == 2 * WATER_MIN_PT
+
+
+def test_nudge_goes_no_further_than_nudge_max(frame: MapFrame, one_label: list[Label]) -> None:
+    """A tall sea fixed on top of a nudged country label (clearing it takes 3 heights): it gives way only so far."""
+    label = one_label[0]
+    w, h = label.width, label.height
+    tall = water_label("Sea", (label.anchor_x, label.anchor_y), label.geom, np.array([[-w / 2, -2.5 * h, w / 2, 2.5 * h]]), 10)
+    start = (np.array([label.anchor_x, label.anchor_x]), np.array([label.anchor_y, label.anchor_y]))
+    p = place_labels(one_label, frame, water=[tall], start=start, freedom=np.array([NUDGE, FIXED]))
+    assert np.hypot(p.x[0] - label.anchor_x, p.y[0] - label.anchor_y) <= 2 * h + 1e-9  # nudge_max
