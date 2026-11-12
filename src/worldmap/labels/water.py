@@ -47,7 +47,7 @@ _fitted = fit_gamut(0.50, 0.08, _ocean_hue)
 assert _fitted is not None
 WATER_TEXT: RGB = _fitted[0]  # a deeper blue in the ocean's hue
 RIVER_LABEL_MAX_RANK = 6  # rivers of Natural Earth scalerank up to this get a name
-RIVER_MAX_PT, RIVER_MIN_PT = 10, 7  # river names: italic, this size at scalerank <= 1 down to RIVER_LABEL_MAX_RANK
+RIVER_MAX_PT, RIVER_MIN_PT = 8.5, 7  # river names: italic, this size at scalerank <= 1 down to RIVER_LABEL_MAX_RANK
 RIVER_SCALE_MAX = 1.2  # river names grow with a crop's label_scale up to this, no more: they stay small
 RIVER_GAP_EM = 0.3  # baseline height over the river
 RIVER_CORRIDOR_EM = 1.6  # a river name's glyph centres should be within this of its river
