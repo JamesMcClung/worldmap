@@ -140,7 +140,7 @@ def place_by_priority(labels: list[Label], water: list[WaterLabel], frame: MapFr
     plan = steps(kinds, [item.full_size for item in items], order, rank)
     rank_of = {i: r for r, members in plan for i in members}
     x = {i: item.anchor_x for i, item in enumerate(items)}
-    y = dict((i, item.anchor_y) for i, item in enumerate(items))
+    y = {i: item.anchor_y for i, item in enumerate(items)}
     settled: dict[int, tuple[float, float, float]] = {}  # x, y, size where each kept label settled
     kept: list[int] = []
     skipped: list[str] = []
