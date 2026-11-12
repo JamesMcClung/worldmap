@@ -73,6 +73,7 @@ Importing any module has no side effects; only `cli.main` (after choosing the ba
 | `labels/kernels.py` | numba (`@njit(cache=True)`) loops behind `cost_batch`, `clash` and `candidates`; weights passed as an array in `CostWeights` field order (`weight_array`) |
 | `labels/priority.py` | `label_order`, `ranks_by_quantile` (fifths by area, a river's length x `RIVER_KM2_PER_KM`), `steps`, `overhang_of`, `place_by_priority` (step by step, biggest rank first), `rank_table` (printed after placement: placed/total per kind and rank, coloured on a tty unless `NO_COLOR`, and each kind's dropped labels biggest first, cut to `DROPPED_WIDTH`) |
 | `labels/geometry.py` | `rect`, `nearest_point_on_rect`, `two_line`, `Coverage` (summed-area table of a shape: `area` of boxes, `contains` of points), `coverage` (a label's, cached) |
+| `disjoint.py` | `DisjointSets` (union-find: `find`, `union`, `groups`): pieces joined at the seam, river networks, same-named rivers |
 | `curves.py` | `arc_lengths`, `along`, `bend` (points along a polyline + its left normal): text bending for `colorbars.curved_title` and water labels |
 | `render.py` | `new_figure`, `draw_countries`, `draw_stripes`, `draw_borders`, `draw_states`, `draw_rivers`, `draw_lakes`, `subtract_lakes`, `draw_labels`, `draw_water_labels`, line widths and z-orders |
 
@@ -298,7 +299,8 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
   crop), gets an arc below the hole instead (`ring_arc`). Sizes fill `SEA_FILL` of the curve within `WATER_MIN_PT`..`SEA_MAX_PT` (oceans
   `OCEAN_MIN_PT`..`OCEAN_PT`, letter-spaced caps; all upright).
 - `WaterLabel`: one bent `Path` per label plus a halo-padded box per glyph (`parts`), both relative to its position.
-  Bodies whose name doesn't sit >= `WATER_MIN_INSIDE` over them at their anchor are left out up front (~160 of ~380 kept).
+  Bodies whose name doesn't sit >= `WATER_MIN_INSIDE` over them at their anchor are left out up front (`inside_share`:
+  glyph box area whose centres are on the water, as the solver counts it).
 - Solver: water labels come after the country labels in `Placement`; x/y is their anchor position. Country terms skip
   water labels' boxes (so with no water every array is as before), plus overlap with water glyph boxes and their own
   leader crossing them. Water labels: glyph-box overlap with everything, other leaders/dots, `outside_water` (glyph
