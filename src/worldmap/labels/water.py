@@ -51,7 +51,7 @@ RIVER_SIZE_MAX_RANK = 6  # river names shrink with Natural Earth scalerank down 
 RIVER_MAX_PT, RIVER_MIN_PT = 8.5, 7  # river names: italic, this size at scalerank <= 1 down to RIVER_SIZE_MAX_RANK
 RIVER_SCALE_MAX = 1.2  # river names grow with a crop's label_scale up to this, no more: they stay small
 RIVER_GAP_EM = 0.3  # baseline height over the river
-RIVER_CORRIDOR_EM = 1.6  # a river name's glyph centres should be within this of its river
+RIVER_CORRIDOR_EM = 1.0  # a river name's glyph centres should be within this of its river (more: it slid off where it was bent to fit)
 RIVER_JOIN_M = 30_000  # river pieces whose ends are this close are joined (lakes and reservoirs break them up)
 GEOD = Geod(ellps="WGS84")
 TO_EQUAL_AREA = Transformer.from_crs("EPSG:4326", EQUAL_AREA_CRS, always_xy=True)

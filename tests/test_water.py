@@ -8,9 +8,9 @@ from shapely.geometry import LineString, Point
 from worldmap.curves import arc_lengths, bend
 from worldmap.data import load_lakes
 from worldmap.frame import MapFrame, make_frame
-from worldmap.labels.water import (OCEAN_MIN_PT, OCEAN_PT, RIVER_MAX_PT, RIVER_MIN_PT, RIVER_SCALE_MAX, SEA_MAX_PT, WATER_MIN_INSIDE, WATER_MIN_PT,
+from worldmap.labels.water import (OCEAN_MIN_PT, OCEAN_PT, PX_PER_PT, RIVER_MAX_PT, RIVER_MIN_PT, RIVER_SCALE_MAX, SEA_MAX_PT, WATER_MIN_INSIDE, WATER_MIN_PT,
                                    WATER_TEXT, best_stretch, classify, fit_curve, kinds_from_labels, load_water_bodies,
-                                   longest_paths, make_water_labels, river_name, river_size)
+                                   longest_paths, make_water_labels, river_label, river_name, river_size, WaterBody)
 
 
 @pytest.fixture(scope="module")
@@ -197,6 +197,19 @@ def test_every_drawn_river_is_a_candidate() -> None:
 
     bodies = load_river_bodies(crop_frame(box_region((5, 45, 15, 52)), 0))
     assert max(b.rank for b in bodies) > 6
+
+
+def test_river_name_must_stay_within_an_em_of_its_river() -> None:
+    """Its glyph centres count as on the river (its label's geom) within 1 em of the line, not beyond: a name the
+    solver slides off its stretch (where it was bent to fit) doesn't float beside the river."""
+    frame = make_frame()
+    em = river_size(1) * PX_PER_PT
+    x0, y0 = 3000.0, 1500.0
+    mx, my = frame.px_to_map(np.array([x0, x0 + 40 * em]), np.array([y0, y0]))
+    label = river_label(WaterBody("Straight", "rivers", 1, LineString(np.column_stack([mx, my])), 100.0), frame)
+    assert label is not None
+    assert label.geom.contains(Point(x0 + 20 * em, y0 + 0.9 * em))
+    assert not label.geom.contains(Point(x0 + 20 * em, y0 + 1.1 * em))
 
 
 def test_longest_paths_joins_gaps_and_takes_the_trunk() -> None:
