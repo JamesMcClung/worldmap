@@ -90,7 +90,7 @@ def rank_table(plan: list[tuple[int, list[int]]], kinds: Sequence[str], order: S
 
 def overhang_of(p: Placement, k: int, item: "Label | WaterLabel") -> float:
     """overhang of label k: of its glyphs (a water label), each on its water if its box's centre is, as the solver
-    has it (water_cost); or of OVERHANG_SLICES slices of its box (a country), each on it if at least half over it."""
+    has it (cost_batch); or of OVERHANG_SLICES slices of its box (a country), each on it if at least half over it."""
     if p.water[k]:
         rects, owner = rects_of(p)
         g = rects[owner == k]
