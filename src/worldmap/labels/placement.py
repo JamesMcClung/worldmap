@@ -54,7 +54,7 @@ class CostWeights:
     outside_globe: float = 1000  # any part of the label outside the globe outline
     outside_water: float = 20  # share of a water label's glyph boxes off its water body
     water_drift: float = 0.15  # a water label's distance from its anchor, in ems
-    nudge: float = 2.0  # a nudged label's distance from its home, in heights (water labels: ems)...
+    nudge: float = 2.0  # a nudged label's distance from its home, in heights (water labels: ems; 'out' labels: none)...
     nudge_max: float = 2.0  # ...which can't be more than this
 
 
@@ -329,7 +329,7 @@ def place_labels(labels: list[Label], frame: MapFrame, seed: int = SEED, weights
         """Move label i to its cheapest candidate; True if it moved."""
         cx, cy = candidates(p, items, i, grid)
         cost = cost_batch(p, items, i, cx, cy, weights, outline_px)
-        if freedom[i] == NUDGE:
+        if freedom[i] == NUDGE and not p.out[i]:  # an 'out' label has no spot of its own to keep, only its dot
             item = items[i]
             unit = item.size * PX_PER_PT if isinstance(item, WaterLabel) else p.height[i]
             away = np.hypot(cx - home_x[i], cy - home_y[i]) / unit
