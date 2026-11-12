@@ -48,15 +48,15 @@ def positive_float(s: str) -> float:
 LABEL_KINDS = ("countries", "territories", *WATER_KINDS)
 
 
-def label_kinds(s: str) -> set[str]:
-    """A comma-separated list of LABEL_KINDS, or "none"."""
+def label_kinds(s: str) -> list[str]:
+    """A comma-separated list of LABEL_KINDS, or "none", in order (the order labels are placed in), without repeats."""
     if s == "none":
-        return set()
+        return []
     kinds = s.split(",")
     unknown = [k for k in kinds if k not in LABEL_KINDS]
     if unknown:
         raise argparse.ArgumentTypeError("unknown label kind %r: choose from %s, or none" % (unknown[0], ",".join(LABEL_KINDS)))
-    return set(kinds)
+    return list(dict.fromkeys(kinds))
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -72,7 +72,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--color", choices=["colorblind", "earth"], default="colorblind",
                    help="how countries are filled: colorblind = distinct colours that red/green colour-blind viewers "
                         "can tell apart (default); earth = land cover as seen from space (sandy desert -> light green)")
-    p.add_argument("--label", metavar="LIST", type=label_kinds, default={"countries"},
+    p.add_argument("--label", metavar="LIST", type=label_kinds, default=["countries"],
                    help="what to label, comma-separated, or none: countries (default); territories = dependencies and "
                         "outlying regions (Alaska, Greenland, Kaliningrad...) with their parent country; oceans, seas "
                         "(and gulfs, bays...), lakes, straits (and channels), rivers (draws them too); water = all of these")

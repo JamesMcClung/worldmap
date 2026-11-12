@@ -3,6 +3,7 @@
 import re
 import sys
 import unicodedata
+from collections.abc import Collection
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
@@ -330,12 +331,12 @@ class Candidate:
     aliases: tuple[str, ...] = ()  # other names it matches: a country's full name, a territory's parent's names
 
 
-def candidates(label: set[str], disputed: bool) -> list[Candidate]:
+def candidates(label: Collection[str], disputed: bool) -> list[Candidate]:
     """Every label of the `label` kinds (--label) a name crop can match, with the lon/lat geometry it stands for. A
     country's excludes the parts territories label separately (French Guiana...), whether or not they're labelled."""
     frame = make_frame()
     found: list[tuple[str, str, BaseGeometry, tuple[str, ...]]] = []
-    if label & {"countries", "territories"}:
+    if set(label) & {"countries", "territories"}:
         countries = load_countries()
         projected = frame.project(countries)
         children = child_regions(countries, projected, frame)

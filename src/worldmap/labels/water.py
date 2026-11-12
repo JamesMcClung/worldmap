@@ -1,6 +1,7 @@
 """Water labels (--label oceans, seas, lakes, water, rivers): which water bodies get a name, the curve each name
 follows, and its glyphs laid out along it. Bodies are in projected map units; labels are in poster pixels."""
 
+from collections.abc import Collection
 from dataclasses import dataclass
 from typing import Literal
 
@@ -61,7 +62,7 @@ PX_PER_PT = DPI / 72
 OCEAN_TEXT = {"Atlantic": "ATLANTIC OCEAN", "Pacific": "PACIFIC OCEAN", "Indian": "INDIAN OCEAN", "Arctic": "ARCTIC OCEAN", "Southern": "SOUTHERN OCEAN"}
 
 
-def kinds_from_labels(label: set[str]) -> set[Kind]:
+def kinds_from_labels(label: Collection[str]) -> set[Kind]:
     """The water kinds asked for in --label (countries and territories are not water)."""
     return set(ALL_KINDS) if "water" in label else {k for k in ALL_KINDS if k in label}
 
