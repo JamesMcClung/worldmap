@@ -162,13 +162,19 @@ def parent_index(countries: gpd.GeoDataFrame) -> dict[int, int]:
     return parents
 
 
+def with_km2(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    """`gdf` (lon/lat) with a `km2` column: each row's whole area, which projecting and clipping leave as it is."""
+    gdf["km2"] = gdf.to_crs(EQUAL_AREA_CRS).area / 1e6
+    return gdf
+
+
 def load_countries() -> gpd.GeoDataFrame:
-    return gpd.read_file(fetch(COUNTRIES)).reset_index(drop=True)
+    return with_km2(gpd.read_file(fetch(COUNTRIES)).reset_index(drop=True))
 
 
 def load_disputed() -> gpd.GeoDataFrame:
     """Natural Earth's disputed areas (Kashmir, Crimea, Taiwan...), see disputed.py."""
-    return gpd.read_file(fetch(DISPUTED)).reset_index(drop=True)
+    return with_km2(gpd.read_file(fetch(DISPUTED)).reset_index(drop=True))
 
 
 def load_states() -> gpd.GeoDataFrame:
@@ -179,8 +185,8 @@ def load_states() -> gpd.GeoDataFrame:
 
 def load_lakes() -> gpd.GeoDataFrame:
     """Lakes of at least LAKE_MIN_KM2, minus the usually-dry DRY_LAKES."""
-    lakes = gpd.read_file(fetch(LAKES))
-    big = lakes.to_crs(EQUAL_AREA_CRS).area >= LAKE_MIN_KM2 * 1e6
+    lakes = with_km2(gpd.read_file(fetch(LAKES)))
+    big = lakes.km2 >= LAKE_MIN_KM2
     return lakes[big & ~lakes.name.isin(DRY_LAKES)]
 
 
@@ -192,7 +198,7 @@ def load_rivers() -> gpd.GeoDataFrame:
 
 def load_marine() -> gpd.GeoDataFrame:
     """Natural Earth's marine label areas (oceans, seas, gulfs, straits...), unfiltered: see labels/water.py."""
-    return gpd.read_file(fetch(MARINE))[["name", "featurecla", "scalerank", "geometry"]]
+    return with_km2(gpd.read_file(fetch(MARINE))[["name", "featurecla", "scalerank", "geometry"]])
 
 
 def load_ice_shelves() -> gpd.GeoDataFrame:

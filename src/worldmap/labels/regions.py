@@ -1,13 +1,14 @@
 """Child regions, labelled only with --label territories: dependencies that don't touch their parent (Greenland, Bermuda...)
 and hand-picked outlying parts of a country's own polygons (Alaska, Tasmania, Kaliningrad...)."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 import geopandas as gpd
 from shapely.geometry import MultiPolygon, Polygon
 from shapely.geometry.base import BaseGeometry
 
-from worldmap.data import parent_index
+from worldmap.data import EQUAL_AREA_CRS, parent_index
 from worldmap.frame import MapFrame
 from worldmap.labels.label import RENAME
 
@@ -62,6 +63,7 @@ class ChildRegion:
     parent_name: str  # the parent's label text, or its PARENT_SHORT, e.g. "Australia", "US"
     feature: int  # row whose fill colours it: the dependency itself, or the parent for a hand-picked region
     polys: list[Polygon]  # projected polygons it labels
+    km2: float = 0.0  # the whole region's area, however much of it the frame shows
 
     @property
     def text(self) -> str:
@@ -70,6 +72,16 @@ class ChildRegion:
 
 def polygons(geom: BaseGeometry) -> list[Polygon]:
     return [p for p in (geom.geoms if isinstance(geom, MultiPolygon) else [geom]) if not p.is_empty]
+
+
+def in_boxes(lon: float, lat: float, boxes: Sequence[Box]) -> bool:
+    return any(lon0 <= lon <= lon1 and lat0 <= lat <= lat1 for lon0, lat0, lon1, lat1 in boxes)
+
+
+def picked_km2(parent: BaseGeometry, boxes: Sequence[Box]) -> float:
+    """The area (km2) of the parent's lon/lat polygons a HAND_PICKED region's boxes select, all of them."""
+    picked = [p for p in polygons(parent) if in_boxes(p.representative_point().x, p.representative_point().y, boxes)]
+    return float(gpd.GeoSeries(picked, crs="EPSG:4326").to_crs(EQUAL_AREA_CRS).area.sum() / 1e6)
 
 
 def child_regions(countries: gpd.GeoDataFrame, countries_projected: gpd.GeoDataFrame, frame: MapFrame) -> list[ChildRegion]:
@@ -85,17 +97,17 @@ def child_regions(countries: gpd.GeoDataFrame, countries_projected: gpd.GeoDataF
             continue
         polys = polygons(countries_projected.geometry[dep])
         if polys:
-            regions.append(ChildRegion(countries.NAME_EN[dep], label_name(parent), dep, polys))
+            regions.append(ChildRegion(countries.NAME_EN[dep], label_name(parent), dep, polys, float(countries.km2[dep])))
     index_of = dict(zip(countries.NAME_EN, countries.index))
     for name, parent_name, boxes in HAND_PICKED:
         parent = index_of[parent_name]
         picked = []
         for p in polygons(countries_projected.geometry[parent]):
             lon, lat = frame.to_lonlat.transform(*p.representative_point().coords[0])
-            if any(lon0 <= lon <= lon1 and lat0 <= lat <= lat1 for lon0, lat0, lon1, lat1 in boxes):
+            if in_boxes(lon, lat, boxes):
                 picked.append(p)
         if not picked and frame.globe:
             raise ValueError(f"hand-picked region {name!r} selected no polygons of {parent_name!r}: check its HAND_PICKED boxes")
         if picked:
-            regions.append(ChildRegion(name, label_name(parent), parent, picked))
+            regions.append(ChildRegion(name, label_name(parent), parent, picked, picked_km2(countries.geometry[parent], boxes)))
     return regions

@@ -63,6 +63,8 @@ class Label:
     anchor_y: float
     geom: BaseGeometry  # the piece it labels
     out: bool = False  # True: placed beside the country with a leader line
+    kind: str = "countries"  # its --label kind: countries (disputed areas too) or territories
+    full_size: float = 0.0  # km2 of the whole country or region, however much of it the frame shows: its priority
 
 
 def measure(label: Label, renderer: RendererBase) -> None:
@@ -89,24 +91,26 @@ def anchor_piece(polys: list[Polygon], frame: MapFrame, tolerance: float, force_
     return maximum_inscribed_circle(largest, tolerance=tolerance).coords[0], largest, largest.area, False
 
 
-def new_label(ax: Axes, renderer: RendererBase, frame: MapFrame, name: str, anchor: tuple[float, float], geom: BaseGeometry, area: float, color: RGB, italic: bool = False) -> Label:
+def new_label(ax: Axes, renderer: RendererBase, frame: MapFrame, name: str, anchor: tuple[float, float], geom: BaseGeometry, area: float, color: RGB, italic: bool = False,
+              kind: str = "countries", full_size: float = 0.0) -> Label:
     """A measured label for `name` at `anchor` (map units), sized by `area`. Child regions are set in italics."""
     ppu = frame.px_per_unit
     x, y = anchor
     s = frame.label_scale
     size = float(np.clip(FONT_SCALE * np.sqrt(area) * ppu / DPI * POINTS_PER_INCH / 10, MIN_PT * s, MAX_PT * s))
     text = ax.text(x, y, name, fontsize=size, ha="center", va="center", color=color, zorder=LABEL_ZORDER, path_effects=HALO, fontstyle="italic" if italic else "normal")
-    label = Label(name, area, color, text, 0.0, 0.0, (x - frame.xmin) * ppu, (y - frame.ymin) * ppu, frame.to_px(geom))
+    label = Label(name, area, color, text, 0.0, 0.0, (x - frame.xmin) * ppu, (y - frame.ymin) * ppu, frame.to_px(geom), kind=kind, full_size=full_size)
     measure(label, renderer)
     return label
 
 
 def make_labels(countries_projected: gpd.GeoDataFrame, frame: MapFrame, ax: Axes, renderer: RendererBase, fill_of: Callable[[int, Point | None], Fill], children: Sequence["ChildRegion"] = (), countries: bool = True,
-                relabel: dict[int, str] | None = None, extra: Sequence[tuple[str, Polygon, Fill]] = ()) -> list[Label]:
+                relabel: dict[int, str] | None = None, extra: Sequence[tuple[str, Polygon, Fill, float]] = ()) -> list[Label]:
     """One label per labelled country (if `countries`), plus an italic one per child region (--label territories),
     largest first (see anchor_piece for where each goes). With `countries`, --disputed adds the self-governing areas:
     `relabel` labels these rows with this text even if they aren't is_labeled (Somaliland), and `extra` adds
-    (text, polygon, fill) labels for breakaway areas with no row of their own."""
+    (text, polygon, fill, km2) labels for breakaway areas with no row of their own. Each label's full_size is the
+    km2 of the whole row (countries_projected.km2), area or region."""
     relabel = relabel or {}
     tolerance = frame.width / INSCRIBED_CIRCLE_DIVISOR
     labels, island_names = [], []
@@ -121,17 +125,17 @@ def make_labels(countries_projected: gpd.GeoDataFrame, frame: MapFrame, ax: Axes
             island_names.append(row.NAME_EN)
         color = darken(fill_of(i, geom.representative_point() if geom.geom_type == "Polygon" else None))
         name = relabel.get(i) or RENAME.get(row.NAME_EN, row.NAME_EN)
-        labels.append(new_label(ax, renderer, frame, name, anchor, geom, area, color))
-    for text, poly, fill in extra if countries else ():
+        labels.append(new_label(ax, renderer, frame, name, anchor, geom, area, color, full_size=float(row.km2)))
+    for text, poly, fill, km2 in extra if countries else ():
         anchor = maximum_inscribed_circle(poly, tolerance=tolerance).coords[0]
-        labels.append(new_label(ax, renderer, frame, text, anchor, poly, poly.area, darken(fill)))
+        labels.append(new_label(ax, renderer, frame, text, anchor, poly, poly.area, darken(fill), full_size=km2))
     for child in children:
         # Anchored on and sized by the region's largest polygon: a hull would blow up archipelagos spread over an
         # ocean (French Polynesia, Saint Helena with Ascension and Tristan da Cunha).
         largest = max(child.polys, key=lambda p: p.area)
         anchor = maximum_inscribed_circle(largest, tolerance=tolerance).coords[0]
         color = darken(fill_of(child.feature, largest.representative_point()))
-        labels.append(new_label(ax, renderer, frame, child.text, anchor, largest, largest.area, color, italic=True))
+        labels.append(new_label(ax, renderer, frame, child.text, anchor, largest, largest.area, color, italic=True, kind="territories", full_size=child.km2))
     labels.sort(key=lambda label: -label.area)
     print("island-heavy (hull-centred):", island_names)
     return labels

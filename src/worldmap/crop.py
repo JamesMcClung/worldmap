@@ -342,7 +342,7 @@ def candidates(label: Collection[str], disputed: bool) -> list[Candidate]:
         children = child_regions(countries, projected, frame)
         if "countries" in label:
             relabel: dict[int, str] = {}
-            extra: list[tuple[str, Polygon, Fill]] = []
+            extra: list[tuple[str, Polygon, Fill, float]] = []
             if disputed:  # the colour doesn't matter here
                 relabel, extra = disputed_label_args(load_disputes(countries, frame.project(load_disputed())), lambda i, pt: "#808080")
             for i, row in projected.iterrows():
@@ -353,7 +353,7 @@ def candidates(label: Collection[str], disputed: bool) -> list[Candidate]:
                 if own:
                     text = relabel.get(i) or RENAME.get(row.NAME_EN, row.NAME_EN)
                     found.append((text, "country", shapely.union_all(own), (row.NAME_EN,)))
-            found += [(text, "disputed", poly, ()) for text, poly, _ in extra]
+            found += [(text, "disputed", poly, ()) for text, poly, _, _ in extra]
         if "territories" in label:
             full = {short: name for name, short in PARENT_SHORT.items()}  # "US" -> "United States of America"
             for c in children:  # so "united" finds Alaska (US) too
