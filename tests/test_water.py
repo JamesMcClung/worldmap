@@ -209,3 +209,36 @@ def test_crop_without_marine_areas() -> None:
     f = crop_frame(box_region((10, 10, 20, 20)), 0)  # Chad and Nigeria: no sea in sight
     bodies = load_water_bodies({"oceans", "seas", "straits", "lakes"}, f.project(load_lakes()), f)
     assert all(b.kind == "lakes" for b in bodies)
+
+
+def bodies_by_text(frame: MapFrame) -> dict[str, list]:
+    out: dict[str, list] = {}
+    for b in load_water_bodies({"oceans", "seas", "lakes", "straits", "rivers"}, frame.project(load_lakes()), frame):
+        out.setdefault(b.text, []).append(b)
+    return out
+
+
+@pytest.fixture(scope="module")
+def world_bodies() -> dict[str, list]:
+    return bodies_by_text(make_frame())
+
+
+def test_full_size_of_water(world_bodies: dict[str, list]) -> None:
+    assert 6e4 <= world_bodies["Lake Victoria"][0].full_size <= 7.5e4
+    a, b = world_bodies["PACIFIC OCEAN"]
+    assert a.full_size == b.full_size > 1e8
+    assert world_bodies["Mediterranean Sea"][0].full_size > 1e6
+    assert 2.4e3 <= world_bodies["Danube"][0].full_size <= 3.2e3
+    colorados = sorted(world_bodies["Colorado"], key=lambda b: b.geom.centroid.y)  # Argentina's, then the US's
+    assert len(colorados) == 2 and colorados[0].full_size != colorados[1].full_size
+    assert 1.8e3 <= colorados[1].full_size <= 2.6e3
+
+
+def test_water_full_size_is_frame_independent(world_bodies: dict[str, list]) -> None:
+    from worldmap.crop import box_region, crop_frame
+
+    crop = bodies_by_text(crop_frame(box_region((5, 40, 20, 49)), 0))
+    for name in ("Danube", "Adriatic Sea"):
+        assert crop[name][0].full_size == pytest.approx(world_bodies[name][0].full_size, rel=1e-9)
+    label = make_water_labels(world_bodies["Lake Victoria"], make_frame())[0]
+    assert label.full_size == world_bodies["Lake Victoria"][0].full_size
