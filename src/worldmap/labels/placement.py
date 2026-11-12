@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import shapely
 from shapely.geometry import Polygon
+from shapely.geometry.base import BaseGeometry
 
 from worldmap.frame import MapFrame
 from worldmap.labels.geometry import nearest_point_on_rect, segment_hits_rects, segments_cross
@@ -77,6 +78,15 @@ class Placement:
     @property
     def n(self) -> int:
         return len(self.x)
+
+
+def clipped_area(geom: BaseGeometry, b: Sequence[float]) -> float:
+    """The area of `geom` inside the box b = [x0, y0, x1, y1]. clip_by_rect, not shapely.intersection: GEOS's overlay
+    costs ~80 us a box, even against a small country; but clip_by_rect raises on a box edge a hair off a vertex."""
+    try:
+        return float(shapely.area(shapely.clip_by_rect(geom, *b)))
+    except shapely.errors.GEOSException:
+        return float(shapely.intersection(geom, shapely.box(*b)).area)
 
 
 def leader_ends(p: Placement) -> tuple[np.ndarray, np.ndarray]:
@@ -186,8 +196,7 @@ def cost_batch(p: Placement, labels: Sequence[Label | WaterLabel], i: int, cx: n
         if other_out.any():
             cost += weights.leader_crosses_leader * segments_cross(np.broadcast_to(start, (n_candidates, 1, 2)), end, their_start, their_end).sum(1)
     else:
-        # clip_by_rect, not shapely.intersection: GEOS's overlay costs ~80 us a box, even against a small country
-        inside = np.array([shapely.area(shapely.clip_by_rect(label.geom, *b)) for b in boxes]) / (w * h)
+        inside = np.array([clipped_area(label.geom, b) for b in boxes]) / (w * h)
         cost += weights.outside_country * (1 - inside) + weights.drift * np.hypot(cx - anchor_x, cy - anchor_y) / h
     cost += weights.outside_globe * ~shapely.contains(outline_px, shapely.box(boxes[:, 0], boxes[:, 1], boxes[:, 2], boxes[:, 3]))
     if p.water.any():  # water glyphs: overlap, and our own leader crossing them

@@ -4,11 +4,10 @@ river's length) against the biggest of that kind in the frame; rank by rank, the
 from collections.abc import Callable, Sequence
 
 import numpy as np
-import shapely
 
 from worldmap.frame import MapFrame
 from worldmap.labels.label import Label
-from worldmap.labels.placement import FIXED, FREE, NUDGE, SHRINK_MIN_PT, Placement, clash, outside_outline, place_labels, rects_of, subset
+from worldmap.labels.placement import FIXED, FREE, NUDGE, SHRINK_MIN_PT, Placement, clash, clipped_area, outside_outline, place_labels, rects_of, subset
 from worldmap.labels.water import WATER_KINDS, WaterLabel
 
 N_RANKS = 5
@@ -56,7 +55,7 @@ def steps(kinds: Sequence[str], sizes: Sequence[float], order: Sequence[str], ra
 def inside_share(p: Placement, k: int, label: Label) -> float:
     """The share of country label k's box over its country."""
     x0, y0 = p.x[k] - p.width[k] / 2, p.y[k] - p.height[k] / 2
-    return float(shapely.area(shapely.clip_by_rect(label.geom, x0, y0, x0 + p.width[k], y0 + p.height[k])) / (p.width[k] * p.height[k]))
+    return clipped_area(label.geom, [x0, y0, x0 + p.width[k], y0 + p.height[k]]) / float(p.width[k] * p.height[k])
 
 
 def place_by_priority(labels: list[Label], water: list[WaterLabel], frame: MapFrame, order: Sequence[str],
