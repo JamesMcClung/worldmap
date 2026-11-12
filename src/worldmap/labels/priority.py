@@ -61,19 +61,20 @@ GREEN, YELLOW, RED, PLAIN = "\x1b[32m", "\x1b[33m", "\x1b[31m", "\x1b[0m"
 def rank_table(plan: list[tuple[int, list[int]]], kinds: Sequence[str], order: Sequence[str], placed: Collection[int], color: bool,
                names: Sequence[str] = ()) -> str:
     """How many of each rank's labels were placed, as text: a row per kind (in `order`, those with any), then of
-    all kinds, then that as a percentage; on the right, of every rank, then as a percentage, then (with `names`) the
-    first N_DROPPED dropped in plan order (the most important). In colour a cell is green if all were placed, red if
-    none, else yellow; of the rank cells of a kind, only a yellow one shows how many ('28/36')."""
+    all kinds, then that as a percentage; on the right, of every rank, then as a percentage, then (with `names`) a
+    kind's N_DROPPED biggest dropped labels ('-' if none, '...' if more; the plan has a kind's labels by size). In
+    colour a cell is green if all were placed, red if none, else yellow; of the rank cells of a kind, only a yellow
+    one shows how many ('28/36')."""
     total = {kind: np.zeros(N_RANKS, int) for kind in [*order, "all"]}
     done = {kind: np.zeros(N_RANKS, int) for kind in total}
-    dropped: dict[str, list[str]] = {kind: [] for kind in total}
+    dropped: dict[str, list[str]] = {kind: [] for kind in order}
     for r, members in plan:
         for i in members:
             for kind in (kinds[i], "all"):
                 total[kind][r - 1] += 1
                 done[kind][r - 1] += i in placed
-                if i not in placed and names:
-                    dropped[kind].append(names[i])
+            if i not in placed and names:
+                dropped[kinds[i]].append(names[i])
 
     def cell(n: int, of: int, percent: bool, short: bool) -> str:
         if of == 0:
@@ -90,8 +91,9 @@ def rank_table(plan: list[tuple[int, list[int]]], kinds: Sequence[str], order: S
         cells.append(cell(n.sum(), of.sum(), percent, False))
         if not percent:
             cells.append(cell(n.sum(), of.sum(), True, False))
-            if names:
-                cells.append("  " + ", ".join(dropped[kind][:N_DROPPED]))
+            if names and kind != "all":
+                gone = dropped[kind]
+                cells.append("  " + (", ".join(gone[:N_DROPPED]) + (", ..." if len(gone) > N_DROPPED else "") if gone else "-"))
         return (f"{name:<12}" + "".join(cells)).rstrip()
 
     rows = [f"{'rank':<12}" + "".join(f"{r:>8}" for r in [*range(1, N_RANKS + 1), "all", "%"]) + ("  dropped" if names else "")]

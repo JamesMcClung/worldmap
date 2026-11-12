@@ -52,13 +52,14 @@ def test_rank_table() -> None:
         "%                67%       -      0%       -       -     50%")
 
 
-def test_rank_table_names_the_first_three_dropped() -> None:
-    """In plan order (rank, then kind order, then size): the most important first."""
-    plan = [(1, [0, 1, 2, 3]), (2, [4])]
-    rows = rank_table(plan, ["seas"] * 4 + ["rivers"], ["seas", "rivers"], placed={1}, color=False, names="ABCDE").split("\n")
+def test_rank_table_names_the_biggest_three_dropped() -> None:
+    """A kind's in plan order (by size), '...' if there are more, '-' if none; none for all kinds together."""
+    plan = [(1, [0, 1, 2, 3, 4]), (1, [5]), (2, [6])]
+    kinds = ["seas"] * 5 + ["rivers", "lakes"]
+    rows = rank_table(plan, kinds, ["seas", "rivers", "lakes"], placed={1, 6}, color=False, names="ABCDEFG").split("\n")
     assert rows[0].endswith("%  dropped")
-    assert rows[1].endswith("25%  A, C, D") and rows[2].endswith("0%  E") and rows[3].endswith("20%  A, C, D")
-    assert rows[4].endswith("20%")
+    assert rows[1].endswith("20%  A, C, D, ...") and rows[2].endswith("0%  F") and rows[3].endswith("100%  -")
+    assert rows[4].endswith("29%") and rows[5].endswith("29%")
 
 
 def test_rank_table_in_colour() -> None:
