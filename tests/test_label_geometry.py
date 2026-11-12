@@ -1,4 +1,6 @@
 import numpy as np
+import pytest
+import shapely
 
 from worldmap.labels.geometry import nearest_point_on_rect, segment_hits_rects, segments_cross, two_line
 
@@ -34,3 +36,23 @@ def test_nearest_point_on_rect() -> None:
 def test_two_line() -> None:
     assert two_line("Central African Republic") == "Central African\nRepublic"
     assert two_line("Chad") is None
+
+
+def test_coverage_matches_the_exact_area() -> None:
+    """A summed-area table of a country-like shape gives each box's area over it to within its edges' pixels."""
+    from worldmap.labels.geometry import Coverage
+
+    shape = shapely.Polygon([(0, 0), (300, 40), (260, 200), (120, 150), (30, 210)]).difference(shapely.Point(150, 90).buffer(30))
+    rng = np.random.default_rng(1)
+    x0, y0 = rng.uniform(-40, 300, 300), rng.uniform(-40, 220, 300)
+    boxes = np.column_stack([x0, y0, x0 + rng.uniform(5, 60, 300), y0 + rng.uniform(5, 30, 300)])
+    exact = shapely.area(shapely.intersection(shapely.box(*boxes.T), shape))
+    rim = 2 * (boxes[:, 2] - boxes[:, 0] + boxes[:, 3] - boxes[:, 1])  # a pixel's error along every edge, at worst
+    assert (np.abs(Coverage.of(shape).area(boxes) - exact) <= rim).all()
+
+
+def test_coverage_of_boxes_off_the_shape_and_of_nothing() -> None:
+    from worldmap.labels.geometry import Coverage
+
+    assert Coverage.of(shapely.box(0, 0, 10, 10)).area(np.array([[20.0, 20, 30, 30], [-5, -5, 15, 15]])) == pytest.approx([0, 100])
+    assert Coverage.of(shapely.Polygon()).area(np.array([[0.0, 0, 1, 1]])) == pytest.approx([0])

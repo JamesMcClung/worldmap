@@ -2,7 +2,7 @@
 or beside it with a leader line ('out'). All positions and geometry are in poster pixels."""
 
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import geopandas as gpd
@@ -20,7 +20,7 @@ from worldmap.colorspace import RGB, darken
 from worldmap.data import is_labeled
 from worldmap.earth import Fill
 from worldmap.frame import DPI, MapFrame
-from worldmap.labels.geometry import rect, two_line
+from worldmap.labels.geometry import Coverage, rect, two_line
 
 if TYPE_CHECKING:  # regions.py imports RENAME from here
     from worldmap.labels.regions import ChildRegion
@@ -65,6 +65,14 @@ class Label:
     out: bool = False  # True: placed beside the country with a leader line
     kind: str = "countries"  # its --label kind: countries (disputed areas too) or territories
     full_size: float = 0.0  # km2 of the whole country or region, however much of it the frame shows: its priority
+    cover: Coverage | None = field(default=None, repr=False, compare=False)  # geom's, once needed (coverage)
+
+
+def coverage(label: Label) -> Coverage:
+    """The label's geom as a Coverage, made once."""
+    if label.cover is None:
+        label.cover = Coverage.of(label.geom)
+    return label.cover
 
 
 def measure(label: Label, renderer: RendererBase) -> None:

@@ -9,8 +9,8 @@ import numpy as np
 import shapely
 
 from worldmap.frame import MapFrame
-from worldmap.labels.label import Label
-from worldmap.labels.placement import FIXED, FREE, NUDGE, OVERHANG_MAX, SHRINK_MIN_PT, Placement, clash, clipped_area, outside_outline, overhang, place_labels, rects_of, subset
+from worldmap.labels.label import Label, coverage
+from worldmap.labels.placement import FIXED, FREE, NUDGE, OVERHANG_MAX, SHRINK_MIN_PT, Placement, clash, outside_outline, overhang, place_labels, rects_of, subset
 from worldmap.labels.water import WATER_KINDS, WaterLabel
 
 N_RANKS = 5
@@ -95,9 +95,11 @@ def overhang_of(p: Placement, k: int, item: "Label | WaterLabel") -> float:
         rects, owner = rects_of(p)
         g = rects[owner == k]
         return overhang(shapely.contains_xy(item.geom, (g[:, 0] + g[:, 2]) / 2, (g[:, 1] + g[:, 3]) / 2))
+    assert isinstance(item, Label)
     x0, y0, w, h = p.x[k] - p.width[k] / 2, p.y[k] - p.height[k] / 2, p.width[k], p.height[k]
     edges = x0 + w * np.arange(OVERHANG_SLICES + 1) / OVERHANG_SLICES
-    return overhang([clipped_area(item.geom, [a, y0, b, y0 + h]) >= w * h / OVERHANG_SLICES / 2 for a, b in zip(edges[:-1], edges[1:])])
+    slices = np.column_stack([edges[:-1], np.full(OVERHANG_SLICES, y0), edges[1:], np.full(OVERHANG_SLICES, y0 + h)])
+    return overhang(coverage(item).area(slices) >= w * h / OVERHANG_SLICES / 2)
 
 
 def place_by_priority(labels: list[Label], water: list[WaterLabel], frame: MapFrame, order: Sequence[str],
