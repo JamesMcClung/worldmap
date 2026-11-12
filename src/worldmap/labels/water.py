@@ -24,6 +24,7 @@ from worldmap.data import EQUAL_AREA_CRS, load_marine, load_rivers
 from worldmap.disjoint import DisjointSets
 from worldmap.frame import DPI, MapFrame
 from worldmap.labels.geometry import Coverage, coverage
+from worldmap.labels.label import SHRINK_FACTOR
 
 WATER_KINDS = ("oceans", "seas", "lakes", "straits", "rivers", "water")  # the --label values; water = all the others
 Kind = Literal["oceans", "seas", "lakes", "straits", "rivers"]
@@ -351,6 +352,23 @@ class WaterLabel:
     def min_size(self) -> float:
         """The smallest it may shrink to (pt): oceans stay bigger than any sea."""
         return (OCEAN_MIN_PT if self.kind == "oceans" else WATER_MIN_PT) * self.label_scale
+
+    @property
+    def name(self) -> str:
+        return self.text
+
+    @property
+    def unit_px(self) -> float:
+        """How far a nudged label's moves are measured in: an em."""
+        return self.size * PX_PER_PT
+
+    def shrink_toward(self, floor: float) -> float:
+        """Shrink by SHRINK_FACTOR, or less so as to stop at `floor` (pt); return the factor (1: none)."""
+        if self.size <= floor:
+            return 1.0
+        factor = max(SHRINK_FACTOR, floor / self.size)
+        self.scale(factor)
+        return factor
 
     def scale(self, factor: float) -> None:
         """Shrink the label by `factor` about its position."""
