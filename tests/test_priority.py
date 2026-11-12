@@ -1,9 +1,16 @@
+from dataclasses import replace
+
 import numpy as np
 import pytest
+import shapely
+from test_placement import country_label, crossing_water_labels, mid_atlantic_px, water_label
 
+from worldmap.frame import make_frame
 from worldmap.labels import priority
-from worldmap.labels.placement import overhang
-from worldmap.labels.priority import label_order, rank_table, ranks_by_quantile, steps
+from worldmap.labels.label import Label
+from worldmap.labels.placement import clashes, overhang
+from worldmap.labels.priority import label_order, place_by_priority, rank_table, ranks_by_quantile, steps
+from worldmap.labels.water import WATER_MIN_PT, WaterLabel
 
 
 def test_label_order() -> None:
@@ -87,15 +94,6 @@ def test_steps_empty() -> None:
 
 
 # place_by_priority: the solver on small made-up maps (helpers from test_placement).
-import shapely  # noqa: E402
-from dataclasses import replace  # noqa: E402
-
-from test_placement import country_label, crossing_water_labels, mid_atlantic_px, water_label  # noqa: E402
-from worldmap.frame import make_frame  # noqa: E402
-from worldmap.labels.label import Label  # noqa: E402
-from worldmap.labels.placement import clashes  # noqa: E402
-from worldmap.labels.priority import place_by_priority  # noqa: E402
-from worldmap.labels.water import WATER_MIN_PT, WaterLabel  # noqa: E402
 
 FRAME = make_frame()
 
@@ -195,7 +193,6 @@ def test_centred_label_may_hang_off_both_ends() -> None:
     parts = np.array([[-50.0 + 5 * k, -7, -45 + 5 * k, 7] for k in range(20)])
     sea = water_label("Sea", (x, y), shapely.box(x - 24, y - 20, x + 24, y + 20), parts, WATER_MIN_PT)
     assert [w.text for w in place_by_priority([], [sized(sea, 1)], FRAME, ["seas"])[2]] == ["Sea"]
-
 
 
 def test_water_label_on_a_narrow_lake_is_kept() -> None:
