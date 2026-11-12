@@ -6,7 +6,7 @@ import math
 import numpy as np
 from numba import njit
 
-from worldmap.labels.geometry import PARALLEL_EPS
+PARALLEL_EPS = 1e-9  # segment direction components below this count as parallel to that axis
 
 # Indices into the weights array (placement.weight_array, in CostWeights' field order).
 OVERLAP, DOT_COVER, DOT_RADIUS, LEADER_HITS_LABEL, LEADER_CROSSES_LEADER, LEADER_LENGTH, LEADER_TARGET, LEADER_TOO_SHORT, LEADER_MIN, \
@@ -15,7 +15,8 @@ OVERLAP, DOT_COVER, DOT_RADIUS, LEADER_HITS_LABEL, LEADER_CROSSES_LEADER, LEADER
 
 @njit(cache=True)
 def segment_hits_rect(ax: float, ay: float, bx: float, by: float, x0: float, y0: float, x1: float, y1: float) -> bool:
-    """Whether segment a-b touches rect [x0, y0, x1, y1] (slab clipping), as geometry.segment_hits_rects."""
+    """Whether segment a-b touches rect [x0, y0, x1, y1] (slab clipping; a coordinate within PARALLEL_EPS of
+    constant counts as parallel to that axis)."""
     tmin, tmax = 0.0, 1.0
     for p, d, lo, hi in ((ax, bx - ax, x0, x1), (ay, by - ay, y0, y1)):
         if abs(d) < PARALLEL_EPS:
@@ -35,7 +36,7 @@ def cross(ox: float, oy: float, px: float, py: float, qx: float, qy: float) -> f
 
 @njit(cache=True)
 def segments_cross(ax: float, ay: float, bx: float, by: float, cx: float, cy: float, dx: float, dy: float) -> bool:
-    """Proper intersection of segments a-b and c-d (touching doesn't count), as geometry.segments_cross."""
+    """Proper intersection of segments a-b and c-d (touching doesn't count)."""
     return cross(ax, ay, bx, by, cx, cy) * cross(ax, ay, bx, by, dx, dy) < 0 and cross(cx, cy, dx, dy, ax, ay) * cross(cx, cy, dx, dy, bx, by) < 0
 
 
@@ -221,3 +222,52 @@ def water_cost(i: int, cx: np.ndarray, cy: np.ndarray, parts: np.ndarray, em: fl
             c += wt[OUTSIDE_GLOBE]
         cost[k] = c
     return cost
+
+
+@njit(cache=True)
+def leader_hits(dx: float, dy: float, ex: float, ey: float, r0: float, r1: float, r2: float, r3: float) -> bool:
+    """Whether the leader from dot d to end e crosses rect r, unless r covers the dot (as placement.clash)."""
+    if r0 <= dx <= r2 and r1 <= dy <= r3:
+        return False
+    if r0 > max(dx, ex) or r2 < min(dx, ex) or r1 > max(dy, ey) or r3 < min(dy, ey):
+        return False
+    return segment_hits_rect(dx, dy, ex, ey, r0, r1, r2, r3)
+
+
+@njit(cache=True)
+def clash(i: int, rects: np.ndarray, owner: np.ndarray, among: np.ndarray, out: np.ndarray, water: np.ndarray,
+          anchor_x: np.ndarray, anchor_y: np.ndarray, end_x: np.ndarray, end_y: np.ndarray) -> bool:
+    """placement.clash: label i's rects overlap those of another label of `among`, or another's leader crosses
+    them, or (an 'out' country label) its leader crosses another's rects; rects/owner: rects_of; end_x/y: leader_ends."""
+    mine = np.flatnonzero(owner == i)
+    e0, e1, e2, e3 = rects[mine, 0].min(), rects[mine, 1].min(), rects[mine, 2].max(), rects[mine, 3].max()
+    for b in range(len(rects)):
+        j = owner[b]
+        if j == i or not among[j] or rects[b, 0] >= e2 or rects[b, 2] <= e0 or rects[b, 1] >= e3 or rects[b, 3] <= e1:
+            continue
+        for a in mine:
+            if min(rects[a, 2], rects[b, 2]) - max(rects[a, 0], rects[b, 0]) > 0 and min(rects[a, 3], rects[b, 3]) - max(rects[a, 1], rects[b, 1]) > 0:
+                return True
+    for j in range(len(out)):
+        if j == i or not among[j] or not out[j] or water[j]:
+            continue
+        for a in mine:
+            if leader_hits(anchor_x[j], anchor_y[j], end_x[j], end_y[j], rects[a, 0], rects[a, 1], rects[a, 2], rects[a, 3]):
+                return True
+    if out[i] and not water[i]:
+        for b in range(len(rects)):
+            j = owner[b]
+            if j != i and among[j] and leader_hits(anchor_x[i], anchor_y[i], end_x[i], end_y[i], rects[b, 0], rects[b, 1], rects[b, 2], rects[b, 3]):
+                return True
+    return False
+
+
+@njit(cache=True)
+def clashes(rects: np.ndarray, owner: np.ndarray, among: np.ndarray, out: np.ndarray, water: np.ndarray,
+            anchor_x: np.ndarray, anchor_y: np.ndarray, end_x: np.ndarray, end_y: np.ndarray) -> np.ndarray:
+    """clash for every label of `among`: a mask."""
+    hit = np.zeros(len(among), np.bool_)
+    for i in range(len(among)):
+        if among[i]:
+            hit[i] = clash(i, rects, owner, among, out, water, anchor_x, anchor_y, end_x, end_y)
+    return hit

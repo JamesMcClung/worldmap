@@ -10,7 +10,7 @@ from shapely.geometry import Polygon
 
 from worldmap.frame import MapFrame
 from worldmap.labels import kernels
-from worldmap.labels.geometry import Coverage, coverage, nearest_point_on_rect, segment_hits_rects
+from worldmap.labels.geometry import Coverage, coverage, nearest_point_on_rect
 from worldmap.labels.label import Label
 from worldmap.labels.water import PX_PER_PT, WaterLabel
 
@@ -109,11 +109,6 @@ def boxes_of(p: Placement, keep: np.ndarray) -> np.ndarray:
     return np.stack([p.x[keep] - p.width[keep] / 2, p.y[keep] - p.height[keep] / 2, p.x[keep] + p.width[keep] / 2, p.y[keep] + p.height[keep] / 2], -1)
 
 
-def near(rects: np.ndarray, envelope: np.ndarray) -> np.ndarray:
-    """The rects (n, 4) that touch the envelope [x0, y0, x1, y1]."""
-    return rects[(rects[:, 0] < envelope[2]) & (rects[:, 2] > envelope[0]) & (rects[:, 1] < envelope[3]) & (rects[:, 3] > envelope[1])]
-
-
 @functools.cache
 def weight_array(weights: CostWeights) -> np.ndarray:
     """The weights the cost kernels take, in their order (kernels.OVERLAP...)."""
@@ -179,47 +174,18 @@ def rects_of(p: Placement) -> tuple[np.ndarray, np.ndarray]:
 def clash(p: Placement, i: int, among: np.ndarray, rects: tuple[np.ndarray, np.ndarray] | None = None) -> bool:
     """Whether label i clashes with another label of `among` (a mask), whatever their kinds: their boxes or glyph
     boxes overlap, or a leader line of one crosses the other (not a box covering that leader's own dot). `rects`:
-    rects_of(p), if already at hand."""
+    rects_of(p), if already at hand. Compiled: kernels.clash."""
     every, owner = rects_of(p) if rects is None else rects
-    mine, theirs = owner == i, (owner != i) & among[owner]
-    a = every[mine]
-    envelope = np.array([a[:, 0].min(), a[:, 1].min(), a[:, 2].max(), a[:, 3].max()])
-    b = near(every[theirs], envelope)
-    ox = np.minimum(a[:, None, 2], b[None, :, 2]) - np.maximum(a[:, None, 0], b[None, :, 0])
-    oy = np.minimum(a[:, None, 3], b[None, :, 3]) - np.maximum(a[:, None, 1], b[None, :, 1])
-    if ((ox > 0) & (oy > 0)).any():
-        return True
-    leaders = np.flatnonzero(p.out & ~p.water & among)
-    if not len(leaders):
-        return False
     end_x, end_y = leader_ends(p)
-
-    def crossed(dots: np.ndarray, ends: np.ndarray, hit: np.ndarray) -> bool:
-        """Any of the leaders (dots (l, 2) to ends) crossing any of the rects `hit`, not those over its own dot."""
-        if not len(dots) or not len(hit):
-            return False
-        r = hit[None]  # (1, m, 4) against (l, 1, 2)
-        d, e = dots[:, None, :], ends[:, None, :]
-        lo, hi = np.minimum(d, e), np.maximum(d, e)
-        near_box = (r[..., 0] <= hi[..., 0]) & (r[..., 2] >= lo[..., 0]) & (r[..., 1] <= hi[..., 1]) & (r[..., 3] >= lo[..., 1])
-        on_dot = (r[..., 0] <= d[..., 0]) & (d[..., 0] <= r[..., 2]) & (r[..., 1] <= d[..., 1]) & (d[..., 1] <= r[..., 3])
-        check = near_box & ~on_dot
-        return bool(check.any() and (segment_hits_rects(d, e, r) & check).any())
-
-    others = leaders[leaders != i]
-    dots = np.stack([p.anchor_x[others], p.anchor_y[others]], -1)
-    if crossed(dots, np.stack([end_x[others], end_y[others]], -1), a):
-        return True
-    if p.out[i] and not p.water[i]:
-        return crossed(np.array([[p.anchor_x[i], p.anchor_y[i]]]), np.array([[end_x[i], end_y[i]]]), every[theirs])
-    return False
+    return bool(kernels.clash(i, every, owner, among, p.out, p.water, p.anchor_x, p.anchor_y, end_x, end_y))
 
 
 def clashes(p: Placement, among: np.ndarray | None = None) -> list[int]:
     """The labels of `among` (a mask, default all) that clash with another of them (clash)."""
     among = np.ones(p.n, bool) if among is None else among
-    rects = rects_of(p)
-    return [int(i) for i in np.flatnonzero(among) if clash(p, int(i), among, rects)]
+    every, owner = rects_of(p)
+    end_x, end_y = leader_ends(p)
+    return [int(i) for i in np.flatnonzero(kernels.clashes(every, owner, among, p.out, p.water, p.anchor_x, p.anchor_y, end_x, end_y))]
 
 
 def place_labels(labels: list[Label], frame: MapFrame, seed: int = SEED, weights: CostWeights = CostWeights(),

@@ -2,11 +2,12 @@ import numpy as np
 import pytest
 import shapely
 
-from worldmap.labels.geometry import nearest_point_on_rect, segment_hits_rects, segments_cross, two_line
+from worldmap.labels.geometry import nearest_point_on_rect, two_line
+from worldmap.labels.kernels import segment_hits_rect, segments_cross
 
 
 def hits(p0, p1, rect) -> bool:
-    return bool(segment_hits_rects(np.array(p0, float), np.array(p1, float), np.array(rect, float)))
+    return bool(segment_hits_rect(*map(float, (*p0, *p1, *rect))))
 
 
 def test_segment_hits_rect() -> None:
@@ -19,7 +20,7 @@ def test_segment_parallel_inside_edge() -> None:
 
 
 def cross(a0, a1, b0, b1) -> bool:
-    return bool(segments_cross(*(np.array(p, float) for p in (a0, a1, b0, b1))))
+    return bool(segments_cross(*map(float, (*a0, *a1, *b0, *b1))))
 
 
 def test_segments_cross() -> None:
