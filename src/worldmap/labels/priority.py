@@ -8,13 +8,12 @@ import shapely
 
 from worldmap.frame import MapFrame
 from worldmap.labels.label import Label
-from worldmap.labels.placement import FIXED, FREE, NUDGE, SHRINK_MIN_PT, Placement, clash, clipped_area, outside_outline, place_labels, rects_of, subset
+from worldmap.labels.placement import FIXED, FREE, NUDGE, OVERHANG_MAX, SHRINK_MIN_PT, Placement, clash, clipped_area, outside_outline, overhang, place_labels, rects_of, subset
 from worldmap.labels.water import WATER_KINDS, WaterLabel
 
 N_RANKS = 5
 RIVER_KM2_PER_KM = 10.0  # a river ranks as an area of this many km2 per km of its length
 
-OVERHANG_MAX = 0.3  # a label on its feature (not 'out') may hang off either end of it by no more than this share of its length
 OVERHANG_SLICES = 16  # a country label's box is judged in this many upright slices; a water label by its glyphs
 NUDGE_MIN_SCALE = 0.9  # a nudged label shrinks no further than this share of the size it settled at
 
@@ -61,16 +60,6 @@ def rank_table(plan: list[tuple[int, list[int]]], kinds: Sequence[str], order: S
     rows = [f"{'rank':<12}" + "".join(f"{r:>6}" for r in range(1, N_RANKS + 1))]
     rows += [f"{kind:<12}" + "".join(f"{n:>6}" for n in row) for kind, row in counts.items() if any(row)]
     return "\n".join(rows)
-
-
-def overhang(on: Sequence[bool]) -> float:
-    """How far a label hangs off its feature at its worse end: the share of its equal pieces (`on`: each one over
-    the feature or not, in reading order) before the first one on it, or after the last; 1 if none is. A gap in
-    the middle doesn't count, so a centred label may be mostly off as long as neither end is far off."""
-    flags = np.asarray(on, bool)
-    if not flags.any():
-        return 1.0
-    return max(int(np.argmax(flags)), int(np.argmax(flags[::-1]))) / len(flags)
 
 
 def overhang_of(p: Placement, k: int, item: "Label | WaterLabel") -> float:

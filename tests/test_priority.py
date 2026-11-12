@@ -1,6 +1,7 @@
 import numpy as np
 
-from worldmap.labels.priority import label_order, overhang, rank_table, ranks_by_quantile, steps
+from worldmap.labels.placement import overhang
+from worldmap.labels.priority import label_order, rank_table, ranks_by_quantile, steps
 
 
 def test_label_order() -> None:

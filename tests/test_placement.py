@@ -185,6 +185,20 @@ def test_nudged_out_label_goes_where_it_must(frame: MapFrame, one_label: list[La
     assert clashes(p) == []
 
 
+def test_solver_keeps_a_water_label_within_overhang_max(frame: MapFrame) -> None:
+    """A rock fixed over the right 40% of a lake's name: sliding it clear would hang it 40% off its water's left
+    end; it may hang off by no more than OVERHANG_MAX, overlap or not."""
+    from worldmap.labels.placement import OVERHANG_MAX, overhang
+
+    x, y = mid_atlantic_px(frame)
+    parts = np.array([[-50.0 + 10 * k, -7, -40 + 10 * k, 7] for k in range(10)])
+    lake = water_label("Lake", (x, y), shapely.box(x - 50, y - 5, x + 50, y + 5), parts, 10, kind="lakes")
+    rock = water_label("Rock", (x + 35, y), shapely.box(x + 10, y - 7, x + 60, y + 7), np.array([[-25.0, -7, 25, 7]]), 10)
+    p = place_labels([], frame, water=[lake, rock], freedom=np.array([FREE, FIXED]))
+    centres = parts[:, 0] + 5 + p.x[0]
+    assert overhang(np.abs(centres - x) < 50) <= OVERHANG_MAX
+
+
 # A box whose right edge lies 5e-13 px off one of Togo's vertices: GEOS's clip_by_rect raises on it.
 TOGO_PX = "POLYGON ((3609.585286844933 2091.546018034035, 3617.718496052304 2092.8773168240687, 3614.959933704542 2079.2169085846563, 3626.1839729590574 2070.588079923535, 3626.1025514875587 2059.9717859354264, 3631.415926600723 2050.0127632517283, 3630.2008885301047 2003.368172133426, 3635.152288076063 1987.3792985440575, 3623.6604045463464 1983.469857365713, 3614.7060960447675 1991.0402238383876, 3610.174902238193 2000.0095778423877, 3612.7264847882543 2010.7882958118007, 3609.7674804418552 2014.831326987724, 3611.304191209372 2030.4843460299758, 3614.0395977572634 2032.5879484081843, 3607.2044465943977 2043.2441209829747, 3609.9557763528674 2045.303790540587, 3610.4582411891292 2057.2681433786997, 3604.463957681665 2057.967032354308, 3604.530061176256 2061.175331862401, 3607.4333496297495 2061.4811319505247, 3605.135315390904 2062.9968368020595, 3607.800040484104 2077.00347300415, 3598.267247135174 2084.839810017562, 3600.31849445323 2094.439844277876, 3596.7355547801085 2096.0596007842437, 3609.585286844933 2091.546018034035))"
 TOGO_BOX = [3556.2733672801087, 2091.8704982629442, 3596.735554780109, 2111.037164929611]

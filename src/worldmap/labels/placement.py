@@ -34,6 +34,7 @@ SHRINK_ROUNDS = 12  # rounds of shrinking still-overlapping labels...
 SHRINK_PASSES = 15  # ...each followed by this many passes
 SHRINK_FACTOR = 0.94
 SHRINK_MIN_PT = 5
+OVERHANG_MAX = 0.3  # a label on its feature (not 'out') may hang off either end of it by no more than this share of its length
 STAY_BIAS = 1e-6  # ties go to the current position
 FIXED, NUDGE, FREE = 0, 1, 2  # a label's freedom: stays put; moves (and shrinks) a little, at a cost; moves freely
 
@@ -53,6 +54,7 @@ class CostWeights:
     drift: float = 0.15  # an 'in' label's distance from its anchor, in heights
     outside_globe: float = 1000  # any part of the label outside the globe outline
     outside_water: float = 20  # share of a water label's glyph boxes off its water body
+    overhang: float = 100  # a water label hanging off its water by over OVERHANG_MAX (overhang): it would be skipped
     water_drift: float = 0.15  # a water label's distance from its anchor, in ems
     nudge: float = 2.0  # a nudged label's distance from its home, in heights (water labels: ems; 'out' labels: none)...
     nudge_max: float = 2.0  # ...which can't be more than this
@@ -87,6 +89,16 @@ def clipped_area(geom: BaseGeometry, b: Sequence[float]) -> float:
         return float(shapely.area(shapely.clip_by_rect(geom, *b)))
     except shapely.errors.GEOSException:
         return float(shapely.intersection(geom, shapely.box(*b)).area)
+
+
+def overhang(on: Sequence[bool]) -> float:
+    """How far a label hangs off its feature at its worse end: the share of its equal pieces (`on`: each one over
+    the feature or not, in reading order) before the first one on it, or after the last; 1 if none is. A gap in
+    the middle doesn't count, so a centred label may be mostly off as long as neither end is far off."""
+    flags = np.asarray(on, bool)
+    if not flags.any():
+        return 1.0
+    return max(int(np.argmax(flags)), int(np.argmax(flags[::-1]))) / len(flags)
 
 
 def leader_ends(p: Placement) -> tuple[np.ndarray, np.ndarray]:
@@ -146,7 +158,10 @@ def water_cost(p: Placement, label: WaterLabel, i: int, cx: np.ndarray, cy: np.n
 
     mid_x, mid_y = (g[..., 0] + g[..., 2]) / 2, (g[..., 1] + g[..., 3]) / 2
     area = (g[..., 2] - g[..., 0]) * (g[..., 3] - g[..., 1])
-    inside = (area * shapely.contains_xy(label.geom, mid_x, mid_y)).sum(1) / area.sum(1)
+    on = shapely.contains_xy(label.geom, mid_x, mid_y)  # (candidates, glyphs)
+    inside = (area * on).sum(1) / area.sum(1)
+    ends = np.where(on.any(1), np.maximum(np.argmax(on, 1), np.argmax(on[:, ::-1], 1)) / on.shape[1], 1.0)  # overhang, per candidate
+    cost += weights.overhang * (ends > OVERHANG_MAX)
     cost += weights.outside_water * (1 - inside) + weights.water_drift * np.hypot(cx - label.anchor_x, cy - label.anchor_y) / em
     corners_in = [shapely.contains_xy(outline_px, g[..., a], g[..., b]) for a, b in ((0, 1), (2, 1), (0, 3), (2, 3))]
     cost += weights.outside_globe * ~np.logical_and.reduce(corners_in).all(1)
