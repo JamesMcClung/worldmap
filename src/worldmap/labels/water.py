@@ -48,6 +48,7 @@ assert _fitted is not None
 WATER_TEXT: RGB = _fitted[0]  # a deeper blue in the ocean's hue
 RIVER_LABEL_MAX_RANK = 6  # rivers of Natural Earth scalerank up to this get a name
 RIVER_MAX_PT, RIVER_MIN_PT = 10, 7  # river names: italic, this size at scalerank <= 1 down to RIVER_LABEL_MAX_RANK
+RIVER_SCALE_MAX = 1.2  # river names grow with a crop's label_scale up to this, no more: they stay small
 RIVER_GAP_EM = 0.3  # baseline height over the river
 RIVER_CORRIDOR_EM = 1.6  # a river name's glyph centres should be within this of its river
 RIVER_JOIN_M = 30_000  # river pieces whose ends are this close are joined (lakes and reservoirs break them up)
@@ -475,8 +476,9 @@ def height_above(points: np.ndarray, curve: np.ndarray) -> float:
 
 def river_label(body: WaterBody, frame: MapFrame) -> WaterLabel | None:
     """A river's name just above the best stretch of it (best_stretch) for a name its size plus half an em each side,
-    clear of its wiggles there; None if the river is shorter than that."""
-    size = river_size(body.rank) * frame.label_scale
+    clear of its wiggles there; None if the river is shorter than that. Sized by label_scale up to RIVER_SCALE_MAX."""
+    scale = min(frame.label_scale, RIVER_SCALE_MAX)
+    size = river_size(body.rank) * scale
     em = size * PX_PER_PT
     line = largest_line(frame.to_px(body.geom))
     pts = np.asarray(line.coords)
@@ -486,7 +488,7 @@ def river_label(body: WaterBody, frame: MapFrame) -> WaterLabel | None:
     stretch = best_stretch(pts, need)
     curve = fit_curve(LineString(stretch).buffer(1.0), MAX_TILT_DEG)
     rise = RIVER_GAP_EM * em + height_above(stretch, curve)
-    label = lay_out(body, curve, size, line.buffer(RIVER_CORRIDOR_EM * em), frame.label_scale, rise)
+    label = lay_out(body, curve, size, line.buffer(RIVER_CORRIDOR_EM * em), scale, rise)
     return label if label.inside_share(label.anchor_x, label.anchor_y) >= WATER_MIN_INSIDE else None
 
 

@@ -8,7 +8,7 @@ from shapely.geometry import LineString, Point
 from worldmap.curves import arc_lengths, bend
 from worldmap.data import load_lakes
 from worldmap.frame import MapFrame, make_frame
-from worldmap.labels.water import (OCEAN_MIN_PT, OCEAN_PT, RIVER_MAX_PT, RIVER_MIN_PT, SEA_MAX_PT, WATER_MIN_INSIDE, WATER_MIN_PT,
+from worldmap.labels.water import (OCEAN_MIN_PT, OCEAN_PT, RIVER_MAX_PT, RIVER_MIN_PT, RIVER_SCALE_MAX, SEA_MAX_PT, WATER_MIN_INSIDE, WATER_MIN_PT,
                                    WATER_TEXT, best_stretch, classify, fit_curve, kinds_from_labels, load_water_bodies,
                                    longest_paths, make_water_labels, river_name, river_size)
 
@@ -177,6 +177,17 @@ def test_river_size() -> None:
     assert river_size(0) == river_size(1) == RIVER_MAX_PT
     assert river_size(6) == RIVER_MIN_PT == river_size(9)
     assert river_size(2) > river_size(4)
+
+
+def test_river_names_stay_small_in_a_crop() -> None:
+    from worldmap.crop import box_region, crop_frame
+    from worldmap.labels.water import load_river_bodies
+
+    f = crop_frame(box_region((5, 45, 15, 52)), 0)  # the Alps and Germany: label_scale near the cap
+    assert f.label_scale > RIVER_SCALE_MAX
+    rivers = make_water_labels(load_river_bodies(f), f)
+    assert rivers and max(r.size for r in rivers) <= RIVER_MAX_PT * RIVER_SCALE_MAX
+    assert max(r.min_size for r in rivers) <= WATER_MIN_PT * RIVER_SCALE_MAX
 
 
 def test_longest_paths_joins_gaps_and_takes_the_trunk() -> None:
