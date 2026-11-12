@@ -118,7 +118,8 @@ def weight_array(weights: CostWeights) -> np.ndarray:
                      weights.drift, weights.outside_globe, weights.outside_water, weights.overhang, weights.water_drift], float)
 
 
-def cost_batch(p: Placement, labels: Sequence[Placeable], i: int, cx: np.ndarray, cy: np.ndarray, weights: CostWeights, outline: Coverage) -> np.ndarray:
+def cost_batch(p: Placement, labels: Sequence[Placeable], i: int, cx: np.ndarray, cy: np.ndarray, weights: CostWeights, outline: Coverage,
+               glyphs: np.ndarray | None = None) -> np.ndarray:
     """Cost of placing label i at each candidate (cx[k], cy[k]): a country label's box centre, a water label's anchor.
 
     Country labels: overlap with other boxes and water glyph boxes; covering another 'out' label's dot, or its
@@ -127,16 +128,18 @@ def cost_batch(p: Placement, labels: Sequence[Placeable], i: int, cx: np.ndarray
     (geometry.Coverage) and its drift from its anchor; any corner outside the outline.
     Water labels: their glyph boxes' overlap with every box and other glyph box; covering a dot, or a leader
     crossing them; the share of glyph boxes whose centres are off their water, hanging off it by over
-    OVERHANG_MAX; drift from the anchor in ems; any glyph corner outside the outline. Compiled: kernels."""
+    OVERHANG_MAX; drift from the anchor in ems; any glyph corner outside the outline. Compiled: kernels.
+    `glyphs`: glyph_boxes(p), if the caller keeps them up to date (place_labels does)."""
     label = labels[i]
+    glyphs = glyph_boxes(p) if glyphs is None else glyphs
     cover = coverage(label)
     o = (outline.table, outline.x0, outline.y0, outline.step)
     cx, cy = np.asarray(cx, float), np.asarray(cy, float)
     if p.water[i]:
         return kernels.water_cost(i, cx, cy, p.parts[p.owner == i], label.unit_px, (float(label.anchor_x), float(label.anchor_y)),
-                                  p.x, p.y, p.width, p.height, p.anchor_x, p.anchor_y, p.out, p.water, glyph_boxes(p), p.owner,
+                                  p.x, p.y, p.width, p.height, p.anchor_x, p.anchor_y, p.out, p.water, glyphs, p.owner,
                                   cover.table, cover.x0, cover.y0, cover.step, *o, OVERHANG_MAX, weight_array(weights))
-    return kernels.country_cost(i, cx, cy, p.x, p.y, p.width, p.height, p.anchor_x, p.anchor_y, p.out, p.water, glyph_boxes(p),
+    return kernels.country_cost(i, cx, cy, p.x, p.y, p.width, p.height, p.anchor_x, p.anchor_y, p.out, p.water, glyphs,
                                 cover.table, cover.x0, cover.y0, cover.step, *o, weight_array(weights))
 
 
@@ -205,17 +208,25 @@ def place_labels(labels: list[Label], frame: MapFrame, seed: int = SEED, weights
     movable = np.flatnonzero(freedom != FIXED)
     outline = outline_coverage(frame)
     rng = np.random.default_rng(seed)
+    glyphs = glyph_boxes(p)  # kept up to date as labels move and shrink: rebuilding them per cost was ~5% of a run
+    first = np.searchsorted(p.owner, np.arange(p.n + 1))  # label k's glyphs: rows first[k]:first[k + 1] (owner ascends)
+
+    def place_glyphs(i: int) -> None:
+        rows = slice(first[i], first[i + 1])
+        glyphs[rows] = p.parts[rows] + np.array([p.x[i], p.y[i], p.x[i], p.y[i]])
 
     def move_to_best(i: int, grid: bool = False, stay_bias: float = 0.0) -> bool:
         """Move label i to its cheapest candidate; True if it moved."""
         cx, cy = candidates(p, items, i, grid)
-        cost = cost_batch(p, items, i, cx, cy, weights, outline)
+        cost = cost_batch(p, items, i, cx, cy, weights, outline, glyphs)
         if freedom[i] == NUDGE and not p.out[i]:  # an 'out' label has no spot of its own to keep, only its dot
             away = np.hypot(cx - home_x[i], cy - home_y[i]) / items[i].unit_px
             cost += np.where(away <= weights.nudge_max, weights.nudge * away, np.inf)
         cost[0] -= stay_bias
         j = int(np.argmin(cost))
         p.x[i], p.y[i] = cx[j], cy[j]
+        if p.water[i]:
+            place_glyphs(i)
         return j != 0
 
     def optimize(passes: int) -> None:
@@ -239,7 +250,8 @@ def place_labels(labels: list[Label], frame: MapFrame, seed: int = SEED, weights
             p.width[i] *= factor
             p.height[i] *= factor
             if p.water[i]:
-                p.parts[p.owner == i] = water[i - len(labels)].parts
+                p.parts[first[i]:first[i + 1]] = water[i - len(labels)].parts
+                place_glyphs(i)
         optimize(SHRINK_PASSES)
     print("passes done; unresolved overlaps:", [items[i].name for i in clashes(p)])
     return p

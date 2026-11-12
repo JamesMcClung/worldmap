@@ -233,3 +233,21 @@ def test_near_labels_holds_every_label_that_costs(frame: MapFrame) -> None:
         env = kernels.envelope(i, cx, cy, p.width, p.height, p.anchor_x, p.anchor_y, p.out)
         near = set(kernels.near_labels(i, *env, p.x, p.y, p.width, p.height, p.anchor_x, p.anchor_y, p.out, p.water, weights.dot_radius).tolist())
         assert costs and costs <= near and len(near) < p.n - 1, (i, costs - near)
+
+
+def test_solver_glyphs_follow_their_labels(frame: MapFrame, monkeypatch: pytest.MonkeyPatch, one_label: list[Label]) -> None:
+    """place_labels keeps the water glyph boxes up to date as labels move and shrink, starting away from their
+    anchors: every cost it asks for sees exactly what glyph_boxes would compute."""
+    sea, bay = crossing_water_labels(frame)
+    seen = []
+    real = placement.cost_batch
+
+    def checked(p, labels, i, cx, cy, weights, outline, glyphs=None):  # type: ignore[no-untyped-def]
+        seen.append(glyphs is not None and np.array_equal(glyphs, glyph_boxes(p)))
+        return real(p, labels, i, cx, cy, weights, outline, glyphs)
+
+    monkeypatch.setattr(placement, "cost_batch", checked)
+    monkeypatch.setattr(placement, "clashes", always_clashing)  # every shrink round shrinks the water labels
+    start = (np.array([one_label[0].anchor_x, sea.anchor_x + 40, bay.anchor_x - 25]), np.array([one_label[0].anchor_y, sea.anchor_y, bay.anchor_y + 9]))
+    place_labels(one_label, frame, water=[sea, bay], start=start)
+    assert seen and all(seen)
