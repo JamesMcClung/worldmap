@@ -23,7 +23,7 @@ from worldmap.curves import along, arc_lengths, bend
 from worldmap.data import EQUAL_AREA_CRS, load_marine, load_rivers
 from worldmap.disjoint import DisjointSets
 from worldmap.frame import DPI, MapFrame
-from worldmap.labels.geometry import Coverage
+from worldmap.labels.geometry import Coverage, coverage
 
 WATER_KINDS = ("oceans", "seas", "lakes", "straits", "rivers", "water")  # the --label values; water = all the others
 Kind = Literal["oceans", "seas", "lakes", "straits", "rivers"]
@@ -359,10 +359,12 @@ class WaterLabel:
         self.size *= factor
 
     def inside_share(self, x: float, y: float) -> float:
-        """The share of the glyph boxes' area over the body when the label is at (x, y)."""
-        boxes = shapely.box(self.parts[:, 0] + x, self.parts[:, 1] + y, self.parts[:, 2] + x, self.parts[:, 3] + y)
-        total = shapely.area(boxes).sum()
-        return float(shapely.area(shapely.intersection(boxes, self.geom)).sum() / total) if total > 0 else 0.0
+        """The share of the glyph boxes' area on the body when the label is at (x, y), a box being on it if its
+        centre is, as the solver has it (placement.cost_batch)."""
+        g = self.parts
+        area = (g[:, 2] - g[:, 0]) * (g[:, 3] - g[:, 1])
+        on = coverage(self).contains(x + (g[:, 0] + g[:, 2]) / 2, y + (g[:, 1] + g[:, 3]) / 2)
+        return float(area[on].sum() / area.sum()) if area.sum() > 0 else 0.0
 
 
 def font(size: float, italic: bool = False) -> FontProperties:

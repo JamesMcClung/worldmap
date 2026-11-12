@@ -275,3 +275,14 @@ def test_water_full_size_is_frame_independent(world_bodies: dict[str, list]) -> 
         assert crop[name][0].full_size == pytest.approx(world_bodies[name][0].full_size, rel=1e-9)
     label = make_water_labels(world_bodies["Lake Victoria"], make_frame())[0]
     assert label.full_size == world_bodies["Lake Victoria"][0].full_size
+
+
+def test_inside_share_counts_glyphs_by_their_centres() -> None:
+    """As the solver has it: a glyph box is on the water if its centre is, weighted by its area. A lake 5 px high
+    under glyph boxes 14 px high is all on; a glyph whose centre is off is off, however much of its box is on."""
+    from test_placement import water_label
+
+    parts = np.array([[-50.0 + 10 * k, -7, -40 + 10 * k, 7] for k in range(10)])
+    lake = water_label("Lake", (0, 0), shapely.box(-52, -2.5, 52, 2.5), parts, WATER_MIN_PT, kind="lakes")
+    assert lake.inside_share(0, 0) == pytest.approx(1.0)
+    assert lake.inside_share(30, 0) == pytest.approx(0.7)  # the right 3 glyphs' centres are past x = 52
