@@ -226,30 +226,56 @@ def candidates(p: Placement, labels: Sequence[Label | WaterLabel], i: int, grid:
     return np.array(cx), np.array(cy)
 
 
-def clashes(p: Placement) -> tuple[list[int], list[int]]:
-    """(country labels overlapping another country label, water labels whose glyph boxes overlap any other label or
-    are crossed by a leader line)."""
-    country = ~p.water
-    boxes = boxes_of(p, np.ones(p.n, bool))
-    glyphs = glyph_boxes(p)
-    country_bad = []
-    for i in np.flatnonzero(country):
-        others = (np.arange(p.n) != i) & country
-        ox = np.minimum(p.x[i] + p.width[i] / 2, p.x[others] + p.width[others] / 2) - np.maximum(p.x[i] - p.width[i] / 2, p.x[others] - p.width[others] / 2)
-        oy = np.minimum(p.y[i] + p.height[i] / 2, p.y[others] + p.height[others] / 2) - np.maximum(p.y[i] - p.height[i] / 2, p.y[others] - p.height[others] / 2)
-        if ((ox > 0) & (oy > 0)).any():
-            country_bad.append(int(i))
-    water_bad = []
-    dots, ends = out_leaders(p)
-    for i in np.flatnonzero(p.water):
-        mine = p.owner == i
-        obstacles = np.vstack([boxes[country], glyphs[~mine]])
-        g = glyphs[mine][:, None, :]
-        ox = np.minimum(g[..., 2], obstacles[:, 2]) - np.maximum(g[..., 0], obstacles[:, 0])
-        oy = np.minimum(g[..., 3], obstacles[:, 3]) - np.maximum(g[..., 1], obstacles[:, 1])
-        if ((ox > 0) & (oy > 0)).any() or (len(dots) and segment_hits_rects(dots, ends, g).any()):
-            water_bad.append(int(i))
-    return country_bad, water_bad
+def rects_of(p: Placement) -> tuple[np.ndarray, np.ndarray]:
+    """Every label's rects: a country label's box, a water label's glyph boxes; (rects (r, 4), owner (r,))."""
+    country = np.flatnonzero(~p.water)
+    return np.vstack([boxes_of(p, ~p.water), glyph_boxes(p)]), np.concatenate([country, p.owner])
+
+
+def clash(p: Placement, i: int, among: np.ndarray, rects: tuple[np.ndarray, np.ndarray] | None = None) -> bool:
+    """Whether label i clashes with another label of `among` (a mask), whatever their kinds: their boxes or glyph
+    boxes overlap, or a leader line of one crosses the other (not a box covering that leader's own dot). `rects`:
+    rects_of(p), if already at hand."""
+    every, owner = rects_of(p) if rects is None else rects
+    mine, theirs = owner == i, (owner != i) & among[owner]
+    a = every[mine]
+    envelope = np.array([a[:, 0].min(), a[:, 1].min(), a[:, 2].max(), a[:, 3].max()])
+    b = near(every[theirs], envelope)
+    ox = np.minimum(a[:, None, 2], b[None, :, 2]) - np.maximum(a[:, None, 0], b[None, :, 0])
+    oy = np.minimum(a[:, None, 3], b[None, :, 3]) - np.maximum(a[:, None, 1], b[None, :, 1])
+    if ((ox > 0) & (oy > 0)).any():
+        return True
+    leaders = np.flatnonzero(p.out & ~p.water & among)
+    if not len(leaders):
+        return False
+    end_x, end_y = leader_ends(p)
+
+    def crossed(dots: np.ndarray, ends: np.ndarray, hit: np.ndarray) -> bool:
+        """Any of the leaders (dots (l, 2) to ends) crossing any of the rects `hit`, not those over its own dot."""
+        if not len(dots) or not len(hit):
+            return False
+        r = hit[None]  # (1, m, 4) against (l, 1, 2)
+        d, e = dots[:, None, :], ends[:, None, :]
+        lo, hi = np.minimum(d, e), np.maximum(d, e)
+        near_box = (r[..., 0] <= hi[..., 0]) & (r[..., 2] >= lo[..., 0]) & (r[..., 1] <= hi[..., 1]) & (r[..., 3] >= lo[..., 1])
+        on_dot = (r[..., 0] <= d[..., 0]) & (d[..., 0] <= r[..., 2]) & (r[..., 1] <= d[..., 1]) & (d[..., 1] <= r[..., 3])
+        check = near_box & ~on_dot
+        return bool(check.any() and (segment_hits_rects(d, e, r) & check).any())
+
+    others = leaders[leaders != i]
+    dots = np.stack([p.anchor_x[others], p.anchor_y[others]], -1)
+    if crossed(dots, np.stack([end_x[others], end_y[others]], -1), a):
+        return True
+    if p.out[i] and not p.water[i]:
+        return crossed(np.array([[p.anchor_x[i], p.anchor_y[i]]]), np.array([[end_x[i], end_y[i]]]), every[theirs])
+    return False
+
+
+def clashes(p: Placement, among: np.ndarray | None = None) -> list[int]:
+    """The labels of `among` (a mask, default all) that clash with another of them (clash)."""
+    among = np.ones(p.n, bool) if among is None else among
+    rects = rects_of(p)
+    return [int(i) for i in np.flatnonzero(among) if clash(p, int(i), among, rects)]
 
 
 def place_labels(labels: list[Label], frame: MapFrame, seed: int = SEED, weights: CostWeights = CostWeights(),
@@ -257,8 +283,7 @@ def place_labels(labels: list[Label], frame: MapFrame, seed: int = SEED, weights
                  freedom: np.ndarray | None = None, home: tuple[np.ndarray, np.ndarray] | None = None,
                  floors: np.ndarray | None = None, seed_out: bool | None = None) -> Placement:
     """Place the labels (largest first in `labels`) and the water labels (most important first). Labels still
-    overlapping after descent are shrunk slightly (their text too) and the descent repeated: country labels only
-    for other country labels, water labels for anything. `start`: positions to start from, for all labels.
+    clashing after descent (clashes: with any label) are shrunk slightly (their text too) and the descent repeated. `start`: positions to start from, for all labels.
     `freedom` (per label, default FREE): FIXED labels stay where they start, at their size; NUDGE labels pay
     `weights.nudge` for their distance from `home` (default: where they start). `floors`: the size (pt) each label
     shrinks no lower than (default: SHRINK_MIN_PT, scaled, for country labels; a water label's min_size; a country
@@ -316,10 +341,10 @@ def place_labels(labels: list[Label], frame: MapFrame, seed: int = SEED, weights
                 move_to_best(i)
     optimize(PASSES)
     for _ in range(SHRINK_ROUNDS):
-        bad, water_bad = clashes(p)
-        bad, water_bad = [i for i in bad if freedom[i] != FIXED], [i for i in water_bad if freedom[i] != FIXED]
-        if not bad and not water_bad:
+        clashing = [i for i in clashes(p) if freedom[i] != FIXED]
+        if not clashing:
             break
+        bad, water_bad = [i for i in clashing if not p.water[i]], [i for i in clashing if p.water[i]]
         for i in bad:
             size = float(labels[i].text.get_fontsize())
             if size > floors[i]:
@@ -335,7 +360,7 @@ def place_labels(labels: list[Label], frame: MapFrame, seed: int = SEED, weights
                 p.width[i] *= factor
                 p.height[i] *= factor
         optimize(SHRINK_PASSES)
-    print("passes done; unresolved overlaps:", [labels[i].name for i in clashes(p)[0]])
+    print("passes done; unresolved overlaps:", [labels[i].name if i < len(labels) else water[i - len(labels)].text for i in clashes(p)])
     return p
 
 
@@ -395,7 +420,7 @@ def place_with_water(labels: list[Label], water: list[WaterLabel], frame: MapFra
         if not water:
             return p, kept
         n_country = len(labels)
-        clashing = {i for i in clashes(p)[1] if i >= fixed}
+        clashing = {i for i in clashes(p) if i >= max(n_country, fixed)}
         outside = set() if frame.globe else outside_outline(p, frame)  # in a crop: under a colour bar
         failing = [i for i in range(max(n_country, fixed), p.n)
                    if kept[i - n_country].inside_share(p.x[i], p.y[i]) < WATER_MIN_INSIDE or i in outside

@@ -22,7 +22,10 @@ def country_label(frame: MapFrame, name: str, lon: float, lat: float, half_px: f
     x, y = frame.to_map.transform(lon, lat)
     half = half_px / frame.px_per_unit
     geom = shapely.box(x - half, y - half, x + half, y + half)
-    return new_label(ax, fig.canvas.get_renderer(), frame, name, (x, y), geom, geom.area, (0.2, 0.2, 0.2))  # type: ignore[attr-defined]
+    label = new_label(ax, fig.canvas.get_renderer(), frame, name, (x, y), geom, geom.area, (0.2, 0.2, 0.2))  # type: ignore[attr-defined]
+    import matplotlib.pyplot as plt
+    plt.close(fig)  # the label keeps its text
+    return label
 
 
 def two_labels_copy() -> list[Label]:
@@ -60,11 +63,28 @@ def test_no_water_is_unchanged(frame: MapFrame, two_labels: list[Label]) -> None
     assert np.array_equal(a.x, b.x) and np.array_equal(a.y, b.y)
 
 
-def test_water_pushes_country_but_only_water_shrinks(frame: MapFrame, one_label: list[Label], water_on_top_of_it: WaterLabel) -> None:
-    size = one_label[0].text.get_fontsize()
-    p = place_labels(one_label, frame, water=[water_on_top_of_it])
-    assert one_label[0].text.get_fontsize() == size
-    assert clashes(p) == ([], [])
+def test_country_can_shrink_for_water(frame: MapFrame, one_label: list[Label], water_on_top_of_it: WaterLabel) -> None:
+    """A sea fixed over a country's label: the country label gives way, by moving or shrinking."""
+    start = (np.array([one_label[0].anchor_x, water_on_top_of_it.anchor_x]), np.array([one_label[0].anchor_y, water_on_top_of_it.anchor_y]))
+    p = place_labels(one_label, frame, water=[water_on_top_of_it], start=start, freedom=np.array([FREE, FIXED]))
+    assert clashes(p) == [] or one_label[0].text.get_fontsize() <= placement.SHRINK_MIN_PT
+
+
+def test_clash_is_symmetric(frame: MapFrame, one_label: list[Label], water_on_top_of_it: WaterLabel) -> None:
+    start = (np.array([one_label[0].anchor_x, water_on_top_of_it.anchor_x]), np.array([one_label[0].anchor_y, water_on_top_of_it.anchor_y]))
+    p = place_labels(one_label, frame, water=[water_on_top_of_it], start=start, freedom=np.array([FIXED, FIXED]))
+    assert clashes(p) == [0, 1]
+    assert clashes(p, np.array([True, False])) == []
+
+
+def test_leader_through_a_box_clashes(frame: MapFrame, two_labels: list[Label]) -> None:
+    """An 'out' label whose leader runs through another country label's box: both clash."""
+    a, b = two_labels
+    p = place_labels(two_labels, frame, freedom=np.array([FIXED, FIXED]))
+    p.out[0] = True
+    p.anchor_x[0], p.anchor_y[0] = p.x[1] - p.width[1], p.y[1]  # dot left of b, label right of b: the leader crosses b
+    p.x[0], p.y[0] = p.x[1] + p.width[1] + p.width[0], p.y[1]
+    assert clashes(p) == [0, 1]
 
 
 def test_water_only(frame: MapFrame, water_on_top_of_it: WaterLabel) -> None:
@@ -94,7 +114,7 @@ def test_drop_least_important(frame: MapFrame) -> None:
     sea, bay = crossing_water_labels(frame)
     p, kept = place_with_water([], [sea, bay], frame)
     assert [w.text for w in kept] == ["Sea"]
-    assert clashes(p) == ([], [])
+    assert clashes(p) == []
 
 
 def test_off_water_is_dropped(frame: MapFrame) -> None:
@@ -113,8 +133,8 @@ def test_no_water_is_place_labels(frame: MapFrame, two_labels: list[Label]) -> N
     assert kept == [] and np.array_equal(a.x, b.x) and np.array_equal(a.y, b.y)
 
 
-def always_clashing(p: placement.Placement) -> tuple[list[int], list[int]]:
-    return [], [int(i) for i in np.flatnonzero(p.water)]
+def always_clashing(p: placement.Placement, among: np.ndarray | None = None) -> list[int]:
+    return [int(i) for i in np.flatnonzero(p.water)]
 
 
 def test_oceans_shrink_no_smaller_than_ocean_floor(frame: MapFrame, monkeypatch: pytest.MonkeyPatch) -> None:
