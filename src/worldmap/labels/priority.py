@@ -58,8 +58,9 @@ GREEN, YELLOW, RED, PLAIN = "\x1b[32m", "\x1b[33m", "\x1b[31m", "\x1b[0m"
 
 def rank_table(plan: list[tuple[int, list[int]]], kinds: Sequence[str], order: Sequence[str], placed: Collection[int], color: bool) -> str:
     """How many of each rank's labels were placed, as text: a row per kind (in `order`, those with any), then of
-    all kinds, then that as a percentage. In colour a cell is green if all were placed, red if none, else yellow;
-    only a yellow one shows how many ('28/36')."""
+    all kinds, then that as a percentage; on the right, of every rank, then as a percentage. In colour a cell is
+    green if all were placed, red if none, else yellow; of the rank cells of a kind, only a yellow one shows how many
+    ('28/36')."""
     total = {kind: np.zeros(N_RANKS, int) for kind in [*order, "all"]}
     done = {kind: np.zeros(N_RANKS, int) for kind in total}
     for r, members in plan:
@@ -68,22 +69,24 @@ def rank_table(plan: list[tuple[int, list[int]]], kinds: Sequence[str], order: S
                 total[kind][r - 1] += 1
                 done[kind][r - 1] += i in placed
 
-    def cell(n: int, of: int, text: str, short: str) -> str:
+    def cell(n: int, of: int, percent: bool, short: bool) -> str:
         if of == 0:
             return f"{'-':>8}"
+        text = f"{round(100 * n / of)}%" if percent else f"{n}/{of}"
         if not color:
             return f"{text:>8}"
         hue = GREEN if n == of else RED if n == 0 else YELLOW
-        return f"{hue}{text if hue == YELLOW else short:>8}{PLAIN}"
+        return f"{hue}{str(of) if short and hue != YELLOW else text:>8}{PLAIN}"
 
     def row(name: str, kind: str, percent: bool = False) -> str:
-        cells = []
-        for n, of in zip(done[kind], total[kind]):
-            text = f"{round(100 * n / of)}%" if percent and of else f"{n}/{of}"
-            cells.append(cell(n, of, text, text if kind == "all" else str(of)))
+        n, of = done[kind], total[kind]
+        cells = [cell(a, b, percent, kind != "all") for a, b in zip(n, of)]
+        cells.append(cell(n.sum(), of.sum(), percent, False))
+        if not percent:
+            cells.append(cell(n.sum(), of.sum(), True, False))
         return f"{name:<12}" + "".join(cells)
 
-    rows = [f"{'rank':<12}" + "".join(f"{r:>8}" for r in range(1, N_RANKS + 1))]
+    rows = [f"{'rank':<12}" + "".join(f"{r:>8}" for r in [*range(1, N_RANKS + 1), "all", "%"])]
     rows += [row(kind, kind) for kind in order if total[kind].any()]
     return "\n".join([*rows, row("all", "all"), row("%", "all", percent=True)])
 
