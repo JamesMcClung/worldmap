@@ -1,5 +1,7 @@
 import numpy as np
+import pytest
 
+from worldmap.labels import priority
 from worldmap.labels.placement import overhang
 from worldmap.labels.priority import label_order, rank_table, ranks_by_quantile, steps
 
@@ -54,8 +56,9 @@ def test_rank_table() -> None:
         "%            │     67%       -      0%       -       - │     50%")
 
 
-def test_rank_table_names_the_biggest_dropped() -> None:
-    """A kind's in plan order (by size), cut to 20 characters, '...' included, '-' if none; none for all kinds together."""
+def test_rank_table_names_the_biggest_dropped(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A kind's in plan order (by size), cut to DROPPED_WIDTH characters, '...' included, '-' if none; none for all kinds together."""
+    monkeypatch.setattr(priority, "DROPPED_WIDTH", 20)
     plan = [(1, [0, 1, 2, 3, 4]), (1, [5]), (2, [6])]
     kinds = ["seas"] * 5 + ["rivers", "lakes"]
     assert rank_table(plan, kinds, ["seas", "rivers", "lakes"], placed={1, 6}, color=False, names=["Aaaa", "B", "Cccc", "Ddddd", "Eeeeeeee", "F", "G"]) == (
