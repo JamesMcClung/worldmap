@@ -4,6 +4,7 @@ river's length) against the biggest of that kind in the frame; rank by rank, the
 from collections.abc import Callable, Sequence
 
 import numpy as np
+import shapely
 
 from worldmap.frame import MapFrame
 from worldmap.labels.label import Label
@@ -75,17 +76,15 @@ def overhang(on: Sequence[bool]) -> float:
 
 
 def overhang_of(p: Placement, k: int, item: "Label | WaterLabel") -> float:
-    """overhang of label k: its glyph boxes (a water label) or OVERHANG_SLICES slices of its box (a country), each
-    on its feature if at least half over it."""
+    """overhang of label k: of its glyphs (a water label), each on its water if its box's centre is, as the solver
+    has it (water_cost); or of OVERHANG_SLICES slices of its box (a country), each on it if at least half over it."""
     if p.water[k]:
         rects, owner = rects_of(p)
-        pieces = rects[owner == k]
-    else:
-        x0, y0, w, h = p.x[k] - p.width[k] / 2, p.y[k] - p.height[k] / 2, p.width[k], p.height[k]
-        edges = x0 + w * np.arange(OVERHANG_SLICES + 1) / OVERHANG_SLICES
-        pieces = np.column_stack([edges[:-1], np.full(OVERHANG_SLICES, y0), edges[1:], np.full(OVERHANG_SLICES, y0 + h)])
-    area = (pieces[:, 2] - pieces[:, 0]) * (pieces[:, 3] - pieces[:, 1])
-    return overhang([clipped_area(item.geom, piece) >= a / 2 for piece, a in zip(pieces, area)])
+        g = rects[owner == k]
+        return overhang(shapely.contains_xy(item.geom, (g[:, 0] + g[:, 2]) / 2, (g[:, 1] + g[:, 3]) / 2))
+    x0, y0, w, h = p.x[k] - p.width[k] / 2, p.y[k] - p.height[k] / 2, p.width[k], p.height[k]
+    edges = x0 + w * np.arange(OVERHANG_SLICES + 1) / OVERHANG_SLICES
+    return overhang([clipped_area(item.geom, [a, y0, b, y0 + h]) >= w * h / OVERHANG_SLICES / 2 for a, b in zip(edges[:-1], edges[1:])])
 
 
 def place_by_priority(labels: list[Label], water: list[WaterLabel], frame: MapFrame, order: Sequence[str],

@@ -140,7 +140,8 @@ def test_nothing_to_place() -> None:
 def test_water_label_mostly_off_its_water_is_skipped() -> None:
     """Its body is 40% of its name's width wherever it goes."""
     x, y = mid_atlantic_px(FRAME)
-    sea = water_label("Sea", (x, y), shapely.box(x - 12, y - 7, x + 12, y + 7), np.array([[-30.0, -7, 30, 7]]), WATER_MIN_PT)
+    parts = np.array([[-30.0 + 10 * k, -7, -20 + 10 * k, 7] for k in range(6)])  # wherever it goes, 2 of 6 glyphs off one end
+    sea = water_label("Sea", (x, y), shapely.box(x - 12, y - 7, x + 12, y + 7), parts, WATER_MIN_PT)
     assert place_by_priority([], [sized(sea, 1)], FRAME, ["seas"])[2] == []
 
 
@@ -161,3 +162,11 @@ def test_centred_label_may_hang_off_both_ends() -> None:
     sea = water_label("Sea", (x, y), shapely.box(x - 24, y - 20, x + 24, y + 20), parts, WATER_MIN_PT)
     assert [w.text for w in place_by_priority([], [sized(sea, 1)], FRAME, ["seas"])[2]] == ["Sea"]
 
+
+
+def test_water_label_on_a_narrow_lake_is_kept() -> None:
+    """Every glyph's centre is over the water, though under half of each (halo-padded) glyph box is."""
+    x, y = mid_atlantic_px(FRAME)
+    parts = np.array([[-50.0 + 10 * k, -7, -40 + 10 * k, 7] for k in range(10)])
+    lake = water_label("Lake", (x, y), shapely.box(x - 52, y - 2.5, x + 52, y + 2.5), parts, WATER_MIN_PT, kind="lakes")
+    assert [w.text for w in place_by_priority([], [sized(lake, 1)], FRAME, ["lakes"])[2]] == ["Lake"]
