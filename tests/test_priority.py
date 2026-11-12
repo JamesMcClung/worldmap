@@ -1,6 +1,6 @@
 import numpy as np
 
-from worldmap.labels.priority import label_order, overhang, ranks_per_kind, steps
+from worldmap.labels.priority import label_order, overhang, rank_table, ranks_per_kind, steps
 
 
 def test_label_order() -> None:
@@ -34,6 +34,14 @@ def test_overhang_is_the_longer_end_off() -> None:
     assert overhang([False, True, True, True, False, False]) == 2 / 6
     assert overhang([True, False, True]) == 0  # a gap in the middle doesn't count
     assert overhang([False, False]) == 1
+
+
+def test_rank_table() -> None:
+    plan = steps(["seas", "rivers", "seas", "seas"], [1000, 5, 1, 0.5], ["rivers", "seas", "lakes"])
+    assert rank_table(plan, ["seas", "rivers", "seas", "seas"], ["rivers", "seas", "lakes"]) == (
+        "rank             1     2     3     4     5\n"
+        "rivers           1     0     0     0     0\n"
+        "seas             1     0     1     1     0")
 
 
 def test_steps_empty() -> None:

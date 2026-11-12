@@ -53,6 +53,17 @@ def steps(kinds: Sequence[str], sizes: Sequence[float], order: Sequence[str], ra
     return out
 
 
+def rank_table(plan: list[tuple[int, list[int]]], kinds: Sequence[str], order: Sequence[str]) -> str:
+    """How many labels of each kind (rows, in `order`; kinds without any left out) each rank has, as text."""
+    counts = {kind: [0] * N_RANKS for kind in order}
+    for r, members in plan:
+        for i in members:
+            counts[kinds[i]][r - 1] += 1
+    rows = [f"{'rank':<12}" + "".join(f"{r:>6}" for r in range(1, N_RANKS + 1))]
+    rows += [f"{kind:<12}" + "".join(f"{n:>6}" for n in row) for kind, row in counts.items() if any(row)]
+    return "\n".join(rows)
+
+
 def overhang(on: Sequence[bool]) -> float:
     """How far a label hangs off its feature at its worse end: the share of its equal pieces (`on`: each one over
     the feature or not, in reading order) before the first one on it, or after the last; 1 if none is. A gap in
@@ -88,7 +99,9 @@ def place_by_priority(labels: list[Label], water: list[WaterLabel], frame: MapFr
     country by more than that becomes an 'out' label, with a leader, and the step is solved again."""
     items: list[Label | WaterLabel] = [*labels, *water]
     n_country = len(labels)
-    plan = steps([item.kind for item in items], [item.full_size for item in items], order, rank)
+    kinds = [item.kind for item in items]
+    plan = steps(kinds, [item.full_size for item in items], order, rank)
+    print(rank_table(plan, kinds, order))
     rank_of = {i: r for r, members in plan for i in members}
     x = {i: item.anchor_x for i, item in enumerate(items)}
     y = dict((i, item.anchor_y) for i, item in enumerate(items))
