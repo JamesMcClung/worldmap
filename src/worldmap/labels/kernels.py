@@ -81,20 +81,51 @@ def overlap(a0: float, a1: float, a2: float, a3: float, b0: float, b1: float, b2
 
 
 @njit(cache=True)
+def envelope(i: int, cx: np.ndarray, cy: np.ndarray, width: np.ndarray, height: np.ndarray, anchor_x: np.ndarray, anchor_y: np.ndarray,
+             out: np.ndarray) -> tuple[float, float, float, float]:
+    """The box round country label i's candidate boxes (centres cx, cy) and, if it is 'out', its dot: its leaders
+    too lie within it. Nothing beyond it can touch them."""
+    w, h = width[i], height[i]
+    ex0, ey0, ex1, ey1 = cx.min() - w / 2, cy.min() - h / 2, cx.max() + w / 2, cy.max() + h / 2
+    if out[i]:
+        ex0, ey0, ex1, ey1 = min(ex0, anchor_x[i]), min(ey0, anchor_y[i]), max(ex1, anchor_x[i]), max(ey1, anchor_y[i])
+    return ex0, ey0, ex1, ey1
+
+
+@njit(cache=True)
+def near_labels(i: int, ex0: float, ey0: float, ex1: float, ey1: float, x: np.ndarray, y: np.ndarray, width: np.ndarray,
+                height: np.ndarray, anchor_x: np.ndarray, anchor_y: np.ndarray, out: np.ndarray, water: np.ndarray,
+                dot_radius: float) -> np.ndarray:
+    """The country labels but i whose box, or ('out') dot with its keep-clear radius, meets the envelope (its
+    leader runs from the dot to its box, so lies within those): only these add to i's cost there."""
+    near = np.empty(len(x), np.int64)
+    n_near = 0
+    for j in range(len(x)):
+        if j == i or water[j]:
+            continue
+        o0, o1, o2, o3 = x[j] - width[j] / 2, y[j] - height[j] / 2, x[j] + width[j] / 2, y[j] + height[j] / 2
+        if out[j]:
+            r = dot_radius * height[j]
+            o0, o1, o2, o3 = min(o0, anchor_x[j] - r), min(o1, anchor_y[j] - r), max(o2, anchor_x[j] + r), max(o3, anchor_y[j] + r)
+        if o0 <= ex1 and o2 >= ex0 and o1 <= ey1 and o3 >= ey0:
+            near[n_near] = j
+            n_near += 1
+    return near[:n_near]
+
+
+@njit(cache=True)
 def country_cost(i: int, cx: np.ndarray, cy: np.ndarray, x: np.ndarray, y: np.ndarray, width: np.ndarray, height: np.ndarray,
                  anchor_x: np.ndarray, anchor_y: np.ndarray, out: np.ndarray, water: np.ndarray, glyphs: np.ndarray,
                  table: np.ndarray, tx0: float, ty0: float, tstep: float,
                  outline: np.ndarray, ox0: float, oy0: float, ostep: float, wt: np.ndarray) -> np.ndarray:
     """placement.cost_batch for country label i at each candidate centre (cx[k], cy[k]). glyphs: every water glyph
     box where it is now (glyph_boxes); table...: its country's Coverage; outline...: the frame's."""
-    n, m = len(cx), len(x)
+    n = len(cx)
     w, h = width[i], height[i]
     ax, ay = anchor_x[i], anchor_y[i]
     cost = np.zeros(n)
-    # Our candidate boxes' envelope: glyph boxes beyond it can't touch them.
-    ex0, ey0, ex1, ey1 = cx.min() - w / 2, cy.min() - h / 2, cx.max() + w / 2, cy.max() + h / 2
-    if out[i]:  # our leaders reach from the dot to the candidate boxes: glyphs beyond that can't meet them either
-        ex0, ey0, ex1, ey1 = min(ex0, ax), min(ey0, ay), max(ex1, ax), max(ey1, ay)
+    ex0, ey0, ex1, ey1 = envelope(i, cx, cy, width, height, anchor_x, anchor_y, out)
+    others = near_labels(i, ex0, ey0, ex1, ey1, x, y, width, height, anchor_x, anchor_y, out, water, wt[DOT_RADIUS])
     near = np.empty(len(glyphs), np.int64)
     n_near = 0
     for g in range(len(glyphs)):
@@ -108,9 +139,7 @@ def country_cost(i: int, cx: np.ndarray, cy: np.ndarray, x: np.ndarray, y: np.nd
             nx, ny = min(max(ax, b0), b2), min(max(ay, b1), b3)  # our leader's end
             length = math.hypot(nx - ax, ny - ay)
             c += wt[LEADER_LENGTH] * ((length - wt[LEADER_TARGET] * h) / h) ** 2 + wt[LEADER_TOO_SHORT] * max(wt[LEADER_MIN] * h - length, 0.0) / h
-        for j in range(m):
-            if j == i or water[j]:
-                continue
+        for j in others:
             o0, o1, o2, o3 = x[j] - width[j] / 2, y[j] - height[j] / 2, x[j] + width[j] / 2, y[j] + height[j] / 2
             c += wt[OVERLAP] * overlap(b0, b1, b2, b3, o0, o1, o2, o3) / (h * h)
             if out[j]:  # its dot under our box, its leader through it

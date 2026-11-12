@@ -202,3 +202,34 @@ def test_water_labels_try_fine_steps(frame: MapFrame) -> None:
     p = place_labels([], frame, water=[sea], freedom=np.array([FIXED]))
     cx, cy = candidates(p, [sea], 0)
     assert np.isclose(np.abs(cy - p.y[0]), 0.1 * p.height[0]).any()
+
+
+def test_near_labels_holds_every_label_that_costs(frame: MapFrame) -> None:
+    """Every country label that adds to label i's cost at any of its candidates is one near_labels gathers for
+    them, and it gathers fewer than all: for an 'in' label, and for an 'out' one with a leader running past others."""
+    from worldmap.labels import kernels
+    from worldmap.labels.placement import candidates, cost_batch, outline_coverage
+
+    labels = [country_label(frame, f"L{a}{b}", -60 + 8 * a, -20 + 8 * b, 60) for a in range(7) for b in range(6)]
+    p = place_labels(labels, frame, freedom=np.full(len(labels), FIXED))
+    for j, by in ((41, 0), (3, 21)):  # 'out' labels with their dots far from their boxes, beside labels 0 and 21
+        p.out[j] = labels[j].out = True
+        p.anchor_x[j], p.anchor_y[j] = p.x[by] + 0.6 * p.width[by], p.y[by]
+    outline, weights = outline_coverage(frame), placement.CostWeights()
+    for i in (0, 3, 21):
+        cx, cy = candidates(p, labels, i)
+        n = len(cx)
+        costs = set()
+        for j in range(p.n):
+            if j != i:
+                # The reference: one more candidate, on j's box and dot, so the kernel's own filter takes j in;
+                # only the real candidates' costs are compared.
+                ex, ey = np.append(cx, [p.x[j], p.anchor_x[j]]), np.append(cy, [p.y[j], p.anchor_y[j]])
+                alone = cost_batch(subset(p, np.arange(p.n) == i), [labels[i]], 0, ex, ey, weights, outline)[:n]
+                pair = subset(p, np.isin(np.arange(p.n), [i, j]))
+                with_j = cost_batch(pair, [labels[min(i, j)], labels[max(i, j)]], int(i > j), ex, ey, weights, outline)[:n]
+                if not np.array_equal(with_j, alone):
+                    costs.add(j)
+        env = kernels.envelope(i, cx, cy, p.width, p.height, p.anchor_x, p.anchor_y, p.out)
+        near = set(kernels.near_labels(i, *env, p.x, p.y, p.width, p.height, p.anchor_x, p.anchor_y, p.out, p.water, weights.dot_radius).tolist())
+        assert costs and costs <= near and len(near) < p.n - 1, (i, costs - near)
