@@ -6,10 +6,10 @@ import sys
 from collections.abc import Callable, Collection, Sequence
 
 import numpy as np
-import shapely
 
 from worldmap.frame import MapFrame
-from worldmap.labels.label import Label, coverage
+from worldmap.labels.geometry import coverage
+from worldmap.labels.label import Label
 from worldmap.labels.placement import FIXED, FREE, NUDGE, OVERHANG_MAX, SHRINK_MIN_PT, Placement, clash, outside_outline, overhang, place_labels, rects_of, subset
 from worldmap.labels.water import WATER_KINDS, WaterLabel
 
@@ -94,7 +94,7 @@ def overhang_of(p: Placement, k: int, item: "Label | WaterLabel") -> float:
     if p.water[k]:
         rects, owner = rects_of(p)
         g = rects[owner == k]
-        return overhang(shapely.contains_xy(item.geom, (g[:, 0] + g[:, 2]) / 2, (g[:, 1] + g[:, 3]) / 2))
+        return overhang(coverage(item).contains((g[:, 0] + g[:, 2]) / 2, (g[:, 1] + g[:, 3]) / 2))
     assert isinstance(item, Label)
     x0, y0, w, h = p.x[k] - p.width[k] / 2, p.y[k] - p.height[k] / 2, p.width[k], p.height[k]
     edges = x0 + w * np.arange(OVERHANG_SLICES + 1) / OVERHANG_SLICES

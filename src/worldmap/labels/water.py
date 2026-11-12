@@ -3,7 +3,7 @@ follows, and its glyphs laid out along it. Bodies are in projected map units; la
 
 import functools
 from collections.abc import Collection
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 import geopandas as gpd
@@ -22,6 +22,7 @@ from worldmap.colorspace import RGB, fit_gamut, srgb_to_oklch
 from worldmap.curves import along, arc_lengths, bend
 from worldmap.data import EQUAL_AREA_CRS, load_marine, load_rivers
 from worldmap.frame import DPI, MapFrame
+from worldmap.labels.geometry import Coverage
 
 WATER_KINDS = ("oceans", "seas", "lakes", "straits", "rivers", "water")  # the --label values; water = all the others
 Kind = Literal["oceans", "seas", "lakes", "straits", "rivers"]
@@ -362,6 +363,7 @@ class WaterLabel:
     parts: np.ndarray  # (k, 4) x0, y0, x1, y1 per non-space glyph, px relative to the label's position, halo-padded
     label_scale: float = 1.0  # the frame's
     full_size: float = 0.0  # its body's (WaterBody.full_size)
+    cover: Coverage | None = field(default=None, repr=False, compare=False)  # geom's, once needed (geometry.coverage)
 
     @property
     def min_size(self) -> float:

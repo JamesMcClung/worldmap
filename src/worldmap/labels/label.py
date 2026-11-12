@@ -65,14 +65,7 @@ class Label:
     out: bool = False  # True: placed beside the country with a leader line
     kind: str = "countries"  # its --label kind: countries (disputed areas too) or territories
     full_size: float = 0.0  # km2 of the whole country or region, however much of it the frame shows: its priority
-    cover: Coverage | None = field(default=None, repr=False, compare=False)  # geom's, once needed (coverage)
-
-
-def coverage(label: Label) -> Coverage:
-    """The label's geom as a Coverage, made once."""
-    if label.cover is None:
-        label.cover = Coverage.of(label.geom)
-    return label.cover
+    cover: Coverage | None = field(default=None, repr=False, compare=False)  # geom's, once needed (geometry.coverage)
 
 
 def measure(label: Label, renderer: RendererBase) -> None:

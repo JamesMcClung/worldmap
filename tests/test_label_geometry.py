@@ -56,3 +56,15 @@ def test_coverage_of_boxes_off_the_shape_and_of_nothing() -> None:
 
     assert Coverage.of(shapely.box(0, 0, 10, 10)).area(np.array([[20.0, 20, 30, 30], [-5, -5, 15, 15]])) == pytest.approx([0, 100])
     assert Coverage.of(shapely.Polygon()).area(np.array([[0.0, 0, 1, 1]])) == pytest.approx([0])
+
+
+def test_coverage_contains_matches_shapely_away_from_the_edge() -> None:
+    from worldmap.labels.geometry import Coverage
+
+    shape = shapely.Polygon([(0, 0), (300, 40), (260, 200), (120, 150), (30, 210)]).difference(shapely.Point(150, 90).buffer(30))
+    rng = np.random.default_rng(2)
+    x, y = rng.uniform(-40, 340, 2000), rng.uniform(-40, 250, 2000)
+    clear = shapely.distance(shapely.points(x, y), shape.boundary) > 1.5  # a cell's diagonal from the edge
+    assert (Coverage.of(shape).contains(x, y) == shapely.contains_xy(shape, x, y))[clear].all()
+    assert Coverage.of(shapely.Polygon()).contains(np.array([0.0]), np.array([0.0])).tolist() == [False]
+

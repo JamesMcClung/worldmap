@@ -9,8 +9,8 @@ import shapely
 from shapely.geometry import Polygon
 
 from worldmap.frame import MapFrame
-from worldmap.labels.geometry import nearest_point_on_rect, segment_hits_rects, segments_cross
-from worldmap.labels.label import Label, coverage
+from worldmap.labels.geometry import coverage, nearest_point_on_rect, segment_hits_rects, segments_cross
+from worldmap.labels.label import Label
 from worldmap.labels.water import PX_PER_PT, WaterLabel
 
 SEED = 7
@@ -82,7 +82,7 @@ class Placement:
         return len(self.x)
 
 
-def overhang(on: Sequence[bool]) -> float:
+def overhang(on: Sequence[bool] | np.ndarray) -> float:
     """How far a label hangs off its feature at its worse end: the share of its equal pieces (`on`: each one over
     the feature or not, in reading order) before the first one on it, or after the last; 1 if none is. A gap in
     the middle doesn't count, so a centred label may be mostly off as long as neither end is far off."""
@@ -149,7 +149,7 @@ def water_cost(p: Placement, label: WaterLabel, i: int, cx: np.ndarray, cy: np.n
 
     mid_x, mid_y = (g[..., 0] + g[..., 2]) / 2, (g[..., 1] + g[..., 3]) / 2
     area = (g[..., 2] - g[..., 0]) * (g[..., 3] - g[..., 1])
-    on = shapely.contains_xy(label.geom, mid_x, mid_y)  # (candidates, glyphs)
+    on = coverage(label).contains(mid_x, mid_y)  # (candidates, glyphs)
     inside = (area * on).sum(1) / area.sum(1)
     ends = np.where(on.any(1), np.maximum(np.argmax(on, 1), np.argmax(on[:, ::-1], 1)) / on.shape[1], 1.0)  # overhang, per candidate
     cost += weights.overhang * (ends > OVERHANG_MAX)
@@ -318,8 +318,6 @@ def place_labels(labels: list[Label], frame: MapFrame, seed: int = SEED, weights
         np.vstack([np.zeros((0, 4)), *[w.parts for w in water]]),
         np.concatenate([np.zeros(0, int), *[np.full(len(w.parts), len(labels) + k) for k, w in enumerate(water)]]),
     )
-    for w in water:
-        shapely.prepare(w.geom)
     if start is not None:
         p.x, p.y = start[0].copy(), start[1].copy()
     freedom = np.full(p.n, FREE) if freedom is None else np.asarray(freedom)

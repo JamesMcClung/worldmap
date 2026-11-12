@@ -2,6 +2,7 @@
 
 import math
 from dataclasses import dataclass
+from typing import Protocol
 
 import numpy as np
 import shapely
@@ -93,7 +94,28 @@ class Coverage:
         t = self.table
         return ((1 - fv) * ((1 - fu) * t[j, i] + fu * t[j, i + 1]) + fv * ((1 - fu) * t[j + 1, i] + fu * t[j + 1, i + 1])) * self.step ** 2
 
+    def contains(self, x: np.ndarray, y: np.ndarray) -> np.ndarray:
+        """Whether each point's cell is covered (outside the table: no)."""
+        rows, cols = self.table.shape[0] - 1, self.table.shape[1] - 1
+        u, v = np.floor((x - self.x0) / self.step), np.floor((y - self.y0) / self.step)
+        within = (u >= 0) & (u < cols) & (v >= 0) & (v < rows)
+        i, j = np.where(within, u, 0).astype(int), np.where(within, v, 0).astype(int)
+        t = self.table
+        return within & (t[j + 1, i + 1] - t[j, i + 1] - t[j + 1, i] + t[j, i] > 0)
+
     def area(self, boxes: np.ndarray) -> np.ndarray:
         """The shape's area inside each box (..., 4) [x0, y0, x1, y1]."""
         x0, y0, x1, y1 = (boxes[..., k] for k in range(4))
         return self.below_left(x1, y1) - self.below_left(x0, y1) - self.below_left(x1, y0) + self.below_left(x0, y0)
+
+
+class Covered(Protocol):
+    geom: BaseGeometry
+    cover: Coverage | None
+
+
+def coverage(item: Covered) -> Coverage:
+    """A label's geom as a Coverage, made the first time it's needed."""
+    if item.cover is None:
+        item.cover = Coverage.of(item.geom)
+    return item.cover

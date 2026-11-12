@@ -196,7 +196,7 @@ def test_solver_keeps_a_water_label_within_overhang_max(frame: MapFrame) -> None
     rock = water_label("Rock", (x + 35, y), shapely.box(x + 10, y - 7, x + 60, y + 7), np.array([[-25.0, -7, 25, 7]]), 10)
     p = place_labels([], frame, water=[lake, rock], freedom=np.array([FREE, FIXED]))
     centres = parts[:, 0] + 5 + p.x[0]
-    assert overhang(np.abs(centres - x) < 50) <= OVERHANG_MAX
+    assert overhang(np.abs(centres - x) <= 51) <= OVERHANG_MAX  # on the lake, to within a pixel (Coverage)
 
 
 def test_water_labels_try_fine_steps(frame: MapFrame) -> None:
