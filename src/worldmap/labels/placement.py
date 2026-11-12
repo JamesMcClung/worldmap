@@ -29,6 +29,8 @@ RING_X_GAP = 1.3  # ring half-width = label half-width + this many label heights
 RING_Y = 1.8  # ring half-height, in label heights
 # 'in' labels also scan a grid over their country in the first passes, so they can jump to where they fit.
 GRID_NX, GRID_NY = 14, 9
+STEP_ARRAY, SCALE_ARRAY, WATER_SCALE_ARRAY = np.array(STEPS), np.array(STEP_SCALES, float), np.array(WATER_STEP_SCALES, float)  # as the kernels take them
+RING_COS, RING_SIN, RING_SCALE_ARRAY, NO_BOUNDS = np.cos(RING_ANGLES), np.sin(RING_ANGLES), np.array(RING_SCALES), np.zeros(4)
 GRID_PASSES = 3
 
 PASSES = 40  # coordinate-descent passes (stops early when nothing moves)
@@ -140,29 +142,13 @@ def cost_batch(p: Placement, labels: Sequence[Label | WaterLabel], i: int, cx: n
 
 
 def candidates(p: Placement, labels: Sequence[Label | WaterLabel], i: int, grid: bool = False) -> tuple[np.ndarray, np.ndarray]:
-    """Candidate centres for label i; the first is its current position."""
-    w, h = p.width[i], p.height[i]
-    cx, cy = [p.x[i]], [p.y[i]]
-    for scale in WATER_STEP_SCALES if p.water[i] else STEP_SCALES:
-        for a, b in STEPS:
-            cx.append(p.x[i] + a * w * scale)
-            cy.append(p.y[i] + b * h * scale)
-    if p.out[i]:
-        for k in RING_SCALES:
-            cx += list(p.anchor_x[i] + np.cos(RING_ANGLES) * (w / 2 + RING_X_GAP * h) * k)
-            cy += list(p.anchor_y[i] + np.sin(RING_ANGLES) * RING_Y * h * k)
-    else:
-        cx.append(p.anchor_x[i])
-        cy.append(p.anchor_y[i])
-        if grid and not p.water[i]:
-            gx0, gy0, gx1, gy1 = labels[i].geom.bounds
-            us = np.linspace(gx0 + w / 2, max(gx1 - w / 2, gx0 + w / 2), GRID_NX)
-            vs = np.linspace(gy0 + h / 2, max(gy1 - h / 2, gy0 + h / 2), GRID_NY)
-            for u in us:
-                for v in vs:
-                    cx.append(u)
-                    cy.append(v)
-    return np.array(cx), np.array(cy)
+    """Candidate centres for label i; the first is its current position. Then STEPS at each of its step scales;
+    for an 'out' label, rings round its anchor; else its anchor and (`grid`, country labels) a grid over its
+    country. Compiled: kernels.candidates."""
+    grid = grid and not p.water[i] and not p.out[i]
+    return kernels.candidates(p.x[i], p.y[i], p.width[i], p.height[i], p.anchor_x[i], p.anchor_y[i], bool(p.out[i]), STEP_ARRAY,
+                              WATER_SCALE_ARRAY if p.water[i] else SCALE_ARRAY, RING_COS, RING_SIN, RING_SCALE_ARRAY, RING_X_GAP, RING_Y,
+                              grid, np.array(labels[i].geom.bounds) if grid else NO_BOUNDS, GRID_NX, GRID_NY)
 
 
 def rects_of(p: Placement) -> tuple[np.ndarray, np.ndarray]:

@@ -225,6 +225,39 @@ def water_cost(i: int, cx: np.ndarray, cy: np.ndarray, parts: np.ndarray, em: fl
 
 
 @njit(cache=True)
+def candidates(x: float, y: float, w: float, h: float, ax: float, ay: float, out: bool, steps: np.ndarray, scales: np.ndarray,
+               ring_cos: np.ndarray, ring_sin: np.ndarray, ring_scales: np.ndarray, ring_x_gap: float, ring_y: float,
+               grid: bool, bounds: np.ndarray, nx: int, ny: int) -> tuple[np.ndarray, np.ndarray]:
+    """placement.candidates: the current position, steps (a, b) in widths and heights at each scale, then for an
+    'out' label rings round its anchor, else its anchor and (grid) an nx x ny grid over `bounds`."""
+    n = 1 + len(scales) * len(steps) + (len(ring_scales) * len(ring_cos) if out else 1 + (nx * ny if grid else 0))
+    cx, cy = np.empty(n), np.empty(n)
+    cx[0], cy[0] = x, y
+    k = 1
+    for scale in scales:
+        for s in range(len(steps)):
+            cx[k], cy[k] = x + steps[s, 0] * w * scale, y + steps[s, 1] * h * scale
+            k += 1
+    if out:
+        for r in ring_scales:
+            for a in range(len(ring_cos)):
+                cx[k], cy[k] = ax + ring_cos[a] * (w / 2 + ring_x_gap * h) * r, ay + ring_sin[a] * ring_y * h * r
+                k += 1
+    else:
+        cx[k], cy[k] = ax, ay
+        k += 1
+        if grid:  # as np.linspace: start + i * step, the last exactly at the end
+            u0, v0 = bounds[0] + w / 2, bounds[1] + h / 2
+            u1, v1 = max(bounds[2] - w / 2, u0), max(bounds[3] - h / 2, v0)
+            for iu in range(nx):
+                u = u1 if iu == nx - 1 else iu * ((u1 - u0) / (nx - 1)) + u0
+                for iv in range(ny):
+                    cx[k], cy[k] = u, v1 if iv == ny - 1 else iv * ((v1 - v0) / (ny - 1)) + v0
+                    k += 1
+    return cx, cy
+
+
+@njit(cache=True)
 def leader_hits(dx: float, dy: float, ex: float, ey: float, r0: float, r1: float, r2: float, r3: float) -> bool:
     """Whether the leader from dot d to end e crosses rect r, unless r covers the dot (as placement.clash)."""
     if r0 <= dx <= r2 and r1 <= dy <= r3:
