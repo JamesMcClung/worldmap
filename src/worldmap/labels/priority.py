@@ -1,7 +1,9 @@
 """Priority: labels are placed in steps, most important first. Labels are ranked by full size (area, or a river's
 length) into fifths of all those in the frame; rank by rank, the kinds follow the --label order."""
 
-from collections.abc import Callable, Sequence
+import os
+import sys
+from collections.abc import Callable, Collection, Sequence
 
 import numpy as np
 import shapely
@@ -51,15 +53,39 @@ def steps(kinds: Sequence[str], sizes: Sequence[float], order: Sequence[str], ra
     return out
 
 
-def rank_table(plan: list[tuple[int, list[int]]], kinds: Sequence[str], order: Sequence[str]) -> str:
-    """How many labels of each kind (rows, in `order`; kinds without any left out) each rank has, as text."""
-    counts = {kind: [0] * N_RANKS for kind in order}
+GREEN, YELLOW, RED, PLAIN = "\x1b[32m", "\x1b[33m", "\x1b[31m", "\x1b[0m"
+
+
+def rank_table(plan: list[tuple[int, list[int]]], kinds: Sequence[str], order: Sequence[str], placed: Collection[int], color: bool) -> str:
+    """How many of each rank's labels were placed, as text: a row per kind (in `order`, those with any), then of
+    all kinds, then that as a percentage. In colour a cell is green if all were placed, red if none, else yellow;
+    only a yellow one shows how many ('28/36')."""
+    total = {kind: np.zeros(N_RANKS, int) for kind in [*order, "all"]}
+    done = {kind: np.zeros(N_RANKS, int) for kind in total}
     for r, members in plan:
         for i in members:
-            counts[kinds[i]][r - 1] += 1
-    rows = [f"{'rank':<12}" + "".join(f"{r:>6}" for r in range(1, N_RANKS + 1))]
-    rows += [f"{kind:<12}" + "".join(f"{n:>6}" for n in row) for kind, row in counts.items() if any(row)]
-    return "\n".join(rows)
+            for kind in (kinds[i], "all"):
+                total[kind][r - 1] += 1
+                done[kind][r - 1] += i in placed
+
+    def cell(n: int, of: int, text: str, short: str) -> str:
+        if of == 0:
+            return f"{'-':>8}"
+        if not color:
+            return f"{text:>8}"
+        hue = GREEN if n == of else RED if n == 0 else YELLOW
+        return f"{hue}{text if hue == YELLOW else short:>8}{PLAIN}"
+
+    def row(name: str, kind: str, percent: bool = False) -> str:
+        cells = []
+        for n, of in zip(done[kind], total[kind]):
+            text = f"{round(100 * n / of)}%" if percent and of else f"{n}/{of}"
+            cells.append(cell(n, of, text, text if kind == "all" else str(of)))
+        return f"{name:<12}" + "".join(cells)
+
+    rows = [f"{'rank':<12}" + "".join(f"{r:>8}" for r in range(1, N_RANKS + 1))]
+    rows += [row(kind, kind) for kind in order if total[kind].any()]
+    return "\n".join([*rows, row("all", "all"), row("%", "all", percent=True)])
 
 
 def overhang_of(p: Placement, k: int, item: "Label | WaterLabel") -> float:
@@ -87,7 +113,6 @@ def place_by_priority(labels: list[Label], water: list[WaterLabel], frame: MapFr
     n_country = len(labels)
     kinds = [item.kind for item in items]
     plan = steps(kinds, [item.full_size for item in items], order, rank)
-    print(rank_table(plan, kinds, order))
     rank_of = {i: r for r, members in plan for i in members}
     x = {i: item.anchor_x for i, item in enumerate(items)}
     y = dict((i, item.anchor_y) for i, item in enumerate(items))
@@ -169,4 +194,5 @@ def place_by_priority(labels: list[Label], water: list[WaterLabel], frame: MapFr
                 settled[i] = (x[i], y[i], size(i))
         p, at = subset(p, among), at[among]
     print("labels skipped:", skipped)
+    print(rank_table(plan, kinds, order, {int(i) for i in at}, sys.stdout.isatty() and "NO_COLOR" not in os.environ))
     return p, [labels[i] for i in at if i < n_country], [water[i - n_country] for i in at if i >= n_country]

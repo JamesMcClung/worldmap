@@ -37,12 +37,28 @@ def test_overhang_is_the_longer_end_off() -> None:
     assert overhang([False, False]) == 1
 
 
+PLAN = [(1, [0, 1]), (1, [2]), (3, [3])]
+KINDS = ["seas", "seas", "rivers", "seas"]
+
+
 def test_rank_table() -> None:
-    plan = [(1, [0]), (1, [1]), (3, [2]), (4, [3])]
-    assert rank_table(plan, ["seas", "rivers", "seas", "seas"], ["rivers", "seas", "lakes"]) == (
-        "rank             1     2     3     4     5\n"
-        "rivers           1     0     0     0     0\n"
-        "seas             1     0     1     1     0")
+    """Placed of each rank's candidates, by kind (in `order`, those with any), then of all, and as a percentage."""
+    assert rank_table(PLAN, KINDS, ["rivers", "seas", "lakes"], placed={0, 2}, color=False) == (
+        "rank               1       2       3       4       5\n"
+        "rivers           1/1       -       -       -       -\n"
+        "seas             1/2       -     0/1       -       -\n"
+        "all              2/3       -     0/1       -       -\n"
+        "%                67%       -      0%       -       -")
+
+
+def test_rank_table_in_colour() -> None:
+    """Green: all placed, red: none, yellow: some; only a yellow cell needs its placed count."""
+    green, yellow, red, end = "\x1b[32m", "\x1b[33m", "\x1b[31m", "\x1b[0m"
+    rows = rank_table(PLAN, KINDS, ["rivers", "seas"], placed={0, 2}, color=True).split("\n")
+    assert rows[1] == f"rivers      {green}       1{end}       -       -       -       -"
+    assert rows[2] == f"seas        {yellow}     1/2{end}       -{red}       1{end}       -       -"
+    assert rows[3] == f"all         {yellow}     2/3{end}       -{red}     0/1{end}       -       -"
+    assert rows[4] == f"%           {yellow}     67%{end}       -{red}      0%{end}       -       -"
 
 
 def test_steps_empty() -> None:
