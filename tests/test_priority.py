@@ -52,6 +52,15 @@ def test_rank_table() -> None:
         "%                67%       -      0%       -       -     50%")
 
 
+def test_rank_table_names_the_first_three_dropped() -> None:
+    """In plan order (rank, then kind order, then size): the most important first."""
+    plan = [(1, [0, 1, 2, 3]), (2, [4])]
+    rows = rank_table(plan, ["seas"] * 4 + ["rivers"], ["seas", "rivers"], placed={1}, color=False, names="ABCDE").split("\n")
+    assert rows[0].endswith("%  dropped")
+    assert rows[1].endswith("25%  A, C, D") and rows[2].endswith("0%  E") and rows[3].endswith("20%  A, C, D")
+    assert rows[4].endswith("20%")
+
+
 def test_rank_table_in_colour() -> None:
     """Green: all placed, red: none, yellow: some; only a yellow rank cell needs its placed count (the totals always show it)."""
     green, yellow, red, end = "\x1b[32m", "\x1b[33m", "\x1b[31m", "\x1b[0m"
