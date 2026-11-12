@@ -20,6 +20,7 @@ OUTLINE_SIMPLIFY_PX = 0.5
 # Candidate positions around a label's current centre: steps of (dx in widths, dy in heights), at several scales.
 STEPS = [(a * 0.25, b) for a in (-2, -1, 0, 1, 2) for b in (-1, 0, 1) if (a, b) != (0, 0)]
 STEP_SCALES = (0.4, 1, 2, 4)
+WATER_STEP_SCALES = (0.1, 0.2, *STEP_SCALES)  # water labels also take small steps: in narrow water a big one leaves it
 # 'out' labels also try rings around their anchor: 15 degree spacing, at several radii.
 RING_ANGLES = np.radians(np.arange(0, 360, 15))
 RING_SCALES = (1.0, 1.4, 2.0, 3.0, 4.5)
@@ -229,7 +230,7 @@ def candidates(p: Placement, labels: Sequence[Label | WaterLabel], i: int, grid:
     """Candidate centres for label i; the first is its current position."""
     w, h = p.width[i], p.height[i]
     cx, cy = [p.x[i]], [p.y[i]]
-    for scale in STEP_SCALES:
+    for scale in WATER_STEP_SCALES if p.water[i] else STEP_SCALES:
         for a, b in STEPS:
             cx.append(p.x[i] + a * w * scale)
             cy.append(p.y[i] + b * h * scale)
