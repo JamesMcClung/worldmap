@@ -21,6 +21,7 @@ from worldmap.coloring import OCEAN
 from worldmap.colorspace import RGB, fit_gamut, srgb_to_oklch
 from worldmap.curves import along, arc_lengths, bend
 from worldmap.data import EQUAL_AREA_CRS, load_marine, load_rivers
+from worldmap.disjoint import DisjointSets
 from worldmap.frame import DPI, MapFrame
 from worldmap.labels.geometry import Coverage
 
@@ -149,22 +150,16 @@ def longest_paths(lines: list[LineString], join: float) -> list[LineString]:
     (the gap is bridged straight). The path is the longest through the network's maximum spanning tree (exact
     when the network has no loops; delta branches and braids make loops)."""
     ends = shapely.points([c for line in lines for c in (line.coords[0], line.coords[-1])])
-    node = list(range(len(ends)))  # union-find: first over line ends, then over the tree's nodes
-
-    def root(i: int) -> int:
-        while node[i] != i:
-            i = node[i]
-        return i
-
+    joined = DisjointSets(len(ends))  # line ends that meet: one node
     for a, b in shapely.STRtree(ends).query(ends, predicate="dwithin", distance=join).T:
-        node[root(int(a))] = root(int(b))
-    ends_of = [(root(2 * k), root(2 * k + 1)) for k in range(len(lines))]
-    node = list(range(len(ends)))
+        joined.union(int(a), int(b))
+    ends_of = [(joined.find(2 * k), joined.find(2 * k + 1)) for k in range(len(lines))]
+    linked = DisjointSets(len(ends))  # the tree's nodes linked so far
     tree: dict[int, list[tuple[int, int, int]]] = {}  # node -> (line, other node, direction)
     for k in sorted(range(len(lines)), key=lambda k: -lines[k].length):  # Kruskal, longest lines first
         u, v = ends_of[k]
-        if root(u) != root(v):
-            node[root(u)] = root(v)
+        if linked.find(u) != linked.find(v):
+            linked.union(u, v)
             tree.setdefault(u, []).append((k, v, 1))
             tree.setdefault(v, []).append((k, u, -1))
 
@@ -212,21 +207,11 @@ def whole_rivers() -> dict[str, list[tuple[BaseGeometry, float]]]:
     metres = np.asarray(rivers.to_crs(EQUAL_AREA_CRS).geometry.values)
     out: dict[str, list[tuple[BaseGeometry, float]]] = {}
     for name, rows in text.groupby(text).indices.items():
-        group = list(range(len(rows)))  # union-find over the name's features
-
-        def root(i: int) -> int:
-            while group[i] != i:
-                i = group[i]
-            return i
-
         mine = metres[rows]
-        near = shapely.dwithin(mine[:, None], mine[None, :], RIVER_REPEAT_M)
-        for a, b in zip(*np.nonzero(near)):
-            group[root(int(a))] = root(int(b))
-        members: dict[int, list[int]] = {}
-        for i in range(len(rows)):
-            members.setdefault(root(i), []).append(int(rows[i]))
-        out[str(name)] = [(shapely.union_all(metres[m]), float(km[m].sum())) for m in members.values()]
+        sets = DisjointSets(len(rows))
+        for a, b in zip(*np.nonzero(shapely.dwithin(mine[:, None], mine[None, :], RIVER_REPEAT_M))):
+            sets.union(int(a), int(b))
+        out[str(name)] = [(shapely.union_all(metres[rows[g]]), float(km[rows[g]].sum())) for g in sets.groups()]
     return out
 
 
