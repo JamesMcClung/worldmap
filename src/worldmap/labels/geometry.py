@@ -71,14 +71,14 @@ class Coverage:
     step: float
 
     @classmethod
-    def of(cls, geom: BaseGeometry) -> "Coverage":
+    def of(cls, geom: BaseGeometry, max_cells: int = COVERAGE_MAX_CELLS) -> "Coverage":
         from affine import Affine
         from rasterio.features import rasterize
 
         if geom.is_empty:
             return cls(np.zeros((2, 2)), 0.0, 0.0, 1.0)
         gx0, gy0, gx1, gy1 = geom.bounds
-        step = max(1.0, math.sqrt((gx1 - gx0) * (gy1 - gy0) / COVERAGE_MAX_CELLS))
+        step = max(1.0, math.sqrt((gx1 - gx0) * (gy1 - gy0) / max_cells))
         cols, rows = math.ceil((gx1 - gx0) / step) + 1, math.ceil((gy1 - gy0) / step) + 1
         mask = rasterize([(geom, 1)], out_shape=(rows, cols), transform=Affine(step, 0, gx0, 0, step, gy0), dtype="uint8")
         table = np.zeros((rows + 1, cols + 1))
@@ -93,6 +93,11 @@ class Coverage:
         fu, fv = u - i, v - j
         t = self.table
         return ((1 - fv) * ((1 - fu) * t[j, i] + fu * t[j, i + 1]) + fv * ((1 - fu) * t[j + 1, i] + fu * t[j + 1, i + 1])) * self.step ** 2
+
+    def holds(self, boxes: np.ndarray) -> np.ndarray:
+        """Whether each box (..., 4) has all four corners inside the shape (a convex one: wholly inside it)."""
+        corners = self.contains(boxes[..., [0, 2, 0, 2]], boxes[..., [1, 1, 3, 3]])
+        return corners.all(-1)
 
     def contains(self, x: np.ndarray, y: np.ndarray) -> np.ndarray:
         """Whether each point's cell is covered (outside the table: no)."""

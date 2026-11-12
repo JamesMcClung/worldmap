@@ -5,16 +5,16 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 import numpy as np
-import shapely
 from shapely.geometry import Polygon
 
 from worldmap.frame import MapFrame
-from worldmap.labels.geometry import coverage, nearest_point_on_rect, segment_hits_rects, segments_cross
+from worldmap.labels.geometry import Coverage, coverage, nearest_point_on_rect, segment_hits_rects, segments_cross
 from worldmap.labels.label import Label
 from worldmap.labels.water import PX_PER_PT, WaterLabel
 
 SEED = 7
 OUTLINE_SIMPLIFY_PX = 0.5
+OUTLINE_MAX_CELLS = 4_000_000  # the outline's Coverage: cells of ~2.6 px on the world poster
 
 # Candidate positions around a label's current centre: steps of (dx in widths, dy in heights), at several scales.
 STEPS = [(a * 0.25, b) for a in (-2, -1, 0, 1, 2) for b in (-1, 0, 1) if (a, b) != (0, 0)]
@@ -126,7 +126,7 @@ def out_leaders(p: Placement) -> tuple[np.ndarray, np.ndarray]:
     return np.stack([p.anchor_x[out], p.anchor_y[out]], -1), np.stack([end_x, end_y], -1)
 
 
-def water_cost(p: Placement, label: WaterLabel, i: int, cx: np.ndarray, cy: np.ndarray, weights: CostWeights, outline_px: Polygon) -> np.ndarray:
+def water_cost(p: Placement, label: WaterLabel, i: int, cx: np.ndarray, cy: np.ndarray, weights: CostWeights, outline: Coverage) -> np.ndarray:
     """Cost of putting water label i's anchor at each candidate (cx[k], cy[k])."""
     em = label.size * PX_PER_PT
     mine = p.owner == i
@@ -154,16 +154,15 @@ def water_cost(p: Placement, label: WaterLabel, i: int, cx: np.ndarray, cy: np.n
     ends = np.where(on.any(1), np.maximum(np.argmax(on, 1), np.argmax(on[:, ::-1], 1)) / on.shape[1], 1.0)  # overhang, per candidate
     cost += weights.overhang * (ends > OVERHANG_MAX)
     cost += weights.outside_water * (1 - inside) + weights.water_drift * np.hypot(cx - label.anchor_x, cy - label.anchor_y) / em
-    corners_in = [shapely.contains_xy(outline_px, g[..., a], g[..., b]) for a, b in ((0, 1), (2, 1), (0, 3), (2, 3))]
-    cost += weights.outside_globe * ~np.logical_and.reduce(corners_in).all(1)
+    cost += weights.outside_globe * ~outline.holds(g).all(1)
     return cost
 
 
-def cost_batch(p: Placement, labels: Sequence[Label | WaterLabel], i: int, cx: np.ndarray, cy: np.ndarray, weights: CostWeights, outline_px: Polygon) -> np.ndarray:
+def cost_batch(p: Placement, labels: Sequence[Label | WaterLabel], i: int, cx: np.ndarray, cy: np.ndarray, weights: CostWeights, outline: Coverage) -> np.ndarray:
     """Cost of placing label i at each candidate centre (cx[k], cy[k])."""
     label = labels[i]
     if isinstance(label, WaterLabel):
-        return water_cost(p, label, i, cx, cy, weights, outline_px)
+        return water_cost(p, label, i, cx, cy, weights, outline)
     n_candidates = len(cx)
     w, h = p.width[i], p.height[i]
     anchor_x, anchor_y = p.anchor_x[i], p.anchor_y[i]
@@ -204,7 +203,7 @@ def cost_batch(p: Placement, labels: Sequence[Label | WaterLabel], i: int, cx: n
     else:
         inside = coverage(label).area(boxes) / (w * h)
         cost += weights.outside_country * (1 - inside) + weights.drift * np.hypot(cx - anchor_x, cy - anchor_y) / h
-    cost += weights.outside_globe * ~shapely.contains(outline_px, shapely.box(boxes[:, 0], boxes[:, 1], boxes[:, 2], boxes[:, 3]))
+    cost += weights.outside_globe * ~outline.holds(boxes)
     if p.water.any():  # water glyphs: overlap, and our own leader crossing them
         envelope = np.array([boxes[:, 0].min(), boxes[:, 1].min(), boxes[:, 2].max(), boxes[:, 3].max()])
         cost += weights.overlap * overlap_area(boxes[:, None, :], near(glyph_boxes(p), envelope)) / (h * h)
@@ -325,14 +324,13 @@ def place_labels(labels: list[Label], frame: MapFrame, seed: int = SEED, weights
     if floors is None:
         floors = np.array([SHRINK_MIN_PT * frame.label_scale] * len(labels) + [w.min_size for w in water])
     movable = np.flatnonzero(freedom != FIXED)
-    outline_px = frame.to_px(Polygon(frame.outline), simplify=OUTLINE_SIMPLIFY_PX)
-    shapely.prepare(outline_px)
+    outline = outline_coverage(frame)
     rng = np.random.default_rng(seed)
 
     def move_to_best(i: int, grid: bool = False, stay_bias: float = 0.0) -> bool:
         """Move label i to its cheapest candidate; True if it moved."""
         cx, cy = candidates(p, items, i, grid)
-        cost = cost_batch(p, items, i, cx, cy, weights, outline_px)
+        cost = cost_batch(p, items, i, cx, cy, weights, outline)
         if freedom[i] == NUDGE and not p.out[i]:  # an 'out' label has no spot of its own to keep, only its dot
             item = items[i]
             unit = item.size * PX_PER_PT if isinstance(item, WaterLabel) else p.height[i]
@@ -387,9 +385,17 @@ def subset(p: Placement, keep: np.ndarray) -> Placement:
                      p.water[keep], p.parts[glyph_kept], new_index[p.owner[glyph_kept]])
 
 
+_outline: list[tuple[MapFrame, Coverage]] = []  # the last frame's outline_coverage (one: each is ~32 MB)
+
+
+def outline_coverage(frame: MapFrame) -> Coverage:
+    """The frame's outline in poster px as a Coverage (cells of OUTLINE_MAX_CELLS at most), made once per frame."""
+    if not _outline or _outline[0][0] is not frame:
+        _outline[:] = [(frame, Coverage.of(frame.to_px(Polygon(frame.outline), simplify=OUTLINE_SIMPLIFY_PX), OUTLINE_MAX_CELLS))]
+    return _outline[0][1]
+
+
 def outside_outline(p: Placement, frame: MapFrame) -> set[int]:
     """Water labels with a glyph box not wholly inside the frame's outline."""
-    outline_px = frame.to_px(Polygon(frame.outline), simplify=OUTLINE_SIMPLIFY_PX)
-    g = glyph_boxes(p)
-    inside = shapely.contains(outline_px, shapely.box(g[:, 0], g[:, 1], g[:, 2], g[:, 3]))
+    inside = outline_coverage(frame).holds(glyph_boxes(p))
     return {int(i) for i in p.owner[~inside]}

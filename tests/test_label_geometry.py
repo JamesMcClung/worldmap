@@ -68,3 +68,10 @@ def test_coverage_contains_matches_shapely_away_from_the_edge() -> None:
     assert (Coverage.of(shape).contains(x, y) == shapely.contains_xy(shape, x, y))[clear].all()
     assert Coverage.of(shapely.Polygon()).contains(np.array([0.0]), np.array([0.0])).tolist() == [False]
 
+
+def test_coverage_holds_boxes_wholly_inside() -> None:
+    from worldmap.labels.geometry import Coverage
+
+    globe = Coverage.of(shapely.Point(0, 0).buffer(300, 64))
+    boxes = np.array([[-50.0, -20, 50, 20], [250, -10, 305, 10], [-40, 280, 40, 310], [400, 400, 420, 410]])
+    assert globe.holds(boxes).tolist() == [True, False, False, False]
