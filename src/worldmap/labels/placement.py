@@ -34,6 +34,7 @@ SHRINK_PASSES = 15  # ...each followed by this many passes
 SHRINK_FACTOR = 0.94
 SHRINK_MIN_PT = 5
 STAY_BIAS = 1e-6  # ties go to the current position
+FIXED, NUDGE, FREE = 0, 1, 2  # a label's freedom: stays put; moves (and shrinks) a little, at a cost; moves freely
 
 
 @dataclass(frozen=True)
@@ -52,6 +53,7 @@ class CostWeights:
     outside_globe: float = 1000  # any part of the label outside the globe outline
     outside_water: float = 20  # share of a water label's glyph boxes off its water body
     water_drift: float = 0.15  # a water label's distance from its anchor, in ems
+    nudge: float = 2.0  # a nudged label's distance from its home, in heights (water labels: ems)
 
 
 @dataclass
@@ -251,11 +253,17 @@ def clashes(p: Placement) -> tuple[list[int], list[int]]:
 
 
 def place_labels(labels: list[Label], frame: MapFrame, seed: int = SEED, weights: CostWeights = CostWeights(),
-                 water: Sequence[WaterLabel] = (), start: tuple[np.ndarray, np.ndarray] | None = None, fixed: int = 0) -> Placement:
+                 water: Sequence[WaterLabel] = (), start: tuple[np.ndarray, np.ndarray] | None = None,
+                 freedom: np.ndarray | None = None, home: tuple[np.ndarray, np.ndarray] | None = None,
+                 floors: np.ndarray | None = None, seed_out: bool | None = None) -> Placement:
     """Place the labels (largest first in `labels`) and the water labels (most important first). Labels still
     overlapping after descent are shrunk slightly (their text too) and the descent repeated: country labels only
-    for other country labels, water labels for anything. `start`: positions to start from, for all labels. The
-    first `fixed` labels (country labels, then water labels) stay where `start` puts them, at their size."""
+    for other country labels, water labels for anything. `start`: positions to start from, for all labels.
+    `freedom` (per label, default FREE): FIXED labels stay where they start, at their size; NUDGE labels pay
+    `weights.nudge` for their distance from `home` (default: where they start). `floors`: the size (pt) each label
+    shrinks no lower than (default: SHRINK_MIN_PT, scaled, for country labels; a water label's min_size; a country
+    label above it may still take one last step under it). `seed_out` (default: no `start`): first move the free
+    'out' labels, in order, to their best spot, so they start separated."""
     items: list[Label | WaterLabel] = [*labels, *water]
     anchor_x = np.array([label.anchor_x for label in items])
     anchor_y = np.array([label.anchor_y for label in items])
@@ -273,6 +281,11 @@ def place_labels(labels: list[Label], frame: MapFrame, seed: int = SEED, weights
         shapely.prepare(w.geom)
     if start is not None:
         p.x, p.y = start[0].copy(), start[1].copy()
+    freedom = np.full(p.n, FREE) if freedom is None else np.asarray(freedom)
+    home_x, home_y = (p.x.copy(), p.y.copy()) if home is None else (np.asarray(home[0]), np.asarray(home[1]))
+    if floors is None:
+        floors = np.array([SHRINK_MIN_PT * frame.label_scale] * len(labels) + [w.min_size for w in water])
+    movable = np.flatnonzero(freedom != FIXED)
     outline_px = frame.to_px(Polygon(frame.outline), simplify=OUTLINE_SIMPLIFY_PX)
     shapely.prepare(outline_px)
     rng = np.random.default_rng(seed)
@@ -281,6 +294,10 @@ def place_labels(labels: list[Label], frame: MapFrame, seed: int = SEED, weights
         """Move label i to its cheapest candidate; True if it moved."""
         cx, cy = candidates(p, items, i, grid)
         cost = cost_batch(p, items, i, cx, cy, weights, outline_px)
+        if freedom[i] == NUDGE:
+            item = items[i]
+            unit = item.size * PX_PER_PT if isinstance(item, WaterLabel) else p.height[i]
+            cost += weights.nudge * np.hypot(cx - home_x[i], cy - home_y[i]) / unit
         cost[0] -= stay_bias
         j = int(np.argmin(cost))
         p.x[i], p.y[i] = cx[j], cy[j]
@@ -288,31 +305,31 @@ def place_labels(labels: list[Label], frame: MapFrame, seed: int = SEED, weights
 
     def optimize(passes: int) -> None:
         for pass_no in range(passes):
-            moved = [move_to_best(i, grid=pass_no < GRID_PASSES, stay_bias=STAY_BIAS) for i in fixed + rng.permutation(p.n - fixed)]
+            moved = [move_to_best(int(i), grid=pass_no < GRID_PASSES, stay_bias=STAY_BIAS) for i in movable[rng.permutation(len(movable))]]
             if not any(moved):
                 break
 
     # Seed 'out' labels in largest-first order so they start separated, then descend.
-    if start is None:
-        for i in range(fixed, p.n):
-            if p.out[i]:
+    if start is None if seed_out is None else seed_out:
+        for i in range(p.n):
+            if p.out[i] and freedom[i] == FREE:
                 move_to_best(i)
     optimize(PASSES)
     for _ in range(SHRINK_ROUNDS):
         bad, water_bad = clashes(p)
-        bad, water_bad = [i for i in bad if i >= fixed], [i for i in water_bad if i >= fixed]
+        bad, water_bad = [i for i in bad if freedom[i] != FIXED], [i for i in water_bad if freedom[i] != FIXED]
         if not bad and not water_bad:
             break
         for i in bad:
             size = float(labels[i].text.get_fontsize())
-            if size > SHRINK_MIN_PT * frame.label_scale:
+            if size > floors[i]:
                 labels[i].text.set_fontsize(size * SHRINK_FACTOR)
                 p.width[i] *= SHRINK_FACTOR
                 p.height[i] *= SHRINK_FACTOR
         for i in water_bad:
             w = water[i - len(labels)]
-            if w.size > w.min_size:
-                factor = max(SHRINK_FACTOR, w.min_size / w.size)  # stop at its floor
+            if w.size > floors[i]:
+                factor = max(SHRINK_FACTOR, floors[i] / w.size)  # stop at its floor
                 w.scale(factor)
                 p.parts[p.owner == i] = w.parts
                 p.width[i] *= factor
@@ -320,6 +337,14 @@ def place_labels(labels: list[Label], frame: MapFrame, seed: int = SEED, weights
         optimize(SHRINK_PASSES)
     print("passes done; unresolved overlaps:", [labels[i].name for i in clashes(p)[0]])
     return p
+
+
+def subset(p: Placement, keep: np.ndarray) -> Placement:
+    """The placement of the `keep` labels (boolean mask) only, in the same order."""
+    new_index = np.cumsum(keep) - 1
+    glyph_kept = keep[p.owner]
+    return Placement(p.x[keep], p.y[keep], p.width[keep], p.height[keep], p.anchor_x[keep], p.anchor_y[keep], p.out[keep],
+                     p.water[keep], p.parts[glyph_kept], new_index[p.owner[glyph_kept]])
 
 
 def water_touching(p: Placement, i: int, x: float, y: float) -> list[int]:
@@ -358,15 +383,15 @@ def place_with_water(labels: list[Label], water: list[WaterLabel], frame: MapFra
     minimum size (or without having shrunk in that run: so every round drops or shrinks something, and the loop
     ends). Each failing label and the water labels it touches (where it is, or would at its anchor) form a
     group; the least important water label of each group is dropped and the rest re-placed from where they were.
-    Country labels are never dropped, and start each run at their own size. `start` and `fixed` are as in
-    place_labels: the fixed labels stay put and are never dropped."""
+    Country labels are never dropped, and start each run at their own size. `start`: as in
+    place_labels; the first `fixed` labels stay put (FIXED) and are never dropped."""
     sizes = [label.text.get_fontsize() for label in labels]
     kept, dropped = list(water), []
     while True:
         for label, size in zip(labels, sizes):
             label.text.set_fontsize(size)
         sizes_before = [w.size for w in kept]
-        p = place_labels(labels, frame, water=kept, start=start, fixed=fixed)
+        p = place_labels(labels, frame, water=kept, start=start, freedom=np.where(np.arange(len(labels) + len(kept)) < fixed, FIXED, FREE))
         if not water:
             return p, kept
         n_country = len(labels)

@@ -5,7 +5,7 @@ from matplotlib.path import Path
 
 from worldmap.frame import MapFrame, make_frame
 from worldmap.labels.label import Label, new_label
-from worldmap.labels.placement import clashes, place_all, place_labels, place_with_water
+from worldmap.labels.placement import FIXED, FREE, NUDGE, clashes, glyph_boxes, place_all, place_labels, place_with_water, subset
 from worldmap.labels import placement
 from worldmap.labels.water import OCEAN_MIN_PT, WATER_MIN_PT, WaterLabel
 from worldmap.render import new_figure
@@ -142,9 +142,37 @@ def test_drop_loop_ends_when_nothing_can_shrink(frame: MapFrame, monkeypatch: py
 
 def test_fixed_labels_stay_put(frame: MapFrame, one_label: list[Label], water_on_top_of_it: WaterLabel) -> None:
     start = (np.array([one_label[0].anchor_x, water_on_top_of_it.anchor_x]), np.array([one_label[0].anchor_y, water_on_top_of_it.anchor_y]))
-    p = place_labels(one_label, frame, water=[water_on_top_of_it], start=start, fixed=1)
+    p = place_labels(one_label, frame, water=[water_on_top_of_it], start=start, freedom=np.array([FIXED, FREE]))
     assert p.x[0] == start[0][0] and p.y[0] == start[1][0]
     assert (p.x[1], p.y[1]) != (start[0][1], start[1][1])  # the water label made way instead
+
+
+def distance_from_home(frame: MapFrame, freedom: int) -> float:
+    """A lone label starting at its anchor, with its home 3 heights to the right."""
+    label = country_label(frame, "Atlantis", -35, 30, 500)
+    home = (np.array([label.anchor_x + 3 * label.height]), np.array([label.anchor_y]))
+    p = place_labels([label], frame, start=(np.array([label.anchor_x]), np.array([label.anchor_y])), freedom=np.array([freedom]), home=home)
+    return float(np.hypot(p.x[0] - home[0][0], p.y[0] - home[1][0]))
+
+
+def test_nudged_label_is_pulled_home(frame: MapFrame) -> None:
+    assert distance_from_home(frame, NUDGE) < distance_from_home(frame, FREE)
+
+
+def test_floors_hold(frame: MapFrame, monkeypatch: pytest.MonkeyPatch) -> None:
+    x, y = mid_atlantic_px(frame)
+    sea = water_label("Sea", (x, y), shapely.box(x - 100, y - 20, x + 100, y + 20), np.array([[-60.0, -10, 60, 10]]), 14)
+    monkeypatch.setattr(placement, "clashes", always_clashing)  # every shrink round shrinks it
+    place_labels([], frame, water=[sea], floors=np.array([12.0]))
+    assert sea.size == pytest.approx(12.0)
+
+
+def test_subset(frame: MapFrame, one_label: list[Label]) -> None:
+    sea, bay = crossing_water_labels(frame)
+    p = place_labels(one_label, frame, water=[sea, bay])
+    q = subset(p, np.array([True, False, True]))
+    assert q.n == 2 and set(q.owner) == {1} and q.water.tolist() == [False, True]
+    assert np.array_equal(glyph_boxes(q), glyph_boxes(p)[p.owner == 2])
 
 
 def test_rivers_give_way_to_countries(frame: MapFrame, one_label: list[Label], water_on_top_of_it: WaterLabel) -> None:
