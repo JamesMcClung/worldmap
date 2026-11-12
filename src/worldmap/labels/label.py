@@ -31,6 +31,8 @@ FONT_SCALE = 1.6  # font size (pt) = FONT_SCALE / 10 x sqrt(area), with the area
 POINTS_PER_INCH = 72
 LABEL_ZORDER = 6
 HALO = [pe.withStroke(linewidth=2.2, foreground=(1, 1, 1, 0.55))]
+SHRINK_FACTOR = 0.94  # a label still clashing after a descent shrinks by this...
+SHRINK_MIN_PT = 5  # ...down to no less than this (scaled by the frame's label_scale)
 BOX_PAD_X, BOX_PAD_Y = 1.06, 1.15  # label box = rendered text extent scaled by these
 
 # Island-heavy countries: several polygons of at least SIGNIFICANT_SHARE of the largest, the largest being under
@@ -65,7 +67,33 @@ class Label:
     out: bool = False  # True: placed beside the country with a leader line
     kind: str = "countries"  # its --label kind: countries (disputed areas too) or territories
     full_size: float = 0.0  # km2 of the whole country or region, however much of it the frame shows: its priority
+    label_scale: float = 1.0  # the frame's
     cover: Coverage | None = field(default=None, repr=False, compare=False)  # geom's, once needed (geometry.coverage)
+
+    @property
+    def size(self) -> float:
+        """Its font size (pt)."""
+        return float(self.text.get_fontsize())
+
+    @property
+    def min_size(self) -> float:
+        """The smallest it may shrink to (pt)."""
+        return SHRINK_MIN_PT * self.label_scale
+
+    @property
+    def unit_px(self) -> float:
+        """How far a nudged label's moves are measured in: its height."""
+        return self.height
+
+    def shrink_toward(self, floor: float) -> float:
+        """Shrink text and box by SHRINK_FACTOR, or less so as to stop at `floor` (pt); return the factor (1: none)."""
+        if self.size <= floor:
+            return 1.0
+        factor = max(SHRINK_FACTOR, floor / self.size)
+        self.text.set_fontsize(self.size * factor)
+        self.width *= factor
+        self.height *= factor
+        return factor
 
 
 def measure(label: Label, renderer: RendererBase) -> None:
@@ -100,7 +128,7 @@ def new_label(ax: Axes, renderer: RendererBase, frame: MapFrame, name: str, anch
     s = frame.label_scale
     size = float(np.clip(FONT_SCALE * np.sqrt(area) * ppu / DPI * POINTS_PER_INCH / 10, MIN_PT * s, MAX_PT * s))
     text = ax.text(x, y, name, fontsize=size, ha="center", va="center", color=color, zorder=LABEL_ZORDER, path_effects=HALO, fontstyle="italic" if italic else "normal")
-    label = Label(name, area, color, text, 0.0, 0.0, (x - frame.xmin) * ppu, (y - frame.ymin) * ppu, frame.to_px(geom), kind=kind, full_size=full_size)
+    label = Label(name, area, color, text, 0.0, 0.0, (x - frame.xmin) * ppu, (y - frame.ymin) * ppu, frame.to_px(geom), kind=kind, full_size=full_size, label_scale=s)
     measure(label, renderer)
     return label
 

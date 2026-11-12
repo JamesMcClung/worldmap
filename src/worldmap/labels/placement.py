@@ -11,7 +11,7 @@ from shapely.geometry import Polygon
 from worldmap.frame import MapFrame
 from worldmap.labels import kernels
 from worldmap.labels.geometry import Coverage, coverage, nearest_point_on_rect
-from worldmap.labels.label import Label
+from worldmap.labels.label import SHRINK_FACTOR, SHRINK_MIN_PT, Label
 from worldmap.labels.water import PX_PER_PT, WaterLabel
 
 SEED = 7
@@ -36,8 +36,6 @@ GRID_PASSES = 3
 PASSES = 40  # coordinate-descent passes (stops early when nothing moves)
 SHRINK_ROUNDS = 12  # rounds of shrinking still-overlapping labels...
 SHRINK_PASSES = 15  # ...each followed by this many passes
-SHRINK_FACTOR = 0.94
-SHRINK_MIN_PT = 5
 OVERHANG_MAX = 0.3  # a label on its feature (not 'out') may hang off either end of it by no more than this share of its length
 STAY_BIAS = 1e-6  # ties go to the current position
 FIXED, NUDGE, FREE = 0, 1, 2  # a label's freedom: stays put; moves (and shrinks) a little, at a cost; moves freely
