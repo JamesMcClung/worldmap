@@ -53,7 +53,7 @@ def steps(kinds: Sequence[str], sizes: Sequence[float], order: Sequence[str], ra
     return out
 
 
-DROPPED_WIDTH = 20  # the rank table's dropped labels of a kind are cut to this many characters, "..." included
+DROPPED_WIDTH = 30  # the rank table's dropped labels of a kind are cut to this many characters, "..." included
 
 GREEN, YELLOW, RED, PLAIN = "\x1b[32m", "\x1b[33m", "\x1b[31m", "\x1b[0m"
 
