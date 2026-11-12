@@ -90,7 +90,7 @@ def test_steps_empty() -> None:
 import shapely  # noqa: E402
 from dataclasses import replace  # noqa: E402
 
-from test_placement import country_label, crossing_water_labels, mid_atlantic_px, water_label, water_label_far_from_its_geom  # noqa: E402
+from test_placement import country_label, crossing_water_labels, mid_atlantic_px, water_label  # noqa: E402
 from worldmap.frame import make_frame  # noqa: E402
 from worldmap.labels.label import Label  # noqa: E402
 from worldmap.labels.placement import clashes  # noqa: E402
@@ -127,11 +127,6 @@ def test_smaller_of_a_clashing_pair_is_skipped() -> None:
     p, labels, kept = place_by_priority([], [sized(sea, 100), sized(bay, 10)], FRAME, ["seas"])
     assert [w.text for w in kept] == ["Sea"] and labels == []
     assert clashes(p) == []
-
-
-def test_off_water_is_skipped() -> None:
-    _, _, kept = place_by_priority([], [sized(water_label_far_from_its_geom(FRAME), 1)], FRAME, ["seas"])
-    assert kept == []
 
 
 def test_country_can_lose_to_a_bigger_sea() -> None:

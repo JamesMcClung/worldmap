@@ -105,11 +105,6 @@ def crossing_water_labels(frame: MapFrame) -> tuple[WaterLabel, WaterLabel]:
     return water_label("Sea", (x, y), geom, parts, WATER_MIN_PT), water_label("Bay", (x, y), geom, parts.copy(), WATER_MIN_PT)
 
 
-def water_label_far_from_its_geom(frame: MapFrame) -> WaterLabel:
-    x, y = mid_atlantic_px(frame)
-    return water_label("Lonely", (x, y), shapely.box(x + 5000, y, x + 5010, y + 10), np.array([[-30.0, -7, 30, 7]]), WATER_MIN_PT)
-
-
 def always_clashing(p: placement.Placement, among: np.ndarray | None = None) -> list[int]:
     return [int(i) for i in np.flatnonzero(p.water)]
 
