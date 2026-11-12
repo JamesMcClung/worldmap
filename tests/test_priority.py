@@ -1,6 +1,6 @@
 import numpy as np
 
-from worldmap.labels.priority import label_order, overhang, rank_table, ranks_per_kind, steps
+from worldmap.labels.priority import label_order, overhang, rank_table, ranks_by_quantile, steps
 
 
 def test_label_order() -> None:
@@ -8,26 +8,26 @@ def test_label_order() -> None:
     assert label_order(["rivers", "countries", "rivers"]) == ["rivers", "countries"]
 
 
-def test_ranks_relative_to_biggest_of_kind() -> None:
-    kinds = ["seas"] * 4 + ["lakes"] * 2
-    assert list(ranks_per_kind(kinds, [1000, 100.1, 99.9, 1e-9, 5, 0.04])) == [1, 1, 2, 5, 1, 3]
+def test_ranks_are_fifths_of_every_kind_together() -> None:
+    kinds = ["seas", "lakes"] * 5
+    assert list(ranks_by_quantile(kinds, [10, 9, 8, 7, 6, 5, 4, 3, 2, 1])) == [1, 1, 2, 2, 3, 3, 4, 4, 5, 5]
 
 
-def test_ranks_at_the_steps() -> None:
-    assert list(ranks_per_kind(["seas"] * 4, [1000, 100, 1, 0.1])) == [1, 1, 3, 4]
+def test_rivers_rank_by_ten_times_their_length() -> None:
+    assert list(ranks_by_quantile(["seas", "seas", "rivers"], [400, 600, 50])) == [4, 1, 2]  # the river as 500
 
 
 def test_ranks_zero_and_nan() -> None:
-    assert list(ranks_per_kind(["seas"] * 3, [10, 0, np.nan])) == [1, 5, 5]
+    assert list(ranks_by_quantile(["seas"] * 3, [10, 0, np.nan])) == [1, 5, 5]
 
 
 def test_steps_order() -> None:
     kinds = ["countries", "seas", "countries", "seas", "rivers"]
-    assert steps(kinds, [1, 100, 1000, 1, 5], ["countries", "rivers", "seas"]) == [(1, [2]), (1, [4]), (1, [1]), (2, [3]), (3, [0])]
+    assert steps(kinds, [1, 100, 1000, 1, 5], ["countries", "rivers", "seas"]) == [(1, [2]), (2, [1]), (3, [4]), (4, [0]), (5, [3])]
 
 
 def test_steps_biggest_first_and_unasked_kinds_left_out() -> None:
-    assert steps(["seas", "seas", "lakes"], [50, 60, 1], ["seas"]) == [(1, [1, 0])]
+    assert steps(["seas", "seas", "lakes"], [50, 60, 1], ["seas"], rank=lambda kinds, sizes: np.ones(3, int)) == [(1, [1, 0])]
 
 
 def test_overhang_is_the_longer_end_off() -> None:
@@ -37,7 +37,7 @@ def test_overhang_is_the_longer_end_off() -> None:
 
 
 def test_rank_table() -> None:
-    plan = steps(["seas", "rivers", "seas", "seas"], [1000, 5, 1, 0.5], ["rivers", "seas", "lakes"])
+    plan = [(1, [0]), (1, [1]), (3, [2]), (4, [3])]
     assert rank_table(plan, ["seas", "rivers", "seas", "seas"], ["rivers", "seas", "lakes"]) == (
         "rank             1     2     3     4     5\n"
         "rivers           1     0     0     0     0\n"
@@ -105,21 +105,22 @@ def test_country_can_lose_to_a_bigger_sea() -> None:
 
 def test_label_order_breaks_ties_within_a_rank() -> None:
     sea, frame = boxed_in()
-    _, labels, kept = place_by_priority([atlantis(1)], [sized(sea, 1)], frame, ["countries", "seas"])
+    same = lambda kinds, sizes: np.array([1, 1])  # noqa: E731
+    _, labels, kept = place_by_priority([atlantis(1)], [sized(sea, 1)], frame, ["countries", "seas"], rank=same)
     assert [label.name for label in labels] == ["Atlantis"] and kept == []
     sea, frame = boxed_in()
-    _, labels, kept = place_by_priority([atlantis(1)], [sized(sea, 1)], frame, ["seas", "countries"])
+    _, labels, kept = place_by_priority([atlantis(1)], [sized(sea, 1)], frame, ["seas", "countries"], rank=same)
     assert labels == [] and [w.text for w in kept] == ["Sea"]
 
 
 def test_two_ranks_down_is_fixed() -> None:
-    alone, _, _ = place_by_priority([atlantis(1)], [], FRAME, ["countries", "seas"])
+    alone, _, _ = place_by_priority([atlantis(1)], [], FRAME, ["countries", "seas"])  # rank 1 too
     country = atlantis(1)
     w, h = country.width, country.height
     small = water_label("Small", (country.anchor_x, country.anchor_y), country.geom, np.array([[-w / 2, -h / 2, w / 2, h / 2]]), 10)
     x, y = FRAME.to_px(shapely.Point(*FRAME.to_map.transform(150, -30))).coords[0]
     big = water_label("Big", (x, y), shapely.box(x - 200, y - 50, x + 200, y + 50), np.array([[-100.0, -20, 100, 20]]), 10)
-    p, labels, _ = place_by_priority([country], [sized(big, 1e6), sized(small, 1e3)], FRAME, ["countries", "seas"])  # Small: rank 3
+    p, labels, _ = place_by_priority([country], [sized(big, 1e6), sized(small, 1e3)], FRAME, ["countries", "seas"], rank=lambda kinds, sizes: np.array([1, 1, 3]))
     assert labels == [country] and (p.x[0], p.y[0]) == (alone.x[0], alone.y[0])
 
 

@@ -1,5 +1,5 @@
-"""Priority: labels are placed in steps, most important first. Each kind ranks its labels by full size (area, or a
-river's length) against the biggest of that kind in the frame; rank by rank, the kinds follow the --label order."""
+"""Priority: labels are placed in steps, most important first. Labels are ranked by full size (area, or a river's
+length) into fifths of all those in the frame; rank by rank, the kinds follow the --label order."""
 
 from collections.abc import Callable, Sequence
 
@@ -12,7 +12,7 @@ from worldmap.labels.placement import FIXED, FREE, NUDGE, SHRINK_MIN_PT, Placeme
 from worldmap.labels.water import WATER_KINDS, WaterLabel
 
 N_RANKS = 5
-RANK_STEP = 10.0  # rank k holds the labels down to 1 / RANK_STEP^k of their kind's biggest; the last, the rest
+RIVER_KM2_PER_KM = 10.0  # a river ranks as an area of this many km2 per km of its length
 
 OVERHANG_MAX = 0.3  # a label on its feature (not 'out') may hang off either end of it by no more than this share of its length
 OVERHANG_SLICES = 16  # a country label's box is judged in this many upright slices; a water label by its glyphs
@@ -27,21 +27,19 @@ def label_order(label: Sequence[str]) -> list[str]:
     return list(dict.fromkeys(k for kind in label for k in (water if kind == "water" else [kind])))
 
 
-def ranks_per_kind(kinds: Sequence[str], sizes: Sequence[float]) -> np.ndarray:
-    """Each label's rank, 1..N_RANKS: how many factors of RANK_STEP it is below the biggest label of its kind.
-    A size of 0 (or unknown) is the last rank."""
-    size = np.asarray(sizes, float)
-    kind_of = np.asarray(kinds, object)
+def ranks_by_quantile(kinds: Sequence[str], sizes: Sequence[float]) -> np.ndarray:
+    """Each label's rank, 1..N_RANKS: which fifth (for 5 ranks) of every label, whatever its kind, biggest first, it
+    falls in, a river's length (km) counting as RIVER_KM2_PER_KM times it in km2. A size of 0 (or unknown) is the
+    last rank."""
+    size = np.array([RIVER_KM2_PER_KM * v if k == "rivers" else v for k, v in zip(kinds, sizes)], float)
     ranks = np.full(len(size), N_RANKS)
-    for kind in set(kinds):
-        mine = (kind_of == kind) & (size > 0)  # NaN compares False
-        if mine.any():  # rank k: at least biggest / RANK_STEP^k (compared, not logged: exact at the steps)
-            floors = size[mine].max() / RANK_STEP ** np.arange(1, N_RANKS)
-            ranks[mine] = 1 + (size[mine][:, None] < floors).sum(1)
+    known = np.flatnonzero(size > 0)  # NaN compares False
+    biggest_first = known[np.argsort(-size[known], kind="stable")]
+    ranks[biggest_first] = 1 + np.arange(len(known)) * N_RANKS // max(len(known), 1)
     return ranks
 
 
-def steps(kinds: Sequence[str], sizes: Sequence[float], order: Sequence[str], rank: Ranker = ranks_per_kind) -> list[tuple[int, list[int]]]:
+def steps(kinds: Sequence[str], sizes: Sequence[float], order: Sequence[str], rank: Ranker = ranks_by_quantile) -> list[tuple[int, list[int]]]:
     """The placement steps: (rank, label indices, biggest first) for each rank, then each kind of `order` in turn.
     Empty steps, and kinds not in `order`, are left out."""
     ranks = rank(kinds, sizes)
@@ -88,7 +86,7 @@ def overhang_of(p: Placement, k: int, item: "Label | WaterLabel") -> float:
 
 
 def place_by_priority(labels: list[Label], water: list[WaterLabel], frame: MapFrame, order: Sequence[str],
-                      rank: Ranker = ranks_per_kind) -> tuple[Placement, list[Label], list[WaterLabel]]:
+                      rank: Ranker = ranks_by_quantile) -> tuple[Placement, list[Label], list[WaterLabel]]:
     """Place the labels step by step (steps, with `rank`), returning the placement of those kept (country labels first, then
     water labels, as the draw functions take them) and the kept labels. In each step the step's labels are free,
     the labels already placed of its rank and the rank before are nudged (they pay for leaving where they settled
