@@ -11,8 +11,9 @@ from shapely.geometry import Polygon
 from worldmap.frame import MapFrame
 from worldmap.labels import kernels
 from worldmap.labels.geometry import Coverage, coverage, nearest_point_on_rect
-from worldmap.labels.label import SHRINK_FACTOR, SHRINK_MIN_PT, Label
-from worldmap.labels.water import PX_PER_PT, WaterLabel
+from worldmap.labels.label import SHRINK_MIN_PT, Label
+from worldmap.labels.placeable import Placeable
+from worldmap.labels.water import WaterLabel
 
 SEED = 7
 OUTLINE_SIMPLIFY_PX = 0.5
@@ -117,7 +118,7 @@ def weight_array(weights: CostWeights) -> np.ndarray:
                      weights.drift, weights.outside_globe, weights.outside_water, weights.overhang, weights.water_drift], float)
 
 
-def cost_batch(p: Placement, labels: Sequence[Label | WaterLabel], i: int, cx: np.ndarray, cy: np.ndarray, weights: CostWeights, outline: Coverage) -> np.ndarray:
+def cost_batch(p: Placement, labels: Sequence[Placeable], i: int, cx: np.ndarray, cy: np.ndarray, weights: CostWeights, outline: Coverage) -> np.ndarray:
     """Cost of placing label i at each candidate (cx[k], cy[k]): a country label's box centre, a water label's anchor.
 
     Country labels: overlap with other boxes and water glyph boxes; covering another 'out' label's dot, or its
@@ -131,15 +132,15 @@ def cost_batch(p: Placement, labels: Sequence[Label | WaterLabel], i: int, cx: n
     cover = coverage(label)
     o = (outline.table, outline.x0, outline.y0, outline.step)
     cx, cy = np.asarray(cx, float), np.asarray(cy, float)
-    if isinstance(label, WaterLabel):
-        return kernels.water_cost(i, cx, cy, p.parts[p.owner == i], label.size * PX_PER_PT, (float(label.anchor_x), float(label.anchor_y)),
+    if p.water[i]:
+        return kernels.water_cost(i, cx, cy, p.parts[p.owner == i], label.unit_px, (float(label.anchor_x), float(label.anchor_y)),
                                   p.x, p.y, p.width, p.height, p.anchor_x, p.anchor_y, p.out, p.water, glyph_boxes(p), p.owner,
                                   cover.table, cover.x0, cover.y0, cover.step, *o, OVERHANG_MAX, weight_array(weights))
     return kernels.country_cost(i, cx, cy, p.x, p.y, p.width, p.height, p.anchor_x, p.anchor_y, p.out, p.water, glyph_boxes(p),
                                 cover.table, cover.x0, cover.y0, cover.step, *o, weight_array(weights))
 
 
-def candidates(p: Placement, labels: Sequence[Label | WaterLabel], i: int, grid: bool = False) -> tuple[np.ndarray, np.ndarray]:
+def candidates(p: Placement, labels: Sequence[Placeable], i: int, grid: bool = False) -> tuple[np.ndarray, np.ndarray]:
     """Candidate centres for label i; the first is its current position. Then STEPS at each of its step scales;
     for an 'out' label, rings round its anchor; else its anchor and (`grid`, country labels) a grid over its
     country. Compiled: kernels.candidates."""
@@ -180,10 +181,9 @@ def place_labels(labels: list[Label], frame: MapFrame, seed: int = SEED, weights
     clashing after descent (clashes: with any label) are shrunk slightly (their text too) and the descent repeated. `start`: positions to start from, for all labels.
     `freedom` (per label, default FREE): FIXED labels stay where they start, at their size; NUDGE labels pay
     `weights.nudge` for their distance from `home` (default: where they start). `floors`: the size (pt) each label
-    shrinks no lower than (default: SHRINK_MIN_PT, scaled, for country labels; a water label's min_size; a country
-    label above it may still take one last step under it). `seed_out` (default: no `start`): first move the free
+    shrinks no lower than (default: each label's min_size). `seed_out` (default: no `start`): first move the free
     'out' labels, in order, to their best spot, so they start separated."""
-    items: list[Label | WaterLabel] = [*labels, *water]
+    items: list[Placeable] = [*labels, *water]
     anchor_x = np.array([label.anchor_x for label in items])
     anchor_y = np.array([label.anchor_y for label in items])
     extent = [(w.parts[:, 2].max() - w.parts[:, 0].min(), w.parts[:, 3].max() - w.parts[:, 1].min()) for w in water]
@@ -201,7 +201,7 @@ def place_labels(labels: list[Label], frame: MapFrame, seed: int = SEED, weights
     freedom = np.full(p.n, FREE) if freedom is None else np.asarray(freedom)
     home_x, home_y = (p.x.copy(), p.y.copy()) if home is None else (np.asarray(home[0]), np.asarray(home[1]))
     if floors is None:
-        floors = np.array([SHRINK_MIN_PT * frame.label_scale] * len(labels) + [w.min_size for w in water])
+        floors = np.array([item.min_size for item in items])
     movable = np.flatnonzero(freedom != FIXED)
     outline = outline_coverage(frame)
     rng = np.random.default_rng(seed)
@@ -211,9 +211,7 @@ def place_labels(labels: list[Label], frame: MapFrame, seed: int = SEED, weights
         cx, cy = candidates(p, items, i, grid)
         cost = cost_batch(p, items, i, cx, cy, weights, outline)
         if freedom[i] == NUDGE and not p.out[i]:  # an 'out' label has no spot of its own to keep, only its dot
-            item = items[i]
-            unit = item.size * PX_PER_PT if isinstance(item, WaterLabel) else p.height[i]
-            away = np.hypot(cx - home_x[i], cy - home_y[i]) / unit
+            away = np.hypot(cx - home_x[i], cy - home_y[i]) / items[i].unit_px
             cost += np.where(away <= weights.nudge_max, weights.nudge * away, np.inf)
         cost[0] -= stay_bias
         j = int(np.argmin(cost))
@@ -236,23 +234,14 @@ def place_labels(labels: list[Label], frame: MapFrame, seed: int = SEED, weights
         clashing = [i for i in clashes(p) if freedom[i] != FIXED]
         if not clashing:
             break
-        bad, water_bad = [i for i in clashing if not p.water[i]], [i for i in clashing if p.water[i]]
-        for i in bad:
-            size = float(labels[i].text.get_fontsize())
-            if size > floors[i]:
-                labels[i].text.set_fontsize(size * SHRINK_FACTOR)
-                p.width[i] *= SHRINK_FACTOR
-                p.height[i] *= SHRINK_FACTOR
-        for i in water_bad:
-            w = water[i - len(labels)]
-            if w.size > floors[i]:
-                factor = max(SHRINK_FACTOR, floors[i] / w.size)  # stop at its floor
-                w.scale(factor)
-                p.parts[p.owner == i] = w.parts
-                p.width[i] *= factor
-                p.height[i] *= factor
+        for i in clashing:
+            factor = items[i].shrink_toward(floors[i])
+            p.width[i] *= factor
+            p.height[i] *= factor
+            if p.water[i]:
+                p.parts[p.owner == i] = water[i - len(labels)].parts
         optimize(SHRINK_PASSES)
-    print("passes done; unresolved overlaps:", [labels[i].name if i < len(labels) else water[i - len(labels)].text for i in clashes(p)])
+    print("passes done; unresolved overlaps:", [items[i].name for i in clashes(p)])
     return p
 
 
