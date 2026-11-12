@@ -1,6 +1,6 @@
 import numpy as np
 
-from worldmap.labels.priority import label_order, ranks_per_kind, steps
+from worldmap.labels.priority import label_order, overhang, ranks_per_kind, steps
 
 
 def test_label_order() -> None:
@@ -28,6 +28,12 @@ def test_steps_order() -> None:
 
 def test_steps_biggest_first_and_unasked_kinds_left_out() -> None:
     assert steps(["seas", "seas", "lakes"], [50, 60, 1], ["seas"]) == [(1, [1, 0])]
+
+
+def test_overhang_is_the_longer_end_off() -> None:
+    assert overhang([False, True, True, True, False, False]) == 2 / 6
+    assert overhang([True, False, True]) == 0  # a gap in the middle doesn't count
+    assert overhang([False, False]) == 1
 
 
 def test_steps_empty() -> None:
@@ -138,3 +144,12 @@ def test_country_pushed_off_its_country_gets_a_leader() -> None:
     p, labels, kept = place_by_priority([country], [sized(sea, 1e6)], FRAME, ["countries", "seas"], rank=lambda kinds, sizes: np.array([3, 1]))
     assert labels == [country] and country.out and bool(p.out[0])
     assert [w.text for w in kept] == ["Sea"] and clashes(p) == []
+
+
+def test_centred_label_may_hang_off_both_ends() -> None:
+    """A sea 48% of its name's length: centred, 26% off each end (most of it off, but neither end over 30%)."""
+    x, y = mid_atlantic_px(FRAME)
+    parts = np.array([[-50.0 + 5 * k, -7, -45 + 5 * k, 7] for k in range(20)])
+    sea = water_label("Sea", (x, y), shapely.box(x - 24, y - 20, x + 24, y + 20), parts, WATER_MIN_PT)
+    assert [w.text for w in place_by_priority([], [sized(sea, 1)], FRAME, ["seas"])[2]] == ["Sea"]
+

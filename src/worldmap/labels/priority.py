@@ -13,7 +13,8 @@ from worldmap.labels.water import WATER_KINDS, WaterLabel
 N_RANKS = 5
 RANK_STEP = 10.0  # rank k holds the labels down to 1 / RANK_STEP^k of their kind's biggest; the last, the rest
 
-IN_MIN_INSIDE = 0.5  # a label on its feature (not 'out') must be at least this much over it: a country's box, a water label's glyphs
+OVERHANG_MAX = 0.3  # a label on its feature (not 'out') may hang off either end of it by no more than this share of its length
+OVERHANG_SLICES = 16  # a country label's box is judged in this many upright slices; a water label by its glyphs
 NUDGE_MIN_SCALE = 0.9  # a nudged label shrinks no further than this share of the size it settled at
 
 Ranker = Callable[[Sequence[str], Sequence[float]], np.ndarray]
@@ -52,10 +53,28 @@ def steps(kinds: Sequence[str], sizes: Sequence[float], order: Sequence[str], ra
     return out
 
 
-def inside_share(p: Placement, k: int, label: Label) -> float:
-    """The share of country label k's box over its country."""
-    x0, y0 = p.x[k] - p.width[k] / 2, p.y[k] - p.height[k] / 2
-    return clipped_area(label.geom, [x0, y0, x0 + p.width[k], y0 + p.height[k]]) / float(p.width[k] * p.height[k])
+def overhang(on: Sequence[bool]) -> float:
+    """How far a label hangs off its feature at its worse end: the share of its equal pieces (`on`: each one over
+    the feature or not, in reading order) before the first one on it, or after the last; 1 if none is. A gap in
+    the middle doesn't count, so a centred label may be mostly off as long as neither end is far off."""
+    flags = np.asarray(on, bool)
+    if not flags.any():
+        return 1.0
+    return max(int(np.argmax(flags)), int(np.argmax(flags[::-1]))) / len(flags)
+
+
+def overhang_of(p: Placement, k: int, item: "Label | WaterLabel") -> float:
+    """overhang of label k: its glyph boxes (a water label) or OVERHANG_SLICES slices of its box (a country), each
+    on its feature if at least half over it."""
+    if p.water[k]:
+        rects, owner = rects_of(p)
+        pieces = rects[owner == k]
+    else:
+        x0, y0, w, h = p.x[k] - p.width[k] / 2, p.y[k] - p.height[k] / 2, p.width[k], p.height[k]
+        edges = x0 + w * np.arange(OVERHANG_SLICES + 1) / OVERHANG_SLICES
+        pieces = np.column_stack([edges[:-1], np.full(OVERHANG_SLICES, y0), edges[1:], np.full(OVERHANG_SLICES, y0 + h)])
+    area = (pieces[:, 2] - pieces[:, 0]) * (pieces[:, 3] - pieces[:, 1])
+    return overhang([clipped_area(item.geom, piece) >= a / 2 for piece, a in zip(pieces, area)])
 
 
 def place_by_priority(labels: list[Label], water: list[WaterLabel], frame: MapFrame, order: Sequence[str],
@@ -64,9 +83,9 @@ def place_by_priority(labels: list[Label], water: list[WaterLabel], frame: MapFr
     water labels, as the draw functions take them) and the kept labels. In each step the step's labels are free,
     the labels already placed of its rank and the rank before are nudged (they pay for leaving where they settled
     and shrink to no less than NUDGE_MIN_SCALE of their settled size), and the rest stay put. Then the step's
-    labels are checked, smallest first: one clashing with a label still kept, or a water label under
-    IN_MIN_INSIDE over its water (or, in a crop, outside the outline), is skipped for good; a country label under
-    IN_MIN_INSIDE over its country becomes an 'out' label, with a leader, and the step is solved again."""
+    labels are checked, smallest first: one clashing with a label still kept, or a water label hanging
+    off its water at either end by over OVERHANG_MAX (overhang_of) (or, in a crop, outside the outline), is skipped for good; a country label hanging off its
+    country by more than that becomes an 'out' label, with a leader, and the step is solved again."""
     items: list[Label | WaterLabel] = [*labels, *water]
     n_country = len(labels)
     plan = steps([item.kind for item in items], [item.full_size for item in items], order, rank)
@@ -126,11 +145,11 @@ def place_by_priority(labels: list[Label], water: list[WaterLabel], frame: MapFr
             retry, failed, to_leader = False, [], False
             for n, i in reversed(list(enumerate(new))):  # smallest first: of two clashing, the smaller goes
                 k, item = index[i], items[i]
-                if isinstance(item, Label) and not item.out and inside_share(p, k, item) < IN_MIN_INSIDE:
-                    item.out = True  # mostly off its country: beside it, with a leader, from the next solve
+                if isinstance(item, Label) and not item.out and overhang_of(p, k, item) > OVERHANG_MAX:
+                    item.out = True  # hanging off its country: beside it, with a leader, from the next solve
                     to_leader = True
                     continue
-                off = isinstance(item, WaterLabel) and (item.inside_share(p.x[k], p.y[k]) < IN_MIN_INSIDE or k in outside)
+                off = isinstance(item, WaterLabel) and (overhang_of(p, k, item) > OVERHANG_MAX or k in outside)
                 if off:  # pushed off its water by a smaller label of this step? then that one goes, and again
                     j = rival(p, k, [index[m] for m in new[n + 1:] if among[index[m]]])
                     if j is not None:
