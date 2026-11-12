@@ -11,7 +11,7 @@ from shapely.geometry import Polygon
 from worldmap.frame import MapFrame
 from worldmap.labels import kernels
 from worldmap.labels.geometry import Coverage, coverage, nearest_point_on_rect
-from worldmap.labels.label import SHRINK_MIN_PT, Label
+from worldmap.labels.label import Label
 from worldmap.labels.placeable import Placeable
 from worldmap.labels.water import WaterLabel
 

@@ -67,7 +67,7 @@ def test_country_can_shrink_for_water(frame: MapFrame, one_label: list[Label], w
     """A sea fixed over a country's label: the country label gives way, by moving or shrinking."""
     start = (np.array([one_label[0].anchor_x, water_on_top_of_it.anchor_x]), np.array([one_label[0].anchor_y, water_on_top_of_it.anchor_y]))
     p = place_labels(one_label, frame, water=[water_on_top_of_it], start=start, freedom=np.array([FREE, FIXED]))
-    assert clashes(p) == [] or one_label[0].text.get_fontsize() <= placement.SHRINK_MIN_PT
+    assert clashes(p) == [] or one_label[0].size <= one_label[0].min_size
 
 
 def test_clash_is_symmetric(frame: MapFrame, one_label: list[Label], water_on_top_of_it: WaterLabel) -> None:
