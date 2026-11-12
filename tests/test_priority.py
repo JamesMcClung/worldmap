@@ -45,31 +45,38 @@ def test_rank_table() -> None:
     """Placed of each rank's candidates, by kind (in `order`, those with any), then of all, and as a percentage; on the
     right, of every rank, and as a percentage."""
     assert rank_table(PLAN, KINDS, ["rivers", "seas", "lakes"], placed={0, 2}, color=False) == (
-        "rank               1       2       3       4       5     all       %\n"
-        "rivers           1/1       -       -       -       -     1/1    100%\n"
-        "seas             1/2       -     0/1       -       -     1/3     33%\n"
-        "all              2/3       -     0/1       -       -     2/4     50%\n"
-        "%                67%       -      0%       -       -     50%")
+        "rank         │       1       2       3       4       5 │     all       %\n"
+        "─────────────┼─────────────────────────────────────────┼────────────────\n"
+        "rivers       │     1/1       -       -       -       - │     1/1    100%\n"
+        "seas         │     1/2       -     0/1       -       - │     1/3     33%\n"
+        "─────────────┼─────────────────────────────────────────┼────────────────\n"
+        "all          │     2/3       -     0/1       -       - │     2/4     50%\n"
+        "%            │     67%       -      0%       -       - │     50%")
 
 
 def test_rank_table_names_the_biggest_three_dropped() -> None:
     """A kind's in plan order (by size), '...' if there are more, '-' if none; none for all kinds together."""
     plan = [(1, [0, 1, 2, 3, 4]), (1, [5]), (2, [6])]
     kinds = ["seas"] * 5 + ["rivers", "lakes"]
-    rows = rank_table(plan, kinds, ["seas", "rivers", "lakes"], placed={1, 6}, color=False, names="ABCDEFG").split("\n")
-    assert rows[0].endswith("%  dropped")
-    assert rows[1].endswith("20%  A, C, D, ...") and rows[2].endswith("0%  F") and rows[3].endswith("100%  -")
-    assert rows[4].endswith("29%") and rows[5].endswith("29%")
+    assert rank_table(plan, kinds, ["seas", "rivers", "lakes"], placed={1, 6}, color=False, names="ABCDEFG") == (
+        "rank         │       1       2       3       4       5 │     all       % │ dropped\n"
+        "─────────────┼─────────────────────────────────────────┼─────────────────┼─────────────\n"
+        "seas         │     1/5       -       -       -       - │     1/5     20% │ A, C, D, ...\n"
+        "rivers       │     0/1       -       -       -       - │     0/1      0% │ F\n"
+        "lakes        │       -     1/1       -       -       - │     1/1    100% │ -\n"
+        "─────────────┼─────────────────────────────────────────┼─────────────────┼─────────────\n"
+        "all          │     1/6     1/1       -       -       - │     2/7     29% │\n"
+        "%            │     17%    100%       -       -       - │     29%         │")
 
 
 def test_rank_table_in_colour() -> None:
     """Green: all placed, red: none, yellow: some; only a yellow rank cell needs its placed count (the totals always show it)."""
     green, yellow, red, end = "\x1b[32m", "\x1b[33m", "\x1b[31m", "\x1b[0m"
     rows = rank_table(PLAN, KINDS, ["rivers", "seas"], placed={0, 2}, color=True).split("\n")
-    assert rows[1] == f"rivers      {green}       1{end}       -       -       -       -{green}     1/1{end}{green}    100%{end}"
-    assert rows[2] == f"seas        {yellow}     1/2{end}       -{red}       1{end}       -       -{yellow}     1/3{end}{yellow}     33%{end}"
-    assert rows[3] == f"all         {yellow}     2/3{end}       -{red}     0/1{end}       -       -{yellow}     2/4{end}{yellow}     50%{end}"
-    assert rows[4] == f"%           {yellow}     67%{end}       -{red}      0%{end}       -       -{yellow}     50%{end}"
+    assert rows[2] == f"rivers       │{green}       1{end}       -       -       -       - │{green}     1/1{end}{green}    100%{end}"
+    assert rows[3] == f"seas         │{yellow}     1/2{end}       -{red}       1{end}       -       - │{yellow}     1/3{end}{yellow}     33%{end}"
+    assert rows[5] == f"all          │{yellow}     2/3{end}       -{red}     0/1{end}       -       - │{yellow}     2/4{end}{yellow}     50%{end}"
+    assert rows[6] == f"%            │{yellow}     67%{end}       -{red}      0%{end}       -       - │{yellow}     50%{end}"
 
 
 def test_steps_empty() -> None:

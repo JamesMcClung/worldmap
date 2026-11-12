@@ -64,7 +64,7 @@ def rank_table(plan: list[tuple[int, list[int]]], kinds: Sequence[str], order: S
     all kinds, then that as a percentage; on the right, of every rank, then as a percentage, then (with `names`) a
     kind's N_DROPPED biggest dropped labels ('-' if none, '...' if more; the plan has a kind's labels by size). In
     colour a cell is green if all were placed, red if none, else yellow; of the rank cells of a kind, only a yellow
-    one shows how many ('28/36')."""
+    one shows how many ('28/36'). Lines set off the header and the totals, and the rank, total and dropped columns."""
     total = {kind: np.zeros(N_RANKS, int) for kind in [*order, "all"]}
     done = {kind: np.zeros(N_RANKS, int) for kind in total}
     dropped: dict[str, list[str]] = {kind: [] for kind in order}
@@ -85,19 +85,29 @@ def rank_table(plan: list[tuple[int, list[int]]], kinds: Sequence[str], order: S
         hue = GREEN if n == of else RED if n == 0 else YELLOW
         return f"{hue}{str(of) if short and hue != YELLOW else text:>8}{PLAIN}"
 
+    def gone(kind: str) -> str:
+        out = dropped[kind]
+        return " " + (", ".join(out[:N_DROPPED]) + (", ..." if len(out) > N_DROPPED else "") if out else "-")
+
+    def line(parts: list[str]) -> str:
+        return " │".join(parts).rstrip()
+
     def row(name: str, kind: str, percent: bool = False) -> str:
         n, of = done[kind], total[kind]
-        cells = [cell(a, b, percent, kind != "all") for a, b in zip(n, of)]
-        cells.append(cell(n.sum(), of.sum(), percent, False))
-        if not percent:
-            cells.append(cell(n.sum(), of.sum(), True, False))
-            if names and kind != "all":
-                gone = dropped[kind]
-                cells.append("  " + (", ".join(gone[:N_DROPPED]) + (", ..." if len(gone) > N_DROPPED else "") if gone else "-"))
-        return (f"{name:<12}" + "".join(cells)).rstrip()
+        parts = [f"{name:<12}", "".join(cell(a, b, percent, kind != "all") for a, b in zip(n, of)),
+                 cell(n.sum(), of.sum(), percent, False) + (" " * 8 if percent else cell(n.sum(), of.sum(), True, False))]
+        if names:
+            parts.append("" if kind == "all" else gone(kind))
+        return line(parts)
 
-    rows = [f"{'rank':<12}" + "".join(f"{r:>8}" for r in [*range(1, N_RANKS + 1), "all", "%"]) + ("  dropped" if names else "")]
-    rows += [row(kind, kind) for kind in order if total[kind].any()]
+    shown = [kind for kind in order if total[kind].any()]
+    header = [f"{'rank':<12}", "".join(f"{r:>8}" for r in range(1, N_RANKS + 1)), f"{'all':>8}{'%':>8}"]
+    widths = [12, 8 * N_RANKS, 16]
+    if names:
+        header.append(" dropped")
+        widths.append(max(len(text) for text in [header[-1], *map(gone, shown)]))
+    rule = "─┼".join("─" * w for w in widths)
+    rows = [line(header), rule, *(row(kind, kind) for kind in shown), rule]
     return "\n".join([*rows, row("all", "all"), row("%", "all", percent=True)])
 
 
