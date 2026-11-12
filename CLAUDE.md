@@ -310,7 +310,7 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
 - Water labels also try steps of a tenth and a fifth of their extent (`WATER_STEP_SCALES`: big steps leave narrow
   water); `CostWeights.overhang` keeps them within `OVERHANG_MAX` of their water.
 - Drawing: `PathPatch` in `WATER_TEXT` (OKLCH L 0.50 in the ocean hue) with an `OCEAN`-coloured halo, under the country
-  labels. `--label countries,water` takes ~21 s (vs ~10 s); ~710 of ~740 labels placed.
+  labels. `--label countries,water` takes ~17 s (vs ~10 s); ~720 of ~770 labels placed.
 
 ## `--rivers`
 
