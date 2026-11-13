@@ -47,7 +47,7 @@ environment, so it skips where they aren't downloaded); `crop_pacific_water`: `-
 - `conftest.environment(mode)` keys data files per mode (`raster` for earth, ETOPO etc. for topographic*, `marine` for *water*, `rivers` for *water*):
   a new key on an existing mode would make it skip, so add keys only for the modes that use them.
 - Parallel runs: `pytest_collection_modifyitems` schedules the renders first (else the long ones start last). The
-  topographic renders peak at 3.3 GB (world) and 5 GB (Alps crop), so each `xdist_group` (`topographic`,
+  topographic renders take GBs (`--type topographic`, Memory), so each `xdist_group` (`topographic`,
   `topographic_crop`) runs on one worker; the political ones peak near 0.5 GB. `UPDATE_REFERENCE` writes
   `fingerprints.json` under a lock in `.cache/reference/`.
 - The crop tests build `crop.candidates` once per set of kinds (`test_crop.candidates`, also patched into `cli`).
@@ -183,7 +183,8 @@ or country labels run. `--color`, `--disputed`, `--recolor` and `--label countri
   (`coastline`) is the outline of the union of the land and ice polygons, as in the political map, minus the
   slivers the union leaves where ice shelves meet land (`SLIVER_M2`, `SLIVER_HOLE_M2`; they drew stray dashes).
   It takes ~3 s. Tracing it from the smoothed pixel mask instead rounded the coast and left river mouths inland.
-- Memory: a 200 dpi run peaks around 3 GB. Work in blocks or in place on the whole-poster arrays; don't use
+- Memory: at 200 dpi the world peaks ~3.3 GB, a square crop ~4.3 GB, the Alps test crop ~5 GB (crops have more
+  pixels than the world poster). Work in blocks or in place on the whole-poster arrays; don't use
   `ax.contour` (its ContourSet keeps a float64 copy of the grid per call, ~665 MB each), use `contour_lines` (contourpy).
 - Colour bars (`colorbars.py`): height bottom-right, depth top-right (`--ocean` only), ice bottom-left. Each is its
   corner quadrant minus the globe grown by `BAR_GAP_IN`, minus `BAR_MARGIN_IN`; signed labels in the gap with a white
@@ -241,8 +242,8 @@ oceans) gets Equal Earth centred on its longitude instead, clipped a hair either
   8th shown pixel, + `FINE_PAD_DEG`; runs across +-180 are read in two pieces). The 15" tiles stitch their sources
   roughly at +-180 (a line shaded through Fiji; the 60" file, their block mean, hides it). The data is shown as it is
   (the user's call: no hard-coded smoothing); a read of the tiles across +-180 prints a note instead. `soften` still blurs heights over
-  about a cell when a cell spans > 2 pixels (bilinear heights shade as flat facets). A 200 dpi square crop peaks
-  ~4.3 GB (more pixels than the world poster). Colour bars are rectangles (`BAR_RECT_WIDTH_IN`, `BAR_RECT_LENGTH`) titled along `inner_side`,
+  about a cell when a cell spans > 2 pixels (bilinear heights shade as flat facets).
+  Colour bars are rectangles (`BAR_RECT_WIDTH_IN`, `BAR_RECT_LENGTH`) titled along `inner_side`,
   over the map: water labels are placed in `label_outline` (the canvas minus the bar corners), and a crop's water
   label with a glyph outside the outline is dropped (`placement.outside_outline`).
 - `--pick` with the same `--crop` inverts the crop's projection.
