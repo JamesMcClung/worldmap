@@ -65,11 +65,10 @@ def rank_table(plan: list[tuple[int, list[int]]], kinds: Sequence[str], order: S
                names: Sequence[str] = (), columns: int | None = None) -> str:
     """How many of each rank's labels were placed, as text: a row per kind (in `order`, those with any), then of
     all kinds, then that as a percentage; on the right, of every rank, then as a percentage, then (with `names`) a
-    kind's dropped labels, biggest first ('-' if none; the plan has a kind's labels by size), as many whole names as
-    fit, then ', N more': in DROPPED_WIDTH characters, or on a terminal `columns` wide the rest of the line (no
-    column if under DROPPED_MIN). In
-    colour a cell is green if all were placed, red if none, else yellow; of the rank cells of a kind, only a yellow
-    one shows how many ('28/36'). Lines set off the header and the totals, and the rank, total and dropped columns."""
+    kind's dropped labels, biggest first ('-' if none), as many whole names as fit, then ', N more': in
+    DROPPED_WIDTH characters, or on a terminal `columns` wide the rest of the line (no column if under
+    DROPPED_MIN). In colour a cell is green if all were placed, red if none, else yellow; of a kind's rank cells,
+    only a yellow one shows how many ('28/36')."""
     total = {kind: np.zeros(N_RANKS, int) for kind in [*order, "all"]}
     done = {kind: np.zeros(N_RANKS, int) for kind in total}
     dropped: dict[str, list[str]] = {kind: [] for kind in order}
