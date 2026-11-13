@@ -35,7 +35,7 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "3e1e157f77d1c518ede00003f1888b9345e6dc2ea6eaef9a6b82cedc60aeadac"
+    "sha256": "dac6ab1f60b8c23faeb2dd037386b18eaccb9d25af414fde2fd501528b6db2f8"
   },
   "crop_water": {
     "env": {
@@ -206,7 +206,7 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "ebeade349025a84d9b806a119e0b346e2ad2121d57adead6f73b0b791f9b4d02"
+    "sha256": "046ad04ee4d4b32a08a5a2ac3f29f828d33e1ca24171e7ca29d3e507e9a64e39"
   },
   "water": {
     "env": {
@@ -226,6 +226,6 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "c4aae37852f9a54559ea07d6af6566145d6ac4ddbf0311a508977484339ce3e8"
+    "sha256": "037056ea7b6ce800029f3f5fb0e9a555813a69e71aae6817a997f8adf2100244"
   }
 }

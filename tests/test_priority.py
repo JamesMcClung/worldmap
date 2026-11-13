@@ -232,3 +232,17 @@ def test_cut_rivers_are_not_drawn() -> None:
 def test_draws_all_rivers_without_labels() -> None:
     uncut = Outcome(Placement.of([]), [], np.zeros(0, bool), np.zeros(0, int), {})
     assert uncut.shown("rivers", np.array([1, 5, UNLABELED])).all()
+
+
+def test_cut_counts_failures_across_ranks() -> None:
+    """3 of rank 1's 4 fail, then all 3 of rank 2: under 5 in either, but 6 of the 7 together."""
+    sea, _ = crossing_water_labels(FRAME)
+    out = place_by_priority([sized(sea, 100)], FRAME, ["seas"], rank=lambda k, s: np.array([1, 1, 1, 1, 2, 2, 2]), unfit=unfit(6))
+    assert out.cut == {"seas": 2} and out.kept[0]
+
+
+def test_cut_share_is_of_every_rank() -> None:
+    """Rank 1's 5 failures are 5 of 26: under 30% of the kind, so the sea stays; rank 2 tips it."""
+    sea, _ = crossing_water_labels(FRAME)
+    out = place_by_priority([sized(sea, 100)], FRAME, ["seas"], rank=lambda k, s: np.array([1] * 6 + [2] * 20), unfit=unfit(25))
+    assert out.cut == {"seas": 2} and out.kept[0]

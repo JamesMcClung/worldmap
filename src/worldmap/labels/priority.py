@@ -1,7 +1,7 @@
 """Priority: labels are placed in steps, most important first. Labels are ranked by full size (area, or a river's
 length) into fifths of all those in the frame; rank by rank, the kinds follow the --label order. A kind is cut at
-the first rank where too many of its labels fail (saturated): that rank's labels and every later rank of the kind
-are dropped."""
+the first rank by which too many of all its labels have failed (saturated): that rank's labels and every later rank
+of the kind are dropped."""
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
@@ -18,7 +18,7 @@ N_RANKS = 5
 RIVER_KM2_PER_KM = 10.0  # a river ranks as an area of this many km2 per km of its length
 
 UNLABELED = N_RANKS + 1  # the rank of a feature with no label: drawn only if its kind was never cut
-CUT_SHARE = 0.3  # a kind is cut at the first rank where this share of its labels fail...
+CUT_SHARE = 0.3  # a kind is cut at the first rank by which this share of all its labels (every rank) have failed...
 CUT_MIN_DROPS = 5  # ...and at least this many do
 NUDGE_MIN_SCALE = 0.9  # a nudged label shrinks no further than this share of the size it settled at
 
@@ -34,7 +34,7 @@ class Unplaced(NamedTuple):
 
 
 def saturated(failed: int, total: int) -> bool:
-    """Whether a rank of a kind with `failed` of its `total` labels failing is cut: CUT_MIN_DROPS and CUT_SHARE."""
+    """Whether a kind with `failed` of its `total` labels (every rank) failed so far is cut: CUT_MIN_DROPS and CUT_SHARE."""
     return failed >= CUT_MIN_DROPS and failed / total >= CUT_SHARE
 
 
@@ -140,8 +140,8 @@ def place_by_priority(items: Sequence[Placeable], frame: MapFrame, order: Sequen
     the labels already placed of its rank and the rank before are nudged (they pay for leaving where they settled
     and shrink to no less than NUDGE_MIN_SCALE of their settled size), and the rest stay put. Then check_step
     decides which labels go 'out' or are skipped, and the step is solved again until it puts none out and finds
-    no rival to skip. The `unfit` are ranked with the labels and count as failed in their step; a step saturated
-    with failures is undone, and its kind cut there."""
+    no rival to skip. The `unfit` are ranked with the labels and count as failed in their step. A step after which
+    its kind's failures so far saturate all its labels is undone, and the kind cut there."""
     n = len(items)
     everything: list[Placeable | Unplaced] = [*items, *unfit]
     kinds = [e.kind for e in everything]
@@ -165,6 +165,8 @@ def place_by_priority(items: Sequence[Placeable], frame: MapFrame, order: Sequen
     in_rank = {r: sum(len(step) for q, step in plan if q == r) for r, _ in plan}
     done = {r: 0 for r in in_rank}
     cut: dict[str, int] = {}
+    of_kind = {kind: sum(len(step) for _, step in plan if kinds[step[0]] == kind) for kind in set(kinds)}
+    failed = dict.fromkeys(of_kind, 0)  # per kind, its labels failed so far
     cut_fit: dict[str, int] = {}
     for r, step in plan:
         kind = kinds[step[0]]
@@ -191,7 +193,8 @@ def place_by_priority(items: Sequence[Placeable], frame: MapFrame, order: Sequen
             if active[i]:
                 settled[i] = True
                 home_x[i], home_y[i], settled_size[i] = p.x[i], p.y[i], p.size[i]
-        if saturated(len(step) - int(active[members].sum()), len(step)):
+        failed[kind] += len(step) - int(active[members].sum())
+        if saturated(failed[kind], of_kind[kind]):
             cut[kind], cut_fit[kind] = r, int(active[members].sum())
             p, active, settled, home_x, home_y, settled_size = before
     return Outcome(subset(p, active), plan, np.concatenate([active, np.zeros(len(unfit), bool)]), ranks, cut, cut_fit)
