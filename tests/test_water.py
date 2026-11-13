@@ -181,9 +181,9 @@ def test_river_name() -> None:
 
 
 def test_river_size() -> None:
-    assert river_size(0) == river_size(1) == RIVER_MAX_PT
-    assert river_size(6) == RIVER_MIN_PT == river_size(9)
-    assert river_size(2) > river_size(4)
+    assert river_size(0) == RIVER_MAX_PT
+    assert river_size(8) == RIVER_MIN_PT == river_size(9)
+    assert river_size(2) - river_size(4) == pytest.approx(river_size(4) - river_size(6))  # linear in the line width
 
 
 def test_river_names_stay_small_in_a_crop() -> None:

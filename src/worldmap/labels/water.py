@@ -50,8 +50,7 @@ assert _fitted is not None
 WATER_TEXT: RGB = _fitted[0]  # a deeper blue in the ocean's hue
 RIVER_WIDTH_MAX, RIVER_WIDTH_MIN = 1.6, 0.3  # line widths (pt) at scalerank 0 and RIVER_THIN_RANK
 RIVER_THIN_RANK = 8  # rivers of this scalerank and beyond are drawn thinnest
-RIVER_SIZE_MAX_RANK = 6  # river names shrink with Natural Earth scalerank down to this, then stay at RIVER_MIN_PT
-RIVER_MAX_PT, RIVER_MIN_PT = 8.5, 7  # river names: italic, this size at scalerank <= 1 down to RIVER_SIZE_MAX_RANK
+RIVER_MAX_PT, RIVER_MIN_PT = 8.5, 4.2  # river names: italic, linear in the river's line width, these at its widest and thinnest
 RIVER_SCALE_MAX = 1.2  # river names grow with a crop's label_scale up to this, no more: they stay small
 RIVER_GAP_EM = 0.3  # baseline height over the river
 RIVER_CORRIDOR_EM = 1.0  # a river name's glyph centres should be within this of its river (more: it slid off where it was bent to fit)
@@ -435,9 +434,9 @@ def river_width(rank: int) -> float:
 
 
 def river_size(rank: int) -> float:
-    """A river name's size (pt) from its scalerank."""
-    t = min(max(rank - 1, 0), RIVER_SIZE_MAX_RANK - 1) / (RIVER_SIZE_MAX_RANK - 1)
-    return RIVER_MAX_PT + t * (RIVER_MIN_PT - RIVER_MAX_PT)
+    """A river name's size (pt) from its scalerank: a function of how wide its line is drawn (river_width)."""
+    t = (river_width(rank) - RIVER_WIDTH_MIN) / (RIVER_WIDTH_MAX - RIVER_WIDTH_MIN)
+    return RIVER_MIN_PT + t * (RIVER_MAX_PT - RIVER_MIN_PT)
 
 
 def best_stretch(pts: np.ndarray, length: float) -> np.ndarray:
