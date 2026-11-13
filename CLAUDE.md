@@ -76,6 +76,7 @@ Importing any module has no side effects; only `cli.main` (after choosing the ba
 | `labels/priority.py` | `ranks_by_quantile` (fifths by area, a river's length x `RIVER_KM2_PER_KM`), `steps`, `overhang_of`, `check_step` (-> `Verdict`: out, rival, skip), `Unplaced`, `saturated`, `Settled` (what placing has decided: copied for a cut's rollback), `Cuts`, `place_step`, `place_by_priority` (its entries, labels and `Unplaced` in any order; step by step, biggest rank first; prints nothing, `on_step` before each step; returns an `Outcome` indexed like the entries: the kept labels' `Placement`, the plan, the kept mask, every entry's rank and the kinds `cut`, which `report.summary` reads; `Outcome.shown`: which ranks of a kind are drawn) |
 | `labels/report.py` | `progress` (on a terminal, a bar of the rank being placed), `rank_table` (placed/total per kind and rank, coloured on a tty unless `NO_COLOR`, and each kind's dropped labels, biggest first), `summary` (the skipped labels, the kinds cut, then the table) |
 | `labels/geometry.py` | `nearest_point_on_rect`, `two_line`, `Coverage` (summed-area table of a shape: `area` of boxes, `contains` of points), `coverage` (a label's, cached), `on_feature` (a label's pieces on its feature, judged by the solver's kernel: `overhang_of`, `inside_share`) |
+| `rivers.py` | `--rivers`: `RiverFlow` (`downstream`: a piece's best rank upstream), `split_at_junctions`, `flow` (mouths, then Dijkstra), `river_flow` (cached) |
 | `disjoint.py` | `DisjointSets` (union-find: `find`, `union`, `groups`): pieces joined at the seam, river networks, same-named rivers |
 | `curves.py` | `arc_lengths`, `along`, `bend` (points along a polyline + its left normal): text bending for `colorbars.curved_title` and water labels |
 | `render.py` | `new_figure`, `draw_countries`, `draw_stripes`, `draw_borders`, `draw_states`, `draw_rivers`, `drawable_lakes` (>= `LAKE_MIN_IN2`), `draw_lakes`, `subtract_lakes`, `glyph_patch`, `draw_labels`, `draw_water_labels` (both from the `Placement` alone), `HALO`, line widths and z-orders |
@@ -331,7 +332,16 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
 ## `--rivers`
 
 Natural Earth `ne_10m_rivers_lake_centerlines` (`data.RIVERS`), every scalerank 0 (biggest) to 12; canals count as
-rivers. With river labels, only the lines whose rank isn't cut are drawn (`cli.shown_rivers`); without, every line. `render.draw_rivers` draws them in `RIVER` (OKLCH 0.54/0.10/240, darker
+rivers. With river labels, only the lines whose rank isn't cut are drawn (`cli.shown_rivers`), plus everything
+downstream of them (deltas, a river's last stretch below a junction); without, every line.
+- Flow (`rivers.py`): Natural Earth's lines run either way, so `river_flow` cuts them at every junction (an end on a
+  line's middle within `FLOW_JOIN_M` = 2 km), joins ends within 2 km (wider joined neighbouring sources: the Danube
+  flowed up the Tisza) or an inland end to the nearest end of its name within `SAME_NAME_JOIN_M` (a river broken at a
+  lake), takes the ends within `MOUTH_M` of the coast (`load_land`, so `--rivers` downloads it) as mouths (an inland
+  network: its most important line's end nearest the coast or a lake), and orients each piece toward the nearest
+  mouth. Canals (`CANAL` in the name) stand alone, or the Nile drained down the Suez Canal. Known miss: Natural
+  Earth's Kovzha crosses the Volga-Baltic divide, so a drawn Volga draws the Sheksna, Svir and Neva. ~1 s, cached per run.
+  Pieces are what's drawn (`RiverFlow.pieces`, Natural Earth's columns). `render.draw_rivers` draws them in `RIVER` (OKLCH 0.54/0.10/240, darker
 than the ocean so it shows on every fill), `river_width` thinning linearly from `RIVER_WIDTH_MAX` to `RIVER_WIDTH_MIN` at `RIVER_THIN_RANK` = 8,
 thin ones first. `Z_RIVERS` = 2.2: above the state lines, below the lakes, which hide the centrelines through them.
 Labels ignore them.
