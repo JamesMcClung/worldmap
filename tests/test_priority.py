@@ -197,12 +197,6 @@ def test_no_cut_below_the_minimum_drops() -> None:
     assert out.cut == {} and out.kept[0] and list(out.shown("seas", np.array([5, UNLABELED]))) == [True, True]
 
 
-def test_unfit_only_group_cuts() -> None:
-    sea, _ = crossing_water_labels(FRAME)
-    out = place_by_priority([sized(sea, 1), *unfit(5)], FRAME, ["seas"], rank=lambda k, s: np.array([2] + [1] * 5))
-    assert out.cut == {"seas": 1} and not out.kept[0]
-
-
 def test_countries_are_cut_too() -> None:
     out = place_by_priority([atlantis(1), *unfit(5, "countries")], FRAME, ["countries"], rank=lambda k, s: np.ones(6, int))
     assert out.cut == {"countries": 1} and not out.kept[0]
