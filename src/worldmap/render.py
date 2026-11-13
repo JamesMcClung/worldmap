@@ -38,7 +38,7 @@ RIVER_THIN_RANK = 8  # rivers of this scalerank and beyond are drawn thinnest
 BORDER_DASH = (0, (2.5, 1.5))  # --disputed: borders between a disputed area and the countries involved
 # Drawing order, bottom to top (pins are at 10, labels at 6). Borders sit below the lakes so they don't cross them.
 Z_OCEAN, Z_COUNTRY, Z_STRIPES, Z_BAIKONUR_EDGE, Z_BORDERS, Z_STATES, Z_LAKES, Z_GLOBE, Z_LEADERS = 0, 1, 1.5, 1.6, 1.7, 2, 2.5, 3, 4
-LAKE_MIN_PX = 10  # lakes covering at least this many poster pixels are drawn as water
+LAKE_MIN_IN2 = 0.002  # lakes covering at least this many square inches of the poster are drawn as water (~100 on the world map)
 Z_RIVERS = 2.2  # above the state lines, below the lakes (which hide the lake centrelines)
 Z_STATES_UNDER_BORDERS = 1.65  # --disputed: state lines above the stripes, below the (dashed) borders
 LABEL_ZORDER = 6
@@ -125,9 +125,9 @@ def draw_states(ax: Axes, states_projected: gpd.GeoDataFrame, disputed: bool = F
 
 
 def drawable_lakes(frame: MapFrame) -> gpd.GeoDataFrame:
-    """The lakes, projected, that cover at least LAKE_MIN_PX poster pixels of the frame."""
+    """The lakes, projected, that cover at least LAKE_MIN_IN2 of the poster in the frame."""
     lakes = frame.project(load_lakes())
-    return lakes[lakes.area * frame.px_per_unit ** 2 >= LAKE_MIN_PX]
+    return lakes[lakes.area / frame.units_per_in ** 2 >= LAKE_MIN_IN2]
 
 
 def draw_lakes(ax: Axes, lakes_projected: gpd.GeoDataFrame) -> None:

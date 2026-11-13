@@ -78,7 +78,7 @@ Importing any module has no side effects; only `cli.main` (after choosing the ba
 | `labels/geometry.py` | `nearest_point_on_rect`, `two_line`, `Coverage` (summed-area table of a shape: `area` of boxes, `contains` of points), `coverage` (a label's, cached), `on_feature` (a label's pieces on its feature, judged by the solver's kernel: `overhang_of`, `inside_share`) |
 | `disjoint.py` | `DisjointSets` (union-find: `find`, `union`, `groups`): pieces joined at the seam, river networks, same-named rivers |
 | `curves.py` | `arc_lengths`, `along`, `bend` (points along a polyline + its left normal): text bending for `colorbars.curved_title` and water labels |
-| `render.py` | `new_figure`, `draw_countries`, `draw_stripes`, `draw_borders`, `draw_states`, `draw_rivers`, `drawable_lakes` (>= `LAKE_MIN_PX`), `draw_lakes`, `subtract_lakes`, `glyph_patch`, `draw_labels`, `draw_water_labels` (both from the `Placement` alone), `HALO`, line widths and z-orders |
+| `render.py` | `new_figure`, `draw_countries`, `draw_stripes`, `draw_borders`, `draw_states`, `draw_rivers`, `drawable_lakes` (>= `LAKE_MIN_IN2`), `draw_lakes`, `subtract_lakes`, `glyph_patch`, `draw_labels`, `draw_water_labels` (both from the `Placement` alone), `HALO`, line widths and z-orders |
 
 Pipeline (`cli.main`):
 1. **Colouring** of all country features. Dependencies (`is_dependency`: `SOVEREIGNT != ADMIN`, not a lease or
@@ -91,8 +91,8 @@ Pipeline (`cli.main`):
    (`UNWEIGHTED_LARGEST = 10`, but the test is `rank < 10`, so 9 are exempt; kept for output stability).
 2. **Drawing**: full Robinson globe outline (poles included; the canvas is its bounding box plus a small pad; Antarctica is drawn in
    hardcoded white with no label), outline stroked, figure background transparent, country fills, state lines for `STATE_COUNTRIES`, Baikonur special case.
-   The country polygons cover lakes, so every lake in `ne_10m_lakes.zip` (a `physical/` NE file) covering >= `LAKE_MIN_PX` = 10 poster pixels of the frame
-   (`drawable_lakes`; a crop shows smaller lakes), minus the usually-dry `DRY_LAKES`, is painted back in `OCEAN` at zorder 2.5 (above the state lines that cross them;
+   The country polygons cover lakes, so every lake in `ne_10m_lakes.zip` (a `physical/` NE file) covering >= `LAKE_MIN_IN2` = 0.002 in2 of the poster
+   (`drawable_lakes`; ~100 on the world map, a crop shows smaller lakes), minus the usually-dry `DRY_LAKES`, is painted back in `OCEAN` at zorder 2.5 (above the state lines that cross them;
    `holed_patches` keeps islands). The lakes are then subtracted (`subtract_lakes`), so label placement treats them as water.
 3. **Labels**: anchor points, font size, in/out mode, wrapping, then `place_by_priority`: labels are ranked into
    fifths by full size and placed step by step (rank, then `--label` kind), each step a cost-minimising placement
@@ -294,7 +294,7 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
   kind is *cut* at that rank: no later rank of it is tried. Every kind can be cut, countries too. A label-driven
   feature (rivers: `cli.shown_rivers`) is drawn iff its rank is before its kind's cut; one without a label ranks
   `UNLABELED` = 6, drawn only when the kind wasn't cut. The world map with `--label countries,water` cuts seas, lakes
-  and straits from rank 2, rivers from 3. Lakes are not label-driven (`LAKE_MIN_PX`).
+  and straits from rank 2, rivers from 3. Lakes are not label-driven (`LAKE_MIN_IN2`).
 - So big labels are never pushed around by small ones (a river name once moved Czech Republic to Denmark), and in
   a crop the frame's biggest features win, whatever their kind.
 
