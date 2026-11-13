@@ -36,7 +36,7 @@ ETOPO15_DIR = "etopo15"
 
 LAKE_MIN_KM2 = 2000  # lakes at least this big are drawn as water (~8 px across on the poster)
 DRY_LAKES = {"Lake Eyre North", "Lake Torrens", "Lake Gairdner", "Lake Mackay", "Lake Frome", "Lake Barlee"}  # Australian salt pans, usually dry
-RIVER_MAX_RANK = 8  # rivers of scalerank (0 = biggest) up to this are drawn; 9+ are short tributaries (canals are drawn at any rank)
+RIVER_MAX_RANK = 8  # rivers of scalerank (0 = biggest) up to this are drawn; 9+ are short tributaries
 EQUAL_AREA_CRS = "+proj=eqearth"  # for every km2 (with_km2)
 
 CRS = "+proj=robin +lon_0=0 +datum=WGS84"  # the map's projection
@@ -199,10 +199,9 @@ def load_lakes() -> gpd.GeoDataFrame:
 
 
 def load_rivers() -> gpd.GeoDataFrame:
-    """Rivers (and their centrelines through lakes) of scalerank <= RIVER_MAX_RANK, and canals of any rank."""
+    """Rivers, canals and their centrelines through lakes, of scalerank <= RIVER_MAX_RANK."""
     rivers = gpd.read_file(fetch(RIVERS))[["name", "name_en", "featurecla", "scalerank", "geometry"]]
-    canal = (rivers.featurecla == "Canal") | rivers.name_en.fillna("").str.endswith(" Canal")
-    return rivers[(rivers.scalerank <= RIVER_MAX_RANK) | canal]
+    return rivers[rivers.scalerank <= RIVER_MAX_RANK]
 
 
 def load_marine() -> gpd.GeoDataFrame:
