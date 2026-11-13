@@ -249,10 +249,10 @@ def leader_hits(dx: float, dy: float, ex: float, ey: float, r0: float, r1: float
 
 
 @njit(cache=True)
-def clash(i: int, rects: np.ndarray, owner: np.ndarray, among: np.ndarray, out: np.ndarray, water: np.ndarray,
+def clash(i: int, rects: np.ndarray, owner: np.ndarray, among: np.ndarray, out: np.ndarray,
           anchor_x: np.ndarray, anchor_y: np.ndarray, end_x: np.ndarray, end_y: np.ndarray) -> bool:
     """placement.clash: label i's rects overlap those of another label of `among`, or another's leader crosses
-    them, or (an 'out' country label) its leader crosses another's rects; rects/owner: placement.rects, p.owner; end_x/y: leader_ends."""
+    them, or (an 'out' label) its leader crosses another's rects; rects/owner: placement.rects, p.owner; end_x/y: leader_ends."""
     mine = np.flatnonzero(owner == i)
     e0, e1, e2, e3 = rects[mine, 0].min(), rects[mine, 1].min(), rects[mine, 2].max(), rects[mine, 3].max()
     for b in range(len(rects)):
@@ -263,12 +263,12 @@ def clash(i: int, rects: np.ndarray, owner: np.ndarray, among: np.ndarray, out: 
             if min(rects[a, 2], rects[b, 2]) - max(rects[a, 0], rects[b, 0]) > 0 and min(rects[a, 3], rects[b, 3]) - max(rects[a, 1], rects[b, 1]) > 0:
                 return True
     for j in range(len(out)):
-        if j == i or not among[j] or not out[j] or water[j]:
+        if j == i or not among[j] or not out[j]:
             continue
         for a in mine:
             if leader_hits(anchor_x[j], anchor_y[j], end_x[j], end_y[j], rects[a, 0], rects[a, 1], rects[a, 2], rects[a, 3]):
                 return True
-    if out[i] and not water[i]:
+    if out[i]:
         for b in range(len(rects)):
             j = owner[b]
             if j != i and among[j] and leader_hits(anchor_x[i], anchor_y[i], end_x[i], end_y[i], rects[b, 0], rects[b, 1], rects[b, 2], rects[b, 3]):
@@ -277,11 +277,11 @@ def clash(i: int, rects: np.ndarray, owner: np.ndarray, among: np.ndarray, out: 
 
 
 @njit(cache=True)
-def clashes(rects: np.ndarray, owner: np.ndarray, among: np.ndarray, out: np.ndarray, water: np.ndarray,
+def clashes(rects: np.ndarray, owner: np.ndarray, among: np.ndarray, out: np.ndarray,
             anchor_x: np.ndarray, anchor_y: np.ndarray, end_x: np.ndarray, end_y: np.ndarray) -> np.ndarray:
     """clash for every label of `among`: a mask."""
     hit = np.zeros(len(among), np.bool_)
     for i in range(len(among)):
         if among[i]:
-            hit[i] = clash(i, rects, owner, among, out, water, anchor_x, anchor_y, end_x, end_y)
+            hit[i] = clash(i, rects, owner, among, out, anchor_x, anchor_y, end_x, end_y)
     return hit

@@ -178,14 +178,14 @@ def clash(p: Placement, i: int, among: np.ndarray) -> bool:
     boxes overlap, or a leader line of one crosses the other (not a box covering that leader's own dot). Compiled:
     kernels.clash."""
     end_x, end_y = leader_ends(p)
-    return bool(kernels.clash(i, rects(p), p.owner, among, p.out, p.water, p.anchor_x, p.anchor_y, end_x, end_y))
+    return bool(kernels.clash(i, rects(p), p.owner, among, p.out, p.anchor_x, p.anchor_y, end_x, end_y))
 
 
 def clashes(p: Placement, among: np.ndarray | None = None) -> list[int]:
     """The labels of `among` (a mask, default all) that clash with another of them (clash)."""
     among = np.ones(p.n, bool) if among is None else among
     end_x, end_y = leader_ends(p)
-    return [int(i) for i in np.flatnonzero(kernels.clashes(rects(p), p.owner, among, p.out, p.water, p.anchor_x, p.anchor_y, end_x, end_y))]
+    return [int(i) for i in np.flatnonzero(kernels.clashes(rects(p), p.owner, among, p.out, p.anchor_x, p.anchor_y, end_x, end_y))]
 
 
 def place_labels(p: Placement, items: Sequence[Placeable], frame: MapFrame, seed: int = SEED, weights: CostWeights = CostWeights(),
