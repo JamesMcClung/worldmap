@@ -23,7 +23,7 @@ from worldmap.data import EQUAL_AREA_CRS, load_marine, load_rivers
 from worldmap.disjoint import DisjointSets
 from worldmap.frame import MapFrame
 from worldmap.labels.geometry import Coverage, coverage
-from worldmap.labels.text import PX_PER_PT, font, text_width
+from worldmap.labels.text import PX_PER_PT, bent, font, text_width
 
 WATER_KINDS = ("oceans", "seas", "lakes", "straits", "rivers", "water")  # the --label values; water = all the others
 Kind = Literal["oceans", "seas", "lakes", "straits", "rivers"]
@@ -386,22 +386,12 @@ def lay_out(body: WaterBody, curve: np.ndarray, size: float, geom_px: BaseGeomet
     centre = reach + length / 2  # distance along long_curve of the curve's middle
     h = 1.0  # px, for tangents
     anchor = bend(long_curve, np.array([centre]), np.zeros(1), h)[0]
-    vertices, codes, parts = [], [], []
-    for k, ch in enumerate(text):
-        if ch.isspace():
-            continue
-        x = text_width(text[:k], prop) + tracking * k
-        glyph = TextPath((x, 0), ch, prop=prop)
-        if len(glyph.vertices) == 0:
-            continue
-        u = centre + (glyph.vertices[:, 0] - total / 2) * PX_PER_PT
-        v = (glyph.vertices[:, 1] - middle) * PX_PER_PT if rise is None else glyph.vertices[:, 1] * PX_PER_PT + rise
-        bent = bend(long_curve, u, v, h) - anchor
-        vertices.append(bent)
-        codes.append(glyph.codes)
-        pad = WATER_HALO_PX / 2
-        parts.append([*(bent.min(axis=0) - pad), *(bent.max(axis=0) + pad)])
-    glyphs = Path(np.vstack(vertices), np.concatenate(codes))
+    drop, lift = (middle, 0.0) if rise is None else (0.0, rise)
+    laid = bent(text, prop, long_curve, centre, drop, lift, tracking, h)
+    vertices = [points - anchor for points, _ in laid]
+    pad = WATER_HALO_PX / 2
+    parts = [[*(v.min(axis=0) - pad), *(v.max(axis=0) + pad)] for v in vertices]
+    glyphs = Path(np.vstack(vertices), np.concatenate([codes for _, codes in laid]))
     return WaterLabel(body.text, body.kind, body.rank, geom_px, float(anchor[0]), float(anchor[1]), size, glyphs, np.array(parts), label_scale, body.full_size)
 
 
