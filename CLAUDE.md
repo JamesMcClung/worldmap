@@ -96,7 +96,7 @@ Pipeline (`cli.main`):
    Usage is balanced by country *count*, with the largest countries given weight 0 so their colours aren't penalised
    (`UNWEIGHTED_LARGEST = 10`, but the test is `rank < 10`, so 9 are exempt; kept for output stability).
 2. **Drawing**: full Robinson globe outline (poles included; the canvas is its bounding box plus a small pad; Antarctica is drawn in
-   hardcoded white with no label), outline stroked, figure background transparent, country fills, state lines for `STATE_COUNTRIES`, Baikonur special case.
+   hardcoded white with no label, unclaimed Bir Tawil in `DISPUTED_GREY`: `render.FIXED_FILLS`), outline stroked, figure background transparent, country fills, state lines for `STATE_COUNTRIES`, Baikonur special case.
    The country polygons cover lakes, so every lake in `ne_10m_lakes.zip` (a `physical/` NE file) covering >= `LAKE_MIN_IN2` = 0.002 in2 of the poster
    (`drawable_lakes`; ~100 on the world map, a crop shows smaller lakes), minus the usually-dry `DRY_LAKES`, is painted back in `OCEAN` at zorder 2.5 (above the state lines that cross them;
    `holed_patches` keeps islands). The lakes are then subtracted (`subtract_lakes`), so label placement treats them as water.

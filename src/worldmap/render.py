@@ -18,7 +18,7 @@ from shapely.ops import unary_union
 
 from worldmap.coloring import OCEAN
 from worldmap.data import load_lakes
-from worldmap.disputed import Dispute, dispute_fills, stripe_parts
+from worldmap.disputed import DISPUTED_GREY, Dispute, dispute_fills, stripe_parts
 from worldmap.earth import Fill, Regions
 from worldmap.frame import DPI, MapFrame
 from worldmap.labels.label import Label
@@ -27,6 +27,7 @@ from worldmap.labels.water import RIVER_HALO, RIVER_TEXT, river_width, WATER_HAL
 
 BORDER, STATE_LINE = "#3a3a3a", "#7d7d7d"
 ANTARCTICA_FILL = "#ffffff"  # Antarctica is drawn white and left unlabelled
+FIXED_FILLS = {"Antarctica": ANTARCTICA_FILL, "Bir Tawil": DISPUTED_GREY}  # Bir Tawil: claimed by no one
 GLOBE_STROKE = 2.2
 BORDER_WIDTH = 0.6
 STATE_LINE_WIDTH = 0.35
@@ -83,8 +84,8 @@ def draw_countries(ax: Axes, countries_projected: gpd.GeoDataFrame, fill_of: Cal
     fills only: draw_borders draws the borders."""
     ec = "none" if disputed else BORDER
     for i, row in countries_projected.iterrows():
-        if row.NAME_EN == "Antarctica":
-            ax.add_collection(PatchCollection(list(patches(row.geometry)), fc=ANTARCTICA_FILL, ec=ec, lw=BORDER_WIDTH, zorder=Z_COUNTRY))
+        if row.NAME_EN in FIXED_FILLS:
+            ax.add_collection(PatchCollection(list(patches(row.geometry)), fc=FIXED_FILLS[row.NAME_EN], ec=ec, lw=BORDER_WIDTH, zorder=Z_COUNTRY))
         elif regions is not None:
             for poly, fill in regions[i]:
                 ax.add_collection(PatchCollection(list(patches(poly)), fc=fill, ec=ec, lw=BORDER_WIDTH, zorder=Z_COUNTRY))
