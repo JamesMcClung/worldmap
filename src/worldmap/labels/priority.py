@@ -140,10 +140,9 @@ class Outcome:
 @dataclass
 class Settled:
     """What placing has decided so far: one placement of every label, solved step by step over the `active` ones
-    (kept so far, and the step's), and where (home_x/y) and at what `size` each kept one settled."""
+    (kept so far, and the step's), and where (home_x/y) and at what `size` each kept one settled (0 until it has)."""
     p: Placement
     active: np.ndarray
-    settled: np.ndarray
     home_x: np.ndarray
     home_y: np.ndarray
     size: np.ndarray
@@ -151,10 +150,10 @@ class Settled:
     @classmethod
     def of(cls, items: Sequence[Placeable]) -> "Settled":
         p = Placement.of(items)
-        return cls(p, np.zeros(p.n, bool), np.zeros(p.n, bool), p.x.copy(), p.y.copy(), np.zeros(p.n))
+        return cls(p, np.zeros(p.n, bool), p.x.copy(), p.y.copy(), np.zeros(p.n))
 
     def copy(self) -> "Settled":
-        return Settled(self.p.copy(), self.active.copy(), self.settled.copy(), self.home_x.copy(), self.home_y.copy(), self.size.copy())
+        return Settled(self.p.copy(), self.active.copy(), self.home_x.copy(), self.home_y.copy(), self.size.copy())
 
 
 @dataclass
@@ -192,7 +191,7 @@ def place_step(s: Settled, r: int, new: list[int], ranks: np.ndarray, min_size: 
         s.active[new] = True
         freedom = np.where(ranks >= r - 1, NUDGE, FIXED)
         freedom[new] = FREE
-        floors = np.where(s.settled, np.maximum(min_size, NUDGE_MIN_SCALE * s.size), min_size)
+        floors = np.maximum(min_size, NUDGE_MIN_SCALE * s.size)  # an unsettled label's size is 0
         place_labels(s.p, frame, active=s.active, freedom=freedom, home=(s.home_x, s.home_y), floors=floors)  # only settled labels are nudged
         verdict = check_step(s.p, new, s.active, frame)
         s.p.out[verdict.out] = True
@@ -203,7 +202,6 @@ def place_step(s: Settled, r: int, new: list[int], ranks: np.ndarray, min_size: 
             s.active[verdict.skip] = False
             break
     kept = [i for i in new if s.active[i]]
-    s.settled[kept] = True
     s.home_x[kept], s.home_y[kept], s.size[kept] = s.p.x[kept], s.p.y[kept], s.p.size[kept]
 
 
