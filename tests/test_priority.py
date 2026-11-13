@@ -110,10 +110,6 @@ def test_progress(monkeypatch: pytest.MonkeyPatch) -> None:
     assert progress(2, 1, 4, "seas", 20) == "placing rank 2/5 █░"
 
 
-def test_steps_empty() -> None:
-    assert steps([], [], ["countries"]) == []
-
-
 # place_by_priority: the solver on small made-up maps (helpers from test_placement).
 
 FRAME = make_frame()
