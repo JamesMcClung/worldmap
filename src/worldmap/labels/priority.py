@@ -9,7 +9,7 @@ from dataclasses import dataclass, replace
 import numpy as np
 
 from worldmap.frame import MapFrame
-from worldmap.labels.geometry import Covered, coverage
+from worldmap.labels.geometry import coverage
 from worldmap.labels.label import Label
 from worldmap.labels.placeable import Placeable
 from worldmap.labels.placement import FIXED, FREE, NUDGE, OVERHANG_MAX, OVERHANG_SLICES, Placement, clash, outside_outline, overhang, place_labels, rects, subset
@@ -112,16 +112,16 @@ def rank_table(plan: list[tuple[int, list[int]]], kinds: Sequence[str], order: S
     return "\n".join([*rows, row("all", "all"), row("%", "all", percent=True)])
 
 
-def overhang_of(p: Placement, k: int, item: Covered) -> float:
+def overhang_of(p: Placement, k: int) -> float:
     """overhang of label k: of its glyphs (a water label), each on its water if its box's centre is, as the solver
     has it (cost_batch); or of OVERHANG_SLICES slices of its box (a country), each on it if at least half over it."""
     if p.water[k]:
         g = rects(p)[p.owner == k]
-        return overhang(coverage(item).contains((g[:, 0] + g[:, 2]) / 2, (g[:, 1] + g[:, 3]) / 2))
+        return overhang(coverage(p.items[k]).contains((g[:, 0] + g[:, 2]) / 2, (g[:, 1] + g[:, 3]) / 2))
     x0, y0, w, h = p.x[k] - p.width[k] / 2, p.y[k] - p.height[k] / 2, p.width[k], p.height[k]
     edges = x0 + w * np.arange(OVERHANG_SLICES + 1) / OVERHANG_SLICES
     slices = np.column_stack([edges[:-1], np.full(OVERHANG_SLICES, y0), edges[1:], np.full(OVERHANG_SLICES, y0 + h)])
-    return overhang(coverage(item).area(slices) >= w * h / OVERHANG_SLICES / 2)
+    return overhang(coverage(p.items[k]).area(slices) >= w * h / OVERHANG_SLICES / 2)
 
 
 def rival(p: Placement, k: int, smaller: list[int]) -> int | None:
@@ -145,7 +145,7 @@ class Verdict:
     skip: list[int]  # labels to skip for good (once nothing else is left to try)
 
 
-def check_step(p: Placement, items: Sequence[Covered], new: list[int], active: np.ndarray, frame: MapFrame) -> Verdict:
+def check_step(p: Placement, new: list[int], active: np.ndarray, frame: MapFrame) -> Verdict:
     """Check a solved step's labels (`new`, biggest first) smallest first, so of two clashing the smaller goes,
     against the `active` labels not skipped so far. A country label clashing, or hanging off its country by over
     OVERHANG_MAX (overhang_of), goes 'out'. One already out and clashing, or a water label clashing, hanging off
@@ -157,11 +157,11 @@ def check_step(p: Placement, items: Sequence[Covered], new: list[int], active: n
     outside = set() if frame.globe else outside_outline(q, frame)
     verdict = Verdict([], None, [])
     for n, i in reversed(list(enumerate(new))):
-        if not q.water[i] and not q.out[i] and (overhang_of(q, i, items[i]) > OVERHANG_MAX or clash(q, i, among)):
+        if not q.water[i] and not q.out[i] and (overhang_of(q, i) > OVERHANG_MAX or clash(q, i, among)):
             q.out[i] = True
             verdict.out.append(i)
             continue
-        off = bool(q.water[i]) and (overhang_of(q, i, items[i]) > OVERHANG_MAX or i in outside)
+        off = bool(q.water[i]) and (overhang_of(q, i) > OVERHANG_MAX or i in outside)
         if off:
             verdict.rival = rival(q, i, [m for m in new[n + 1:] if among[m]])
             if verdict.rival is not None:
@@ -198,14 +198,14 @@ def place_by_priority(labels: list[Label], water: list[WaterLabel], frame: MapFr
         freedom[new] = FREE
         home = (np.where(settled, home_x, p.x), np.where(settled, home_y, p.y))
         floors = np.where(settled, np.maximum(min_size, NUDGE_MIN_SCALE * settled_size), min_size)
-        place_labels(p, items, frame, active=active, freedom=freedom, home=home, floors=floors)
+        place_labels(p, frame, active=active, freedom=freedom, home=home, floors=floors)
 
     for r, step in plan:
         new = list(step)
         while True:
             active[new] = True
             solve(r, new)
-            verdict = check_step(p, items, new, active, frame)
+            verdict = check_step(p, new, active, frame)
             p.out[verdict.out] = True
             if verdict.rival is not None:
                 skipped.append(items[verdict.rival].name)

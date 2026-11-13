@@ -32,7 +32,7 @@ def placed(labels: list[Label], frame: MapFrame, water: Sequence[WaterLabel] = (
     p = Placement.of(labels, water)
     if start is not None:
         p.x, p.y = start[0].copy(), start[1].copy()
-    place_labels(p, [*labels, *water], frame, **solve)  # type: ignore[arg-type]
+    place_labels(p, frame, **solve)  # type: ignore[arg-type]
     return p
 
 def two_labels_copy() -> list[Label]:
@@ -235,7 +235,7 @@ def test_solver_keeps_a_country_label_within_overhang_max(frame: MapFrame) -> No
         x, y = label.anchor_x + 0.35 * w, label.anchor_y
         rock = water_label("Rock", (x, y), shapely.box(x - 0.25 * w, y - 4 * h, x + 0.25 * w, y + 4 * h), np.array([[-0.25 * w, -4 * h, 0.25 * w, 4 * h]]), 10)
         p = placed([label], frame, water=[rock], freedom=np.array([FREE, FIXED]), weights=weights)
-        return overhang_of(p, 0, label)
+        return overhang_of(p, 0)
 
     assert hang(placement.CostWeights()) <= OVERHANG_MAX < hang(placement.CostWeights(overhang=0))
 
@@ -246,7 +246,7 @@ def test_water_labels_try_fine_steps(frame: MapFrame) -> None:
 
     sea, _ = crossing_water_labels(frame)
     p = placed([], frame, water=[sea], freedom=np.array([FIXED]))
-    cx, cy = candidates(p, [sea], 0)
+    cx, cy = candidates(p, 0)
     assert np.isclose(np.abs(cy - p.y[0]), 0.1 * p.height[0]).any()
 
 
@@ -267,7 +267,7 @@ def test_nearby_holds_every_label_that_costs(frame: MapFrame) -> None:
         p.anchor_x[j], p.anchor_y[j] = p.x[by] + 0.6 * p.width[by], p.y[by]
     outline, weights = outline_coverage(frame), placement.CostWeights()
     for i in (0, 3, 21, len(labels)):
-        cx, cy = candidates(p, items, i)
+        cx, cy = candidates(p, i)
         n = len(cx)
         costs = set()
         for j in range(p.n):
@@ -275,9 +275,9 @@ def test_nearby_holds_every_label_that_costs(frame: MapFrame) -> None:
                 # The reference: more candidates, on j's position and dot, so the kernel's own filter takes j in;
                 # only the real candidates' costs are compared.
                 ex, ey = np.append(cx, [p.x[j], p.anchor_x[j]]), np.append(cy, [p.y[j], p.anchor_y[j]])
-                alone = cost_batch(subset(p, np.arange(p.n) == i), [items[i]], 0, ex, ey, weights, outline)[:n]
+                alone = cost_batch(subset(p, np.arange(p.n) == i), 0, ex, ey, weights, outline)[:n]
                 pair = subset(p, np.isin(np.arange(p.n), [i, j]))
-                with_j = cost_batch(pair, [items[min(i, j)], items[max(i, j)]], int(i > j), ex, ey, weights, outline)[:n]
+                with_j = cost_batch(pair, int(i > j), ex, ey, weights, outline)[:n]
                 if not np.array_equal(with_j, alone):
                     costs.add(j)
         env = kernels.envelope(cx, cy, p.parts[p.owner == i], bool(p.out[i]), p.anchor_x[i], p.anchor_y[i])
@@ -296,9 +296,9 @@ def test_solver_glyphs_follow_their_labels(frame: MapFrame, monkeypatch: pytest.
     seen = []
     real = placement.cost_batch
 
-    def checked(p, labels, i, cx, cy, weights, outline, at=None, active=None):  # type: ignore[no-untyped-def]
+    def checked(p, i, cx, cy, weights, outline, at=None, active=None):  # type: ignore[no-untyped-def]
         seen.append(at is not None and np.array_equal(at, rects(p)))
-        return real(p, labels, i, cx, cy, weights, outline, at, active)
+        return real(p, i, cx, cy, weights, outline, at, active)
 
     monkeypatch.setattr(placement, "cost_batch", checked)
     monkeypatch.setattr(placement, "clashes", always_clashing)  # every shrink round shrinks the water labels
