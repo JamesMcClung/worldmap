@@ -4,7 +4,7 @@ the first rank where too many of its labels fail (saturated): that rank's labels
 are dropped."""
 
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import NamedTuple
 
 import numpy as np
@@ -125,6 +125,7 @@ class Outcome:
     kept: np.ndarray  # bool, per label, then per unfit (False)
     ranks: np.ndarray  # int, per label, then per unfit; UNLABELED for kinds not placed
     cut: dict[str, int]  # kind -> the rank it was cut at
+    cut_fit: dict[str, int] = field(default_factory=dict)  # kind -> its labels placed in that rank before the cut undid them
 
     def shown(self, kind: str, ranks: np.ndarray) -> np.ndarray:
         """Which features of `kind`, of these `ranks`, are drawn: those ranked before its cut, if it was cut."""
@@ -164,6 +165,7 @@ def place_by_priority(items: Sequence[Placeable], frame: MapFrame, order: Sequen
     in_rank = {r: sum(len(step) for q, step in plan if q == r) for r, _ in plan}
     done = {r: 0 for r in in_rank}
     cut: dict[str, int] = {}
+    cut_fit: dict[str, int] = {}
     for r, step in plan:
         kind = kinds[step[0]]
         if kind in cut:
@@ -190,7 +192,7 @@ def place_by_priority(items: Sequence[Placeable], frame: MapFrame, order: Sequen
                 settled[i] = True
                 home_x[i], home_y[i], settled_size[i] = p.x[i], p.y[i], p.size[i]
         if saturated(len(step) - int(active[members].sum()), len(step)):
-            cut[kind] = r
+            cut[kind], cut_fit[kind] = r, int(active[members].sum())
             p, active, settled, home_x, home_y, settled_size = before
-    return Outcome(subset(p, active), plan, np.concatenate([active, np.zeros(len(unfit), bool)]), ranks, cut)
+    return Outcome(subset(p, active), plan, np.concatenate([active, np.zeros(len(unfit), bool)]), ranks, cut, cut_fit)
 

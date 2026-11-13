@@ -187,6 +187,7 @@ def test_cut_drops_the_whole_group_and_later_ranks() -> None:
     sea, bay = crossing_water_labels(FRAME)
     out = place_by_priority([sized(sea, 100), sized(bay, 10)], FRAME, ["seas"], rank=lambda k, s: np.array([1, 2] + [1] * 5), unfit=unfit(5))
     assert out.cut == {"seas": 1} and not out.kept.any() and out.placement.n == 0
+    assert out.cut_fit == {"seas": 1}  # the sea fit before the cut undid it
     assert list(out.shown("seas", np.array([1, 2, UNLABELED]))) == [False, False, False]
 
 
