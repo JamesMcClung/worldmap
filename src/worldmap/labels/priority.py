@@ -171,6 +171,7 @@ def place_by_priority(items: Sequence[Placeable], frame: MapFrame, order: Sequen
     for r, step in plan:
         kind = kinds[step[0]]
         if kind in cut:
+            done[r] += len(step)  # skipped, but done: else the rank's progress never fills
             continue
         if on_step is not None:
             on_step(r, done[r], in_rank[r], kind)

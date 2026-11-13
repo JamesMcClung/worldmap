@@ -241,3 +241,11 @@ def test_cut_share_is_of_every_rank() -> None:
     sea, _ = crossing_water_labels(FRAME)
     out = place_by_priority([sized(sea, 100)], FRAME, ["seas"], rank=lambda k, s: np.array([1] * 6 + [2] * 20), unfit=unfit(25))
     assert out.cut == {"seas": 2} and out.kept[0]
+
+
+def test_progress_counts_the_steps_a_cut_skips() -> None:
+    """Seas are cut at rank 1, so rank 2's seas step is skipped: its labels still count as done, or the bar never fills."""
+    calls: list[tuple[int, int, int, str]] = []
+    rank = lambda k, s: np.array([1] * 5 + [2] * 2 + [2])  # noqa: E731
+    place_by_priority([], FRAME, ["seas", "rivers"], rank=rank, unfit=unfit(7) + unfit(1, "rivers"), on_step=lambda *a: calls.append(a))
+    assert calls == [(1, 0, 5, "seas"), (2, 2, 3, "rivers")]
