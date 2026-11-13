@@ -38,7 +38,7 @@ def rank_table(plan: list[tuple[int, list[int]]], kinds: Sequence[str], order: S
         at, fit = cut.get(kind, (0, 0))
         return f"({fit}/){total[kind][r - 1]}" if at == r else None
 
-    w = max([8, *(1 + len(text) for kind in order for r in range(1, N_RANKS + 1) if (text := fitted(kind, r)))])
+    rank_w = max([8, *(1 + len(text) for kind in order for r in range(1, N_RANKS + 1) if (text := fitted(kind, r)))])
 
     def cell(n: int, of: int, percent: bool, short: bool, width: int = 8, cut_text: str | None = None) -> str:
         if of == 0:
@@ -49,7 +49,7 @@ def rank_table(plan: list[tuple[int, list[int]]], kinds: Sequence[str], order: S
         hue = GREEN if n == of else RED if n == 0 else YELLOW
         return f"{hue}{str(of) if short and hue != YELLOW and not cut_text else text:>{width}}{PLAIN}"
 
-    widths = [12, w * N_RANKS, 16]  # the columns before the dropped one
+    widths = [12, rank_w * N_RANKS, 16]  # the columns before the dropped one
     room = DROPPED_WIDTH if columns is None else columns - (sum(widths) + len(widths) * len(" │") + 1)
     if room < DROPPED_MIN:
         names = ()
@@ -69,7 +69,7 @@ def rank_table(plan: list[tuple[int, list[int]]], kinds: Sequence[str], order: S
 
     def row(name: str, kind: str, percent: bool = False) -> str:
         n, of = done[kind], total[kind]
-        parts = [f"{name:<12}", "".join(cell(a, b, percent, kind != "all", w, None if percent else fitted(kind, r))
+        parts = [f"{name:<12}", "".join(cell(a, b, percent, kind != "all", rank_w, None if percent else fitted(kind, r))
                                         for r, (a, b) in enumerate(zip(n, of), 1)),
                  cell(n.sum(), of.sum(), percent, False) + (" " * 8 if percent else cell(n.sum(), of.sum(), True, False))]
         if names:
@@ -77,7 +77,7 @@ def rank_table(plan: list[tuple[int, list[int]]], kinds: Sequence[str], order: S
         return line(parts)
 
     shown = [kind for kind in order if total[kind].any()]
-    header = [f"{'rank':<12}", "".join(f"{r:>{w}}" for r in range(1, N_RANKS + 1)), f"{'all':>8}{'%':>8}"]
+    header = [f"{'rank':<12}", "".join(f"{r:>{rank_w}}" for r in range(1, N_RANKS + 1)), f"{'all':>8}{'%':>8}"]
     if names:
         header.append(" dropped")
         widths.append(max(len(text) for text in [header[-1], *map(gone, shown)]))
