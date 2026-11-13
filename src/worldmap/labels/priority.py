@@ -4,6 +4,7 @@ length) into fifths of all those in the frame; rank by rank, the kinds follow th
 import os
 import sys
 from collections.abc import Callable, Collection, Sequence
+from dataclasses import dataclass, replace
 
 import numpy as np
 
@@ -123,17 +124,62 @@ def overhang_of(p: Placement, k: int, item: Covered) -> float:
     return overhang(coverage(item).area(slices) >= w * h / OVERHANG_SLICES / 2)
 
 
+def rival(p: Placement, k: int, smaller: list[int]) -> int | None:
+    """The smallest of the `smaller` labels whose rects overlap label k's were k at its anchor."""
+    placed = rects(p)
+    a = placed[p.owner == k] + np.tile([p.anchor_x[k] - p.x[k], p.anchor_y[k] - p.y[k]], 2)
+    for j in reversed(smaller):
+        b = placed[p.owner == j]
+        ox = np.minimum(a[:, None, 2], b[None, :, 2]) - np.maximum(a[:, None, 0], b[None, :, 0])
+        oy = np.minimum(a[:, None, 3], b[None, :, 3]) - np.maximum(a[:, None, 1], b[None, :, 1])
+        if ((ox > 0) & (oy > 0)).any():
+            return j
+    return None
+
+
+@dataclass
+class Verdict:
+    """What check_step decided. Unless `out` and `rival` are empty, the step is solved again."""
+    out: list[int]  # country labels to put 'out', beside their country with a leader
+    rival: int | None  # a label of the step to skip, so that a bigger water label can keep to its water
+    skip: list[int]  # labels to skip for good (once nothing else is left to try)
+
+
+def check_step(p: Placement, items: Sequence[Covered], new: list[int], active: np.ndarray, frame: MapFrame) -> Verdict:
+    """Check a solved step's labels (`new`, biggest first) smallest first, so of two clashing the smaller goes,
+    against the `active` labels not skipped so far. A country label clashing, or hanging off its country by over
+    OVERHANG_MAX (overhang_of), goes 'out'. One already out and clashing, or a water label clashing, hanging off
+    its water or (in a crop) outside the outline, is skipped; but a water label off its water first looks for a
+    smaller label of the step overlapping it at its anchor (rival): that one goes instead, and the check stops.
+    Each check sees the labels checked before it as decided. `p` is left as it is."""
+    q = replace(p, out=p.out.copy())
+    among = active.copy()
+    outside = set() if frame.globe else outside_outline(q, frame)
+    verdict = Verdict([], None, [])
+    for n, i in reversed(list(enumerate(new))):
+        if not q.water[i] and not q.out[i] and (overhang_of(q, i, items[i]) > OVERHANG_MAX or clash(q, i, among)):
+            q.out[i] = True
+            verdict.out.append(i)
+            continue
+        off = bool(q.water[i]) and (overhang_of(q, i, items[i]) > OVERHANG_MAX or i in outside)
+        if off:
+            verdict.rival = rival(q, i, [m for m in new[n + 1:] if among[m]])
+            if verdict.rival is not None:
+                return verdict
+        if off or clash(q, i, among):
+            among[i] = False
+            verdict.skip.append(i)
+    return verdict
+
+
 def place_by_priority(labels: list[Label], water: list[WaterLabel], frame: MapFrame, order: Sequence[str],
                       rank: Ranker = ranks_by_quantile) -> tuple[Placement, list[Label], list[WaterLabel]]:
     """Place the labels step by step (steps, with `rank`), returning the placement of those kept (country labels first, then
     water labels, as the draw functions take them) and the kept labels. In each step the step's labels are free,
     the labels already placed of its rank and the rank before are nudged (they pay for leaving where they settled
-    and shrink to no less than NUDGE_MIN_SCALE of their settled size), and the rest stay put. Then the step's
-    labels are checked, smallest first: a country label clashing with a label still kept, or hanging off its
-    country at either end by over OVERHANG_MAX (overhang_of), becomes an 'out' label, with a leader, and the step
-    is solved again. One already out and clashing, or a water label clashing, hanging off its water or (in a crop)
-    outside the outline, is skipped for good; but a water label off its water first skips the smallest of the
-    step's labels overlapping it at its anchor, if any, and the step is solved again."""
+    and shrink to no less than NUDGE_MIN_SCALE of their settled size), and the rest stay put. Then check_step
+    decides which labels go 'out' or are skipped, and the step is solved again until it puts none out and finds
+    no rival to skip."""
     items: list[Placeable] = [*labels, *water]
     kinds = [item.kind for item in items]
     plan = steps(kinds, [item.full_size for item in items], order, rank)
@@ -154,47 +200,21 @@ def place_by_priority(labels: list[Label], water: list[WaterLabel], frame: MapFr
         floors = np.where(settled, np.maximum(min_size, NUDGE_MIN_SCALE * settled_size), min_size)
         place_labels(p, items, frame, active=active, freedom=freedom, home=home, floors=floors)
 
-    def rival(k: int, smaller: list[int]) -> int | None:
-        """The smallest of the `smaller` labels whose rects overlap label k's were k at its anchor."""
-        placed = rects(p)
-        a = placed[p.owner == k] + np.tile([p.anchor_x[k] - p.x[k], p.anchor_y[k] - p.y[k]], 2)
-        for j in reversed(smaller):
-            b = placed[p.owner == j]
-            ox = np.minimum(a[:, None, 2], b[None, :, 2]) - np.maximum(a[:, None, 0], b[None, :, 0])
-            oy = np.minimum(a[:, None, 3], b[None, :, 3]) - np.maximum(a[:, None, 1], b[None, :, 1])
-            if ((ox > 0) & (oy > 0)).any():
-                return j
-        return None
-
     for r, step in plan:
         new = list(step)
         while True:
             active[new] = True
             solve(r, new)
-            among = active.copy()
-            outside = set() if frame.globe else outside_outline(p, frame)
-            retry, failed, to_leader = False, [], False
-            for n, i in reversed(list(enumerate(new))):  # smallest first: of two clashing, the smaller goes
-                if not p.water[i] and not p.out[i] and (overhang_of(p, i, items[i]) > OVERHANG_MAX or clash(p, i, among)):
-                    p.out[i] = True  # hanging off its country, or no room on it: beside it, with a leader, from the next solve
-                    to_leader = True
-                    continue
-                off = bool(p.water[i]) and (overhang_of(p, i, items[i]) > OVERHANG_MAX or i in outside)
-                if off:  # pushed off its water by a smaller label of this step? then that one goes, and again
-                    loser = rival(i, [m for m in new[n + 1:] if among[m]])
-                    if loser is not None:
-                        skipped.append(items[loser].name)
-                        new.remove(loser)
-                        active[loser] = False
-                        retry = True
-                        break
-                if off or clash(p, i, among):
-                    among[i] = False
-                    failed.append(items[i].name)
-            if not retry and not to_leader:
-                skipped.extend(failed)
+            verdict = check_step(p, items, new, active, frame)
+            p.out[verdict.out] = True
+            if verdict.rival is not None:
+                skipped.append(items[verdict.rival].name)
+                new.remove(verdict.rival)
+                active[verdict.rival] = False
+            elif not verdict.out:
+                active[verdict.skip] = False
+                skipped.extend(items[i].name for i in verdict.skip)
                 break
-        active = among
         for i in new:
             if active[i]:
                 settled[i] = True

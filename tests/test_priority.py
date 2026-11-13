@@ -8,8 +8,8 @@ from test_placement import country_label, crossing_water_labels, mid_atlantic_px
 from worldmap.frame import make_frame
 from worldmap.labels import priority
 from worldmap.labels.label import Label
-from worldmap.labels.placement import clashes, overhang
-from worldmap.labels.priority import label_order, place_by_priority, rank_table, ranks_by_quantile, steps
+from worldmap.labels.placement import Placement, clashes, overhang
+from worldmap.labels.priority import check_step, label_order, place_by_priority, rank_table, ranks_by_quantile, steps
 from worldmap.labels.water import WATER_MIN_PT, WaterLabel
 
 
@@ -203,3 +203,25 @@ def test_water_label_on_a_narrow_lake_is_kept() -> None:
     parts = np.array([[-50.0 + 10 * k, -7, -40 + 10 * k, 7] for k in range(10)])
     lake = water_label("Lake", (x, y), shapely.box(x - 52, y - 2.5, x + 52, y + 2.5), parts, WATER_MIN_PT, kind="lakes")
     assert [w.text for w in place_by_priority([], [sized(lake, 1)], FRAME, ["lakes"])[2]] == ["Lake"]
+
+
+def test_check_step_puts_a_clashing_country_out_without_touching_the_placement() -> None:
+    country = atlantis(1)
+    x, y, w, h = country.anchor_x, country.anchor_y, country.width, country.height
+    sea = water_label("Sea", (x, y), country.geom, np.array([[-w / 2, -h / 2, w / 2, h / 2]]), WATER_MIN_PT)
+    p = Placement.of([country], [sea])
+    verdict = check_step(p, [country, sea], [0], np.array([True, True]), FRAME)
+    assert verdict.out == [0] and verdict.rival is None and verdict.skip == []
+    assert not p.out.any()
+
+
+def test_check_step_names_the_smaller_label_at_a_water_label_s_anchor() -> None:
+    """A sea pushed off its water, a smaller bay of the step sitting where it belongs: the bay is the rival."""
+    x, y = mid_atlantic_px(FRAME)
+    glyphs = np.array([[-30.0, -7, 30, 7]])
+    sea = water_label("Sea", (x, y), shapely.box(x - 40, y - 10, x + 40, y + 10), glyphs, WATER_MIN_PT)
+    bay = water_label("Bay", (x, y), shapely.box(x - 40, y - 10, x + 40, y + 10), glyphs.copy(), WATER_MIN_PT)
+    p = Placement.of([], [sea, bay])
+    p.x[0] += 500  # the sea, off its water
+    verdict = check_step(p, [sea, bay], [0, 1], np.array([True, True]), FRAME)
+    assert verdict.rival == 1 and verdict.out == []
