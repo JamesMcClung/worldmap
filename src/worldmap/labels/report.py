@@ -90,11 +90,18 @@ def progress(r: int, done: int, of: int, kind: str, columns: int) -> str:
 
 def summary(items: Sequence[Placeable], unfit: Sequence[Unplaced], outcome: Outcome, order: Sequence[str], color: bool,
             columns: int | None) -> str:
-    """What place_by_priority did with `items` and the `unfit`: the labels skipped (the unfit among them), biggest
-    first, the kinds cut and where, then the rank_table."""
+    """What place_by_priority did with `items` and the `unfit`: the labels skipped in the steps it kept, biggest
+    first, the kinds cut, where and how many that dropped, then the rank_table (which counts the unfit too)."""
     everything: list[Placeable | Unplaced] = [*items, *unfit]
     placed = set(np.flatnonzero(outcome.kept).tolist())
-    skipped = [everything[i].name for _, members in outcome.plan for i in members if i not in placed]
-    cut = ", ".join(f"{kind} from rank {r}" for kind, r in outcome.cut.items())
+    dropped = {kind: 0 for kind in outcome.cut}
+    skipped = []
+    for r, members in outcome.plan:
+        kind = everything[members[0]].kind
+        if r >= outcome.cut.get(kind, r + 1):
+            dropped[kind] += len(members)
+        else:
+            skipped += [items[i].name for i in members if i < len(items) and i not in placed]
+    cut = ", ".join(f"{kind} from rank {r} ({dropped[kind]} dropped)" for kind, r in outcome.cut.items())
     return (f"labels skipped: {skipped}\n" + (f"cut: {cut}\n" if cut else "")
             + rank_table(outcome.plan, [e.kind for e in everything], order, placed, color, [e.name for e in everything], columns))

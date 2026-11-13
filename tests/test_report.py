@@ -85,8 +85,8 @@ def test_summary_shows_unfit_and_cuts() -> None:
     bays = [Unplaced(f"Bay {k}", "seas", 1.0) for k in range(5)]
     outcome = place_by_priority([sized(sea, 100)], FRAME, ["seas"], rank=lambda k, s: np.ones(6, int), unfit=bays)
     lines = summary([sea], bays, outcome, ["seas"], color=False, columns=None).split("\n")
-    assert lines[0] == "labels skipped: ['Sea', 'Bay 0', 'Bay 1', 'Bay 2', 'Bay 3', 'Bay 4']"
-    assert lines[1] == "cut: seas from rank 1"
+    assert lines[0] == "labels skipped: []"  # what a cut drops is only counted: thousands on the world map
+    assert lines[1] == "cut: seas from rank 1 (6 dropped)"
     assert lines[4].startswith("seas") and "0/6" in lines[4]
 
 
@@ -94,3 +94,13 @@ def test_summary_without_cuts_has_no_cut_line() -> None:
     sea, bay = crossing_water_labels(FRAME)
     outcome = place_by_priority([sized(sea, 100), sized(bay, 10)], FRAME, ["seas"])
     assert not any(line.startswith("cut:") for line in summary([sea, bay], [], outcome, ["seas"], color=False, columns=None).split("\n"))
+
+
+def test_summary_lists_neither_the_unfit_nor_the_cut() -> None:
+    sea, bay = crossing_water_labels(FRAME)
+    rivers = [Unplaced(f"Creek {k}", "rivers", 1.0) for k in range(5)]
+    outcome = place_by_priority([sized(sea, 100), sized(bay, 10)], FRAME, ["seas", "rivers"], rank=lambda k, s: np.array([1, 1] + [2] * 5 + [1]),
+                                unfit=rivers + [Unplaced("Cove", "seas", 1.0)])
+    lines = summary([sea, bay], [*rivers, Unplaced("Cove", "seas", 1.0)], outcome, ["seas", "rivers"], color=False, columns=None).split("\n")
+    assert lines[0] == "labels skipped: ['Bay']"
+    assert lines[1] == "cut: rivers from rank 2 (5 dropped)"
