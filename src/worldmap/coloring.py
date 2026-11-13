@@ -24,7 +24,7 @@ MAX_GAP = 600_000  # metres: countries closer than this across water count as ne
 CLOSE_GAP = 100_000  # metres: those closer than this are linked first, whatever their size (the Bahamas and the US)
 MIN_DEG = 3  # every feature gets at least this many real-country neighbours
 OCEAN = "#e3f0f7"  # fixed ocean colour; its hue is pinned as the (N_COLORS + 1)th hue
-EQUAL_AREA_CRS = "EPSG:6933"
+DISTANCE_CRS = "EPSG:6933"  # metres, for the gaps across water (data.EQUAL_AREA_CRS is for km2)
 UNWEIGHTED_LARGEST = 10  # the biggest countries don't count towards colour balance (rank < this, so 9 in practice)
 WORLD_WIDTH_M = 2 * np.pi * 6378137.0  # width of EPSG:6933 in metres (shift for wrap-around at the antimeridian)
 SIMPLIFY_M = 10_000  # outline simplification for the distance queries
@@ -60,7 +60,7 @@ def add_proximity_edges(gdf: gpd.GeoDataFrame, edges: set[Edge], major: list[boo
     up to `min_deg` major-country neighbours via its nearest ones under the same feasibility rule. `gdf` has a
     km2 column (merge_into_parents)."""
     start_time = time.time()
-    geoms = gdf.to_crs(EQUAL_AREA_CRS).geometry
+    geoms = gdf.to_crs(DISTANCE_CRS).geometry
     simplified = [g.simplify(SIMPLIFY_M) for g in geoms]
     area = gdf.km2.to_numpy()
     n = len(simplified)
