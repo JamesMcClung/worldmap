@@ -129,9 +129,11 @@ def place_by_priority(labels: list[Label], water: list[WaterLabel], frame: MapFr
     water labels, as the draw functions take them) and the kept labels. In each step the step's labels are free,
     the labels already placed of its rank and the rank before are nudged (they pay for leaving where they settled
     and shrink to no less than NUDGE_MIN_SCALE of their settled size), and the rest stay put. Then the step's
-    labels are checked, smallest first: one clashing with a label still kept, or a water label hanging
-    off its water at either end by over OVERHANG_MAX (overhang_of) (or, in a crop, outside the outline), is skipped for good; a country label hanging off its
-    country by more than that becomes an 'out' label, with a leader, and the step is solved again."""
+    labels are checked, smallest first: a country label clashing with a label still kept, or hanging off its
+    country at either end by over OVERHANG_MAX (overhang_of), becomes an 'out' label, with a leader, and the step
+    is solved again. One already out and clashing, or a water label clashing, hanging off its water or (in a crop)
+    outside the outline, is skipped for good; but a water label off its water first skips the smallest of the
+    step's labels overlapping it at its anchor, if any, and the step is solved again."""
     items: list[Placeable] = [*labels, *water]
     kinds = [item.kind for item in items]
     plan = steps(kinds, [item.full_size for item in items], order, rank)
