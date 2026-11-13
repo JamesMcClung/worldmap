@@ -151,8 +151,9 @@ def cost_batch(p: Placement, labels: Sequence[Placeable], i: int, cx: np.ndarray
     corner outside the outline. An 'out' label: its leader's length, and its leader crossing other rects (unless
     one covers its dot) and leaders. Any other: its share off its feature (geometry.Coverage: a country label's box
     area; a water label's glyph boxes whose centres are off), hanging off it by over OVERHANG_MAX (a country label
-    in OVERHANG_SLICES slices of its box, a water label by glyph), and its drift from its anchor. Compiled: kernels.label_cost. `placed`: rects(p), if the caller keeps them up to date
-    (place_labels does). `active` (a mask, default all): the labels it sees."""
+    in OVERHANG_SLICES slices of its box, a water label by glyph), and its drift from its anchor. Compiled:
+    kernels.label_cost. `placed`: rects(p), if the caller keeps them up to date (place_labels does). `active` (a
+    mask, default all): the labels it sees."""
     placed = rects(p) if placed is None else placed
     active = np.ones(p.n, bool) if active is None else active
     cover = coverage(labels[i])
