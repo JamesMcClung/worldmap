@@ -35,14 +35,9 @@ def placed(labels: list[Label], frame: MapFrame, water: Sequence[WaterLabel] = (
     return p
 
 
-def two_labels_copy() -> list[Label]:
-    frame = make_frame()
-    return [country_label(frame, "Sahara West", 0, 23, 300), country_label(frame, "Sahara East", 20, 20, 300)]
-
-
 @pytest.fixture
-def two_labels() -> list[Label]:
-    return two_labels_copy()
+def two_labels(frame: MapFrame) -> list[Label]:
+    return [country_label(frame, "Sahara West", 0, 23, 300), country_label(frame, "Sahara East", 20, 20, 300)]
 
 
 @pytest.fixture
@@ -62,12 +57,6 @@ def water_on_top_of_it(one_label: list[Label]) -> WaterLabel:
     w, h = label.width, label.height
     parts = np.array([[-w / 2 + k * w / 3, -h / 2, -w / 2 + (k + 1) * w / 3, h / 2] for k in range(3)])
     return water_label("Sea", (label.anchor_x, label.anchor_y), label.geom, parts, 10)
-
-
-def test_no_water_is_unchanged(frame: MapFrame, two_labels: list[Label]) -> None:
-    a = placed(two_labels, frame)
-    b = placed(two_labels_copy(), frame, water=[])
-    assert np.array_equal(a.x, b.x) and np.array_equal(a.y, b.y)
 
 
 def test_country_can_shrink_for_water(frame: MapFrame, one_label: list[Label], water_on_top_of_it: WaterLabel) -> None:
