@@ -11,9 +11,8 @@ import numpy as np
 import shapely
 from pyproj import Geod, Transformer
 from matplotlib.colors import to_rgb
-from matplotlib.font_manager import FontProperties
 from matplotlib.path import Path
-from matplotlib.textpath import TextPath, TextToPath
+from matplotlib.textpath import TextPath
 from shapely.geometry import LineString, Polygon
 from shapely.geometry.base import BaseGeometry
 
@@ -22,8 +21,9 @@ from worldmap.colorspace import RGB, fit_gamut, srgb_to_oklch
 from worldmap.curves import along, arc_lengths, bend
 from worldmap.data import EQUAL_AREA_CRS, load_marine, load_rivers
 from worldmap.disjoint import DisjointSets
-from worldmap.frame import DPI, MapFrame
+from worldmap.frame import MapFrame
 from worldmap.labels.geometry import Coverage, coverage
+from worldmap.labels.text import PX_PER_PT, font, text_width
 
 WATER_KINDS = ("oceans", "seas", "lakes", "straits", "rivers", "water")  # the --label values; water = all the others
 Kind = Literal["oceans", "seas", "lakes", "straits", "rivers"]
@@ -65,7 +65,6 @@ _river_text = fit_gamut(0.42, 0.10, _ocean_hue)
 assert _river_text is not None
 RIVER_TEXT: RGB = _river_text[0]  # darker than WATER_TEXT: it sits on land, not water
 RIVER_HALO = (1, 1, 1, 0.55)  # like the country labels'
-PX_PER_PT = DPI / 72
 OCEAN_TEXT = {"Atlantic": "ATLANTIC OCEAN", "Pacific": "PACIFIC OCEAN", "Indian": "INDIAN OCEAN", "Arctic": "ARCTIC OCEAN", "Southern": "SOUTHERN OCEAN"}
 
 
@@ -363,15 +362,6 @@ class WaterLabel:
         area = (g[:, 2] - g[:, 0]) * (g[:, 3] - g[:, 1])
         on = coverage(self).contains(x + (g[:, 0] + g[:, 2]) / 2, y + (g[:, 1] + g[:, 3]) / 2)
         return float(area[on].sum() / area.sum()) if area.sum() > 0 else 0.0
-
-
-def font(size: float, italic: bool = False) -> FontProperties:
-    return FontProperties(size=size, style="italic" if italic else "normal")
-
-
-def text_width(text: str, prop: FontProperties) -> float:
-    """Advance width of `text` in points."""
-    return TextToPath().get_text_width_height_descent(text, prop, ismath=False)[0] if text else 0.0
 
 
 def extend(curve: np.ndarray, length: float) -> np.ndarray:

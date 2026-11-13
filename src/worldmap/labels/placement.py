@@ -14,7 +14,8 @@ from worldmap.labels import kernels
 from worldmap.labels.geometry import Coverage, coverage, nearest_point_on_rect
 from worldmap.labels.label import Label
 from worldmap.labels.placeable import Placeable
-from worldmap.labels.water import PX_PER_PT, WaterLabel
+from worldmap.labels.text import PX_PER_PT
+from worldmap.labels.water import WaterLabel
 
 T = TypeVar("T")
 

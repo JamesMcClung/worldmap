@@ -20,7 +20,7 @@ from worldmap.data import is_labeled
 from worldmap.earth import Fill
 from worldmap.frame import DPI, MapFrame
 from worldmap.labels.geometry import Coverage, coverage, two_line
-from worldmap.labels.water import PX_PER_PT, font, text_width
+from worldmap.labels.text import PX_PER_PT, font, text_width
 
 if TYPE_CHECKING:  # regions.py imports RENAME from here
     from worldmap.labels.regions import ChildRegion
