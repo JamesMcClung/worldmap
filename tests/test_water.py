@@ -10,7 +10,8 @@ from worldmap.frame import MapFrame, make_frame
 from worldmap.labels.text import PX_PER_PT
 from worldmap.labels.water import (OCEAN_MIN_PT, OCEAN_PT, RIVER_MAX_PT, RIVER_MIN_PT, RIVER_SCALE_MAX, SEA_MAX_PT, WATER_MIN_INSIDE, WATER_MIN_PT,
                                    WATER_TEXT, best_stretch, classify, fit_curve, kinds_from_labels, load_water_bodies,
-                                   longest_paths, make_water_labels, river_label, river_name, river_size, WaterBody)
+                                   longest_paths, make_water_labels, river_label, river_name, river_size, unplaced, WaterBody)
+from worldmap.labels.priority import Unplaced
 from worldmap.render import drawable_lakes
 
 
@@ -119,7 +120,7 @@ def frame() -> MapFrame:
 
 def test_water_label_layout(frame: MapFrame, lakes_projected: gpd.GeoDataFrame) -> None:
     bodies = load_water_bodies({"oceans", "seas"}, lakes_projected, make_frame())
-    labels = make_water_labels(bodies, frame)
+    labels = [l for l in make_water_labels(bodies, frame) if l is not None]
     med = next(l for l in labels if l.text == "Mediterranean Sea")
     atlantic = next(l for l in labels if l.text == "ATLANTIC OCEAN")
     assert OCEAN_MIN_PT <= atlantic.size <= OCEAN_PT and WATER_MIN_PT <= med.size <= SEA_MAX_PT
@@ -127,11 +128,19 @@ def test_water_label_layout(frame: MapFrame, lakes_projected: gpd.GeoDataFrame) 
     assert med.inside_share(med.anchor_x, med.anchor_y) >= WATER_MIN_INSIDE
 
 
-def test_hopeless_bodies_left_out(frame: MapFrame, lakes_projected: gpd.GeoDataFrame) -> None:
+def test_hopeless_bodies_have_no_label(frame: MapFrame, lakes_projected: gpd.GeoDataFrame) -> None:
     bodies = load_water_bodies({"oceans", "seas", "lakes", "straits"}, lakes_projected, make_frame())
-    labels = make_water_labels(bodies, frame)
-    assert 0 < len(labels) < len(bodies)
+    fits = make_water_labels(bodies, frame)
+    labels = [l for l in fits if l is not None]
+    assert len(fits) == len(bodies) and 0 < len(labels) < len(bodies)
     assert all(l.inside_share(l.anchor_x, l.anchor_y) >= WATER_MIN_INSIDE for l in labels)
+
+
+def test_make_water_labels_one_per_body(frame: MapFrame, lakes_projected: gpd.GeoDataFrame) -> None:
+    bodies = [b for b in load_water_bodies({"rivers"}, lakes_projected, frame) if b.text in ("Nile", "Suez Canal")]
+    fits = make_water_labels(bodies, frame)
+    assert {b.text: w is None for b, w in zip(bodies, fits)} == {"Nile": False, "Suez Canal": True}
+    assert unplaced(bodies[0]) == Unplaced(bodies[0].text, "rivers", bodies[0].full_size)
 
 
 def test_draw_water_labels(frame: MapFrame, lakes_projected: gpd.GeoDataFrame) -> None:
@@ -140,7 +149,7 @@ def test_draw_water_labels(frame: MapFrame, lakes_projected: gpd.GeoDataFrame) -
     from test_placement import placed
     from worldmap.render import draw_water_labels, new_figure
 
-    med = [l for l in make_water_labels(load_water_bodies({"seas"}, lakes_projected, make_frame()), frame) if l.text == "Mediterranean Sea"]
+    med = [l for l in make_water_labels(load_water_bodies({"seas"}, lakes_projected, make_frame()), frame) if l is not None and l.text == "Mediterranean Sea"]
     p = placed(med, frame)
     p.x[0] += 100  # somewhere other than its anchor
     fig, ax = new_figure(frame)
@@ -182,7 +191,7 @@ def test_river_names_stay_small_in_a_crop() -> None:
 
     f = crop_frame(box_region((5, 45, 15, 52)), 0)  # the Alps and Germany: label_scale near the cap
     assert f.label_scale > RIVER_SCALE_MAX
-    rivers = make_water_labels(load_river_bodies(f), f)
+    rivers = [r for r in make_water_labels(load_river_bodies(f), f) if r is not None]
     assert rivers and max(r.size for r in rivers) <= RIVER_MAX_PT * RIVER_SCALE_MAX
     assert max(r.min_size for r in rivers) <= WATER_MIN_PT * RIVER_SCALE_MAX
 
@@ -271,6 +280,7 @@ def test_water_full_size_is_frame_independent(world_bodies: dict[str, list]) -> 
     for name in ("Danube", "Adriatic Sea"):
         assert crop[name][0].full_size == pytest.approx(world_bodies[name][0].full_size, rel=1e-9)
     label = make_water_labels(world_bodies["Lake Victoria"], make_frame())[0]
+    assert label is not None
     assert label.full_size == world_bodies["Lake Victoria"][0].full_size
 
 

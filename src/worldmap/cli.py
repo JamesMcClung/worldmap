@@ -32,7 +32,7 @@ from worldmap.labels.placeable import Placeable
 from worldmap.labels.priority import Outcome, Unplaced, place_by_priority
 from worldmap.labels.regions import child_regions
 from worldmap.labels.report import progress, summary
-from worldmap.labels.water import WATER_KINDS, kinds_from_labels, load_water_bodies, make_water_labels
+from worldmap.labels.water import WATER_KINDS, Kind, WaterLabel, kinds_from_labels, load_water_bodies, make_water_labels, unplaced
 from worldmap.pins import draw_pins, load_pins, pick_pins, pin_sprite
 from worldmap.render import draw_borders, draw_countries, draw_labels, draw_lakes, drawable_lakes, draw_rivers, draw_states, draw_stripes, draw_water_labels, new_figure, subtract_lakes
 from worldmap.topographic import ICE, ICE_CONTOURS, LAND, LAND_CONTOURS, SEA, SEA_CONTOURS, draw_topography
@@ -191,8 +191,8 @@ def main(argv: list[str] | None = None) -> None:
     relabel, extra = disputed_label_args(disputes, lambda i, pt: fill_of(i, pt) if regions else DISPUTED_GREY) if args.disputed else ({}, [])
     labels = make_labels(shown, frame, fill_of, children, "countries" in args.label, relabel, extra)
     decide_out_and_wrap(labels)
-    water = make_water_labels(load_water_bodies(kinds_from_labels(args.label), lakes_p, frame), frame) if kinds_from_labels(args.label) else []
-    placement = place([*labels, *water], frame, args.label).placement
+    water, unfit = water_labels(kinds_from_labels(args.label), lakes_p, frame)
+    placement = place([*labels, *water], frame, args.label, unfit).placement
     draw_labels(ax, placement, frame)
     draw_water_labels(ax, placement, frame)
 
@@ -200,6 +200,13 @@ def main(argv: list[str] | None = None) -> None:
     # Layout above is measured at DPI; saving at another resolution only rescales it.
     fig.savefig(out, dpi=args.dpi, transparent=True)
     print("wrote", out, "labels:", int((~placement.water).sum()), "leaders:", int(placement.out.sum()), "water labels:", int(placement.water.sum()))
+
+
+def water_labels(kinds: set[Kind], lakes_projected: gpd.GeoDataFrame, frame: MapFrame) -> tuple[list[WaterLabel], list[Unplaced]]:
+    """The labels of the water bodies of `kinds`, and the bodies whose names don't fit."""
+    bodies = load_water_bodies(kinds, lakes_projected, frame) if kinds else []
+    fits = make_water_labels(bodies, frame)
+    return [w for w in fits if w is not None], [unplaced(b) for b, w in zip(bodies, fits) if w is None]
 
 
 def place(items: Sequence[Placeable], frame: MapFrame, order: list[str], unfit: Sequence[Unplaced] = ()) -> Outcome:
@@ -242,7 +249,8 @@ def draw_topographic(args: argparse.Namespace, out: str, frame: MapFrame) -> Non
         # A crop's bars sit over the map: keep the labels off them.
         bars: list[Corner] = ["br", "tr", "bl"] if args.ocean else ["br", "bl"]
         room = frame if frame.globe else dataclasses.replace(frame, outline=label_outline(frame, bars))
-        placement = place(make_water_labels(load_water_bodies(kinds, drawable_lakes(frame), frame), frame), room, args.label).placement
+        water, unfit = water_labels(kinds, drawable_lakes(frame), frame)
+        placement = place(water, room, args.label, unfit).placement
         draw_water_labels(ax, placement, frame)
     ax.set_xlim(frame.xmin, frame.xmax)
     ax.set_ylim(frame.ymin, frame.ymax)

@@ -23,6 +23,7 @@ from worldmap.data import EQUAL_AREA_CRS, load_marine, load_rivers
 from worldmap.disjoint import DisjointSets
 from worldmap.frame import MapFrame
 from worldmap.labels.geometry import Coverage, coverage, on_feature
+from worldmap.labels.priority import Unplaced
 from worldmap.labels.text import PX_PER_PT, bent, font, text_width
 
 Kind = Literal["oceans", "seas", "lakes", "straits", "rivers"]
@@ -470,16 +471,14 @@ def largest_line(geom: BaseGeometry) -> LineString:
     return max(shapely.get_parts(geom), key=lambda g: g.length)
 
 
-def make_water_labels(bodies: list[WaterBody], frame: MapFrame) -> list[WaterLabel]:
-    """A curved label per body, in the same order, leaving out those with under WATER_MIN_INSIDE of their glyph
-    boxes over their body to start with (most small bays: no room for their name), and rivers too short for theirs."""
+def make_water_labels(bodies: list[WaterBody], frame: MapFrame) -> list[WaterLabel | None]:
+    """A curved label per body, in the same order; None for those with under WATER_MIN_INSIDE of their glyph boxes
+    over their body to start with (most small bays: no room for their name), and rivers too short for theirs."""
     ppu = frame.px_per_unit
-    labels = []
+    labels: list[WaterLabel | None] = []
     for body in bodies:
         if body.kind == "rivers":
-            river = river_label(body, frame)
-            if river is not None:
-                labels.append(river)
+            labels.append(river_label(body, frame))
             continue
         assert isinstance(body.geom, Polygon)
         curve = (body_curve(body) - np.array([frame.xmin, frame.ymin])) * ppu
@@ -489,6 +488,10 @@ def make_water_labels(bodies: list[WaterBody], frame: MapFrame) -> list[WaterLab
         low, high = (OCEAN_MIN_PT, OCEAN_PT) if body.kind == "oceans" else (WATER_MIN_PT, SEA_MAX_PT)
         size = float(np.clip(SEA_FILL * arc_lengths(curve)[-1] / width_1pt, low * frame.label_scale, high * frame.label_scale))
         label = lay_out(body, curve, size, frame.to_px(body.geom), frame.label_scale)
-        if label.inside_share(label.anchor_x, label.anchor_y) >= WATER_MIN_INSIDE:
-            labels.append(label)
+        labels.append(label if label.inside_share(label.anchor_x, label.anchor_y) >= WATER_MIN_INSIDE else None)
     return labels
+
+
+def unplaced(body: WaterBody) -> Unplaced:
+    """A body whose name doesn't fit, as place_by_priority counts it."""
+    return Unplaced(body.text, body.kind, body.full_size)
