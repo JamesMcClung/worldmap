@@ -1,6 +1,6 @@
 """Country labels: which pieces get one, where it is anchored, its size, and whether it sits on its country ('in')
-or beside it with a leader line ('out'). All positions and geometry are in poster pixels. A label's glyphs are laid
-out here as outlines (TextPath), so no figure is needed until they are drawn."""
+or beside it with a leader line ('out'). All positions and geometry are in poster pixels; a label's glyphs are
+outlines (text.lines)."""
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING
 import geopandas as gpd
 import numpy as np
 from matplotlib.path import Path
-from matplotlib.textpath import TextPath, TextToPath
 from shapely import maximum_inscribed_circle
 from shapely.geometry import MultiPolygon, Point, Polygon
 from shapely.geometry.base import BaseGeometry
@@ -20,7 +19,7 @@ from worldmap.data import is_labeled
 from worldmap.earth import Fill
 from worldmap.frame import DPI, MapFrame
 from worldmap.labels.geometry import Coverage, coverage, two_line
-from worldmap.labels.text import PX_PER_PT, font, text_width
+from worldmap.labels.text import lines
 
 if TYPE_CHECKING:  # regions.py imports RENAME from here
     from worldmap.labels.regions import ChildRegion
@@ -76,15 +75,9 @@ class Label:
 
 
 def lay_out(text: str, size: float, italic: bool) -> tuple[Path, float, float]:
-    """`text` at `size` pt as outlines, px relative to its box's centre, each line centred under the one before,
-    and its box's width and height: the widest line's advance and the lines' height, padded by BOX_PAD_X/Y."""
-    prop = font(size, italic)
-    _, line, descent = TextToPath().get_text_width_height_descent("lp", prop, ismath=False)
-    lines = text.split("\n")
-    top = len(lines) * line / 2
-    widths = [text_width(t, prop) for t in lines]
-    path = Path.make_compound_path(*(TextPath((-w / 2, top - (k + 1) * line + descent), t, prop=prop) for k, (t, w) in enumerate(zip(lines, widths))))
-    return Path(np.asarray(path.vertices) * PX_PER_PT, path.codes), max(widths) * PX_PER_PT * BOX_PAD_X, len(lines) * line * PX_PER_PT * BOX_PAD_Y
+    """`text` at `size` pt as outlines (text.lines), and its box's width and height, padded by BOX_PAD_X/Y."""
+    glyphs, width, height = lines(text, size, italic)
+    return glyphs, width * BOX_PAD_X, height * BOX_PAD_Y
 
 
 def anchor_piece(polys: list[Polygon], frame: MapFrame, tolerance: float, force_island: bool) -> tuple[tuple[float, float], BaseGeometry, float, bool]:
