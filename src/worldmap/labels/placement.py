@@ -36,6 +36,7 @@ GRID_NX, GRID_NY = 14, 9
 STEP_ARRAY, SCALE_ARRAY, WATER_SCALE_ARRAY = np.array(STEPS), np.array(STEP_SCALES, float), np.array(WATER_STEP_SCALES, float)  # as the kernels take them
 RING_COS, RING_SIN, RING_SCALE_ARRAY, NO_BOUNDS = np.cos(RING_ANGLES), np.sin(RING_ANGLES), np.array(RING_SCALES), np.zeros(4)
 GRID_PASSES = 3
+ESCAPE_PX = 0.5  # a move clearing an overlap goes this far past touching
 
 PASSES = 40  # coordinate-descent passes (stops early when nothing moves)
 SHRINK_ROUNDS = 12  # rounds of shrinking still-overlapping labels...
@@ -181,14 +182,17 @@ def cost_batch(p: Placement, i: int, cx: np.ndarray, cy: np.ndarray, weights: Co
                               OVERHANG_MAX, OVERHANG_SLICES, weight_array(weights))
 
 
-def candidates(p: Placement, i: int, grid: bool = False) -> tuple[np.ndarray, np.ndarray]:
+def candidates(p: Placement, i: int, grid: bool = False, placed: np.ndarray | None = None, active: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray]:
     """Candidate centres for label i; the first is its current position. Then STEPS at each of its step scales;
     for an 'out' label, rings round its anchor; else its anchor and (`grid`, country labels) a grid over its
-    country. Compiled: kernels.candidates."""
+    country. Then, for each overlap of its rects with another `active` label's (a mask, default all), the shortest
+    moves that clear it (kernels.escapes): steps are too coarse for an overlap of a pixel or two. `placed`:
+    rects(p), as cost_batch. Compiled: kernels.candidates."""
     grid = grid and not p.water[i] and not p.out[i]
+    escape_x, escape_y = kernels.escapes(i, rects(p) if placed is None else placed, p.owner, np.ones(p.n, bool) if active is None else active, ESCAPE_PX)
     return kernels.candidates(p.x[i], p.y[i], p.width[i], p.height[i], p.anchor_x[i], p.anchor_y[i], bool(p.out[i]), STEP_ARRAY,
                               WATER_SCALE_ARRAY if p.water[i] else SCALE_ARRAY, RING_COS, RING_SIN, RING_SCALE_ARRAY, RING_X_GAP, RING_Y,
-                              grid, np.array(p.items[i].geom.bounds) if grid else NO_BOUNDS, GRID_NX, GRID_NY)
+                              grid, np.array(p.items[i].geom.bounds) if grid else NO_BOUNDS, GRID_NX, GRID_NY, escape_x, escape_y)
 
 
 def clash(p: Placement, i: int, among: np.ndarray) -> bool:
@@ -231,7 +235,7 @@ def place_labels(p: Placement, frame: MapFrame, seed: int = SEED, weights: CostW
 
     def move_to_best(i: int, grid: bool = False, stay_bias: float = 0.0) -> bool:
         """Move label i to its cheapest candidate; True if it moved."""
-        cx, cy = candidates(p, i, grid)
+        cx, cy = candidates(p, i, grid, placed, active)
         cost = cost_batch(p, i, cx, cy, weights, outline, placed, active)
         if freedom[i] == NUDGE and not p.out[i]:  # an 'out' label has no spot of its own to keep, only its dot
             away = np.hypot(cx - home_x[i], cy - home_y[i]) / unit_px(p, i)

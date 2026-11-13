@@ -206,12 +206,37 @@ def label_cost(i: int, cx: np.ndarray, cy: np.ndarray, parts: np.ndarray, unit: 
 
 
 @njit(cache=True)
+def escapes(i: int, rects: np.ndarray, owner: np.ndarray, active: np.ndarray, gap: float) -> tuple[np.ndarray, np.ndarray]:
+    """For each overlap of label i's rects with another active label's, the four shortest moves (dx, dy) that
+    clear it, `gap` past touching: left, right, down, up."""
+    mine = np.flatnonzero(owner == i)
+    if len(mine) == 0:
+        return np.empty(0), np.empty(0)
+    e0, e1, e2, e3 = rects[mine, 0].min(), rects[mine, 1].min(), rects[mine, 2].max(), rects[mine, 3].max()
+    hits = []
+    for b in range(len(rects)):
+        if owner[b] == i or not active[owner[b]] or rects[b, 0] >= e2 or rects[b, 2] <= e0 or rects[b, 1] >= e3 or rects[b, 3] <= e1:
+            continue
+        for a in mine:
+            if min(rects[a, 2], rects[b, 2]) > max(rects[a, 0], rects[b, 0]) and min(rects[a, 3], rects[b, 3]) > max(rects[a, 1], rects[b, 1]):
+                hits.append((a, b))
+    dx, dy = np.zeros(4 * len(hits)), np.zeros(4 * len(hits))
+    for k, (a, b) in enumerate(hits):
+        dx[4 * k] = rects[b, 0] - rects[a, 2] - gap
+        dx[4 * k + 1] = rects[b, 2] - rects[a, 0] + gap
+        dy[4 * k + 2] = rects[b, 1] - rects[a, 3] - gap
+        dy[4 * k + 3] = rects[b, 3] - rects[a, 1] + gap
+    return dx, dy
+
+
+@njit(cache=True)
 def candidates(x: float, y: float, w: float, h: float, ax: float, ay: float, out: bool, steps: np.ndarray, scales: np.ndarray,
                ring_cos: np.ndarray, ring_sin: np.ndarray, ring_scales: np.ndarray, ring_x_gap: float, ring_y: float,
-               grid: bool, bounds: np.ndarray, nx: int, ny: int) -> tuple[np.ndarray, np.ndarray]:
+               grid: bool, bounds: np.ndarray, nx: int, ny: int, escape_x: np.ndarray, escape_y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """placement.candidates: the current position, steps (a, b) in widths and heights at each scale, then for an
-    'out' label rings round its anchor, else its anchor and (grid) an nx x ny grid over `bounds`."""
-    n = 1 + len(scales) * len(steps) + (len(ring_scales) * len(ring_cos) if out else 1 + (nx * ny if grid else 0))
+    'out' label rings round its anchor, else its anchor and (grid) an nx x ny grid over `bounds`; then the moves
+    `escape_x/y` (escapes)."""
+    n = 1 + len(scales) * len(steps) + (len(ring_scales) * len(ring_cos) if out else 1 + (nx * ny if grid else 0)) + len(escape_x)
     cx, cy = np.empty(n), np.empty(n)
     cx[0], cy[0] = x, y
     k = 1
@@ -235,6 +260,9 @@ def candidates(x: float, y: float, w: float, h: float, ax: float, ay: float, out
                 for iv in range(ny):
                     cx[k], cy[k] = u, v1 if iv == ny - 1 else iv * ((v1 - v0) / (ny - 1)) + v0
                     k += 1
+    for e in range(len(escape_x)):
+        cx[k], cy[k] = x + escape_x[e], y + escape_y[e]
+        k += 1
     return cx, cy
 
 

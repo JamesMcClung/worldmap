@@ -306,3 +306,17 @@ def test_solver_glyphs_follow_their_labels(frame: MapFrame, monkeypatch: pytest.
     start = (np.array([one_label[0].anchor_x, sea.anchor_x + 40, bay.anchor_x - 25]), np.array([one_label[0].anchor_y, sea.anchor_y, bay.anchor_y + 9]))
     placed(one_label, frame, water=[sea, bay], start=start)
     assert seen and all(seen)
+
+
+def test_candidates_clear_an_overlap_exactly(frame: MapFrame, two_labels: list[Label]) -> None:
+    """A label overlapping another by a pixel can step clear of it by just that (and ESCAPE_PX), along either axis."""
+    from worldmap.labels.placement import ESCAPE_PX, candidates
+
+    p = Placement.of(two_labels)
+    p.x[1], p.y[1] = p.x[0], p.y[0] + (p.height[0] + p.height[1]) / 2 - 1  # b's bottom 1 px into a's top
+    cx, cy = candidates(p, 0)
+    escapes = set(zip((cx - p.x[0]).round(6), (cy - p.y[0]).round(6)))
+    assert (0, round(-1 - ESCAPE_PX, 6)) in escapes  # down
+    assert (round((p.width[0] + p.width[1]) / 2 + ESCAPE_PX, 6), 0) in escapes  # right
+    cx, cy = candidates(p, 0, active=np.array([True, False]))
+    assert len(cx) == len(candidates(subset(p, np.array([True, False])), 0)[0])  # none for an inactive label
