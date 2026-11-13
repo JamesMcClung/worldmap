@@ -5,7 +5,7 @@ from matplotlib.path import Path
 
 from worldmap.frame import MapFrame, make_frame
 from worldmap.labels.label import Label, new_label
-from worldmap.labels.placement import FIXED, FREE, NUDGE, clashes, glyph_boxes, place_labels, subset
+from worldmap.labels.placement import FIXED, FREE, NUDGE, clashes, place_labels, rects, subset
 from worldmap.labels import placement
 from worldmap.labels.water import OCEAN_MIN_PT, WATER_MIN_PT, WaterLabel
 from worldmap.render import new_figure
@@ -148,8 +148,8 @@ def test_subset(frame: MapFrame, one_label: list[Label]) -> None:
     sea, bay = crossing_water_labels(frame)
     p = place_labels(one_label, frame, water=[sea, bay])
     q = subset(p, np.array([True, False, True]))
-    assert q.n == 2 and set(q.owner) == {1} and q.water.tolist() == [False, True]
-    assert np.array_equal(glyph_boxes(q), glyph_boxes(p)[p.owner == 2])
+    assert q.n == 2 and q.owner.tolist() == [0, *[1] * len(bay.parts)] and q.water.tolist() == [False, True]
+    assert np.array_equal(rects(q), rects(p)[p.owner != 1])
 
 
 def test_water_floor_scales_with_the_frame() -> None:
@@ -237,14 +237,14 @@ def test_near_labels_holds_every_label_that_costs(frame: MapFrame) -> None:
 
 def test_solver_glyphs_follow_their_labels(frame: MapFrame, monkeypatch: pytest.MonkeyPatch, one_label: list[Label]) -> None:
     """place_labels keeps the water glyph boxes up to date as labels move and shrink, starting away from their
-    anchors: every cost it asks for sees exactly what glyph_boxes would compute."""
+    anchors: every cost it asks for sees exactly what rects would compute."""
     sea, bay = crossing_water_labels(frame)
     seen = []
     real = placement.cost_batch
 
-    def checked(p, labels, i, cx, cy, weights, outline, glyphs=None):  # type: ignore[no-untyped-def]
-        seen.append(glyphs is not None and np.array_equal(glyphs, glyph_boxes(p)))
-        return real(p, labels, i, cx, cy, weights, outline, glyphs)
+    def checked(p, labels, i, cx, cy, weights, outline, placed=None):  # type: ignore[no-untyped-def]
+        seen.append(placed is not None and np.array_equal(placed, rects(p)))
+        return real(p, labels, i, cx, cy, weights, outline, placed)
 
     monkeypatch.setattr(placement, "cost_batch", checked)
     monkeypatch.setattr(placement, "clashes", always_clashing)  # every shrink round shrinks the water labels

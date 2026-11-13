@@ -11,7 +11,7 @@ from worldmap.frame import MapFrame
 from worldmap.labels.geometry import Covered, coverage
 from worldmap.labels.label import Label
 from worldmap.labels.placeable import Placeable
-from worldmap.labels.placement import FIXED, FREE, NUDGE, OVERHANG_MAX, Placement, clash, glyph_boxes, outside_outline, overhang, place_labels, rects_of, subset
+from worldmap.labels.placement import FIXED, FREE, NUDGE, OVERHANG_MAX, Placement, clash, outside_outline, overhang, place_labels, rects, subset
 from worldmap.labels.water import WATER_KINDS, WaterLabel
 
 N_RANKS = 5
@@ -116,7 +116,7 @@ def overhang_of(p: Placement, k: int, item: Covered) -> float:
     """overhang of label k: of its glyphs (a water label), each on its water if its box's centre is, as the solver
     has it (cost_batch); or of OVERHANG_SLICES slices of its box (a country), each on it if at least half over it."""
     if p.water[k]:
-        g = glyph_boxes(p)[p.owner == k]
+        g = rects(p)[p.owner == k]
         return overhang(coverage(item).contains((g[:, 0] + g[:, 2]) / 2, (g[:, 1] + g[:, 3]) / 2))
     x0, y0, w, h = p.x[k] - p.width[k] / 2, p.y[k] - p.height[k] / 2, p.width[k], p.height[k]
     edges = x0 + w * np.arange(OVERHANG_SLICES + 1) / OVERHANG_SLICES
@@ -160,10 +160,10 @@ def place_by_priority(labels: list[Label], water: list[WaterLabel], frame: MapFr
 
     def rival(p: Placement, k: int, smaller: list[int]) -> int | None:
         """The smallest of the `smaller` placement indices whose rects overlap label k's were k at its anchor."""
-        rects, owner = rects_of(p)
-        a = rects[owner == k] + np.tile([p.anchor_x[k] - p.x[k], p.anchor_y[k] - p.y[k]], 2)
+        placed = rects(p)
+        a = placed[p.owner == k] + np.tile([p.anchor_x[k] - p.x[k], p.anchor_y[k] - p.y[k]], 2)
         for j in reversed(smaller):
-            b = rects[owner == j]
+            b = placed[p.owner == j]
             ox = np.minimum(a[:, None, 2], b[None, :, 2]) - np.maximum(a[:, None, 0], b[None, :, 0])
             oy = np.minimum(a[:, None, 3], b[None, :, 3]) - np.maximum(a[:, None, 1], b[None, :, 1])
             if ((ox > 0) & (oy > 0)).any():
