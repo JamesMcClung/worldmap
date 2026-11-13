@@ -85,6 +85,24 @@ class Placement:
     def n(self) -> int:
         return len(self.x)
 
+    @classmethod
+    def of(cls, labels: Sequence[Label], water: Sequence[WaterLabel] = ()) -> "Placement":
+        """The labels at their anchors, at their sizes: the country labels in their order, then the water labels."""
+        items: list[Placeable] = [*labels, *water]
+        anchor_x = np.array([label.anchor_x for label in items], float)
+        anchor_y = np.array([label.anchor_y for label in items], float)
+        extent = [(w.parts[:, 2].max() - w.parts[:, 0].min(), w.parts[:, 3].max() - w.parts[:, 1].min()) for w in water]
+        boxes = [np.array([[-label.width / 2, -label.height / 2, label.width / 2, label.height / 2]]) for label in labels]
+        return cls(
+            anchor_x.copy(), anchor_y.copy(),
+            np.array([label.width for label in labels] + [e[0] for e in extent], float),
+            np.array([label.height for label in labels] + [e[1] for e in extent], float),
+            anchor_x, anchor_y, np.array([label.out for label in labels] + [False] * len(water), bool),
+            np.array([False] * len(labels) + [True] * len(water), bool),
+            np.vstack([np.zeros((0, 4)), *boxes, *[w.parts for w in water]]),
+            np.concatenate([np.arange(len(labels)), *[np.full(len(w.parts), len(labels) + k) for k, w in enumerate(water)]]),
+        )
+
 
 def overhang(on: Sequence[bool] | np.ndarray) -> float:
     """How far a label hangs off its feature at its worse end: the share of its equal pieces (`on`: each one over
@@ -116,7 +134,7 @@ def weight_array(weights: CostWeights) -> np.ndarray:
 
 
 def cost_batch(p: Placement, labels: Sequence[Placeable], i: int, cx: np.ndarray, cy: np.ndarray, weights: CostWeights, outline: Coverage,
-               placed: np.ndarray | None = None) -> np.ndarray:
+               placed: np.ndarray | None = None, active: np.ndarray | None = None) -> np.ndarray:
     """Cost of placing label i at each candidate (cx[k], cy[k]): a country label's box centre, a water label's anchor.
 
     Country labels: overlap with other boxes and water glyph boxes; covering another 'out' label's dot, or its
@@ -126,17 +144,19 @@ def cost_batch(p: Placement, labels: Sequence[Placeable], i: int, cx: np.ndarray
     Water labels: their glyph boxes' overlap with every box and other glyph box; covering a dot, or a leader
     crossing them; the share of glyph boxes whose centres are off their water, hanging off it by over
     OVERHANG_MAX; drift from the anchor in ems; any glyph corner outside the outline. Compiled: kernels.
-    `placed`: rects(p), if the caller keeps them up to date (place_labels does)."""
+    `placed`: rects(p), if the caller keeps them up to date (place_labels does). `active` (a mask, default all):
+    the labels it sees."""
     label = labels[i]
     placed = rects(p) if placed is None else placed
+    active = np.ones(p.n, bool) if active is None else active
     cover = coverage(label)
     o = (outline.table, outline.x0, outline.y0, outline.step)
     cx, cy = np.asarray(cx, float), np.asarray(cy, float)
     if p.water[i]:
         return kernels.water_cost(i, cx, cy, p.parts[p.owner == i], label.unit_px, (float(label.anchor_x), float(label.anchor_y)),
-                                  p.x, p.y, p.width, p.height, p.anchor_x, p.anchor_y, p.out, p.water, placed, p.owner,
+                                  p.x, p.y, p.width, p.height, p.anchor_x, p.anchor_y, p.out, p.water, active, placed, p.owner,
                                   cover.table, cover.x0, cover.y0, cover.step, *o, OVERHANG_MAX, weight_array(weights))
-    return kernels.country_cost(i, cx, cy, p.x, p.y, p.width, p.height, p.anchor_x, p.anchor_y, p.out, p.water, placed, p.owner,
+    return kernels.country_cost(i, cx, cy, p.x, p.y, p.width, p.height, p.anchor_x, p.anchor_y, p.out, p.water, active, placed, p.owner,
                                 cover.table, cover.x0, cover.y0, cover.step, *o, weight_array(weights))
 
 
@@ -165,37 +185,21 @@ def clashes(p: Placement, among: np.ndarray | None = None) -> list[int]:
     return [int(i) for i in np.flatnonzero(kernels.clashes(rects(p), p.owner, among, p.out, p.water, p.anchor_x, p.anchor_y, end_x, end_y))]
 
 
-def place_labels(labels: list[Label], frame: MapFrame, seed: int = SEED, weights: CostWeights = CostWeights(),
-                 water: Sequence[WaterLabel] = (), start: tuple[np.ndarray, np.ndarray] | None = None,
-                 freedom: np.ndarray | None = None, home: tuple[np.ndarray, np.ndarray] | None = None,
-                 floors: np.ndarray | None = None, seed_out: bool | None = None) -> Placement:
-    """Place the labels (largest first in `labels`) and the water labels (most important first). Labels still
-    clashing after descent (clashes: with any label) are shrunk slightly (their text too) and the descent repeated. `start`: positions to start from, for all labels.
-    `freedom` (per label, default FREE): FIXED labels stay where they start, at their size; NUDGE labels pay
-    `weights.nudge` for their distance from `home` (default: where they start). `floors`: the size (pt) each label
-    shrinks no lower than (default: each label's min_size). `seed_out` (default: no `start`): first move the free
-    'out' labels, in order, to their best spot, so they start separated."""
-    items: list[Placeable] = [*labels, *water]
-    anchor_x = np.array([label.anchor_x for label in items])
-    anchor_y = np.array([label.anchor_y for label in items])
-    extent = [(w.parts[:, 2].max() - w.parts[:, 0].min(), w.parts[:, 3].max() - w.parts[:, 1].min()) for w in water]
-    boxes = [np.array([[-label.width / 2, -label.height / 2, label.width / 2, label.height / 2]]) for label in labels]
-    p = Placement(
-        anchor_x.copy(), anchor_y.copy(),
-        np.array([label.width for label in labels] + [e[0] for e in extent]),
-        np.array([label.height for label in labels] + [e[1] for e in extent]),
-        anchor_x, anchor_y, np.array([label.out for label in labels] + [False] * len(water), bool),
-        np.array([False] * len(labels) + [True] * len(water), bool),
-        np.vstack([np.zeros((0, 4)), *boxes, *[w.parts for w in water]]),
-        np.concatenate([np.arange(len(labels)), *[np.full(len(w.parts), len(labels) + k) for k, w in enumerate(water)]]),
-    )
-    if start is not None:
-        p.x, p.y = start[0].copy(), start[1].copy()
+def place_labels(p: Placement, items: Sequence[Placeable], frame: MapFrame, seed: int = SEED, weights: CostWeights = CostWeights(),
+                 active: np.ndarray | None = None, freedom: np.ndarray | None = None, home: tuple[np.ndarray, np.ndarray] | None = None,
+                 floors: np.ndarray | None = None) -> None:
+    """Place the `active` labels of `p` (a mask, default all; the rest are ignored), `items` being its labels in its
+    order, from where they are, moving p. Free 'out' labels first move, in order, to their best spot, so they start
+    separated; then coordinate descent. Labels still clashing after it (clashes) are shrunk slightly (their text
+    too) and the descent repeated. `freedom` (per label, default FREE): FIXED labels stay where they are, at their
+    size; NUDGE labels pay `weights.nudge` for their distance from `home` (default: where they start). `floors`:
+    the size (pt) each label shrinks no lower than (default: each label's min_size)."""
+    active = np.ones(p.n, bool) if active is None else active
     freedom = np.full(p.n, FREE) if freedom is None else np.asarray(freedom)
     home_x, home_y = (p.x.copy(), p.y.copy()) if home is None else (np.asarray(home[0]), np.asarray(home[1]))
     if floors is None:
         floors = np.array([item.min_size for item in items])
-    movable = np.flatnonzero(freedom != FIXED)
+    movable = np.flatnonzero(active & (freedom != FIXED))
     outline = outline_coverage(frame)
     rng = np.random.default_rng(seed)
     placed = rects(p)  # kept up to date as labels move and shrink: rebuilding them per cost was ~5% of a run
@@ -208,7 +212,7 @@ def place_labels(labels: list[Label], frame: MapFrame, seed: int = SEED, weights
     def move_to_best(i: int, grid: bool = False, stay_bias: float = 0.0) -> bool:
         """Move label i to its cheapest candidate; True if it moved."""
         cx, cy = candidates(p, items, i, grid)
-        cost = cost_batch(p, items, i, cx, cy, weights, outline, placed)
+        cost = cost_batch(p, items, i, cx, cy, weights, outline, placed, active)
         if freedom[i] == NUDGE and not p.out[i]:  # an 'out' label has no spot of its own to keep, only its dot
             away = np.hypot(cx - home_x[i], cy - home_y[i]) / items[i].unit_px
             cost += np.where(away <= weights.nudge_max, weights.nudge * away, np.inf)
@@ -224,14 +228,11 @@ def place_labels(labels: list[Label], frame: MapFrame, seed: int = SEED, weights
             if not any(moved):
                 break
 
-    # Seed 'out' labels in largest-first order so they start separated, then descend.
-    if start is None if seed_out is None else seed_out:
-        for i in range(p.n):
-            if p.out[i] and freedom[i] == FREE:
-                move_to_best(i)
+    for k in np.flatnonzero(active & p.out & (freedom == FREE)).tolist():
+        move_to_best(k)
     optimize(PASSES)
     for _ in range(SHRINK_ROUNDS):
-        clashing = [i for i in clashes(p) if freedom[i] != FIXED]
+        clashing = [i for i in clashes(p, active) if freedom[i] != FIXED]
         if not clashing:
             break
         for i in clashing:
@@ -241,7 +242,6 @@ def place_labels(labels: list[Label], frame: MapFrame, seed: int = SEED, weights
             p.parts[first[i]:first[i + 1]] *= factor
             place_rects(i)
         optimize(SHRINK_PASSES)
-    return p
 
 
 def subset(p: Placement, keep: np.ndarray) -> Placement:

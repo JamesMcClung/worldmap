@@ -140,11 +140,11 @@ def test_hopeless_bodies_left_out(frame: MapFrame, lakes_projected: gpd.GeoDataF
 def test_draw_water_labels(frame: MapFrame, lakes_projected: gpd.GeoDataFrame) -> None:
     from matplotlib.patches import PathPatch
 
-    from worldmap.labels.placement import place_labels
+    from test_placement import placed
     from worldmap.render import draw_water_labels, new_figure
 
     med = [l for l in make_water_labels(load_water_bodies({"seas"}, lakes_projected, make_frame()), frame) if l.text == "Mediterranean Sea"]
-    p = place_labels([], frame, water=med)
+    p = placed([], frame, water=med)
     p.x[0] += 100  # somewhere other than its anchor
     fig, ax = new_figure(frame)
     before = len(ax.patches)

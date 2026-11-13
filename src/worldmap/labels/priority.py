@@ -134,32 +134,27 @@ def place_by_priority(labels: list[Label], water: list[WaterLabel], frame: MapFr
     off its water at either end by over OVERHANG_MAX (overhang_of) (or, in a crop, outside the outline), is skipped for good; a country label hanging off its
     country by more than that becomes an 'out' label, with a leader, and the step is solved again."""
     items: list[Placeable] = [*labels, *water]
-    n_country = len(labels)
     kinds = [item.kind for item in items]
     plan = steps(kinds, [item.full_size for item in items], order, rank)
-    rank_of = {i: r for r, members in plan for i in members}
-    x = {i: item.anchor_x for i, item in enumerate(items)}
-    y = {i: item.anchor_y for i, item in enumerate(items)}
-    settled: dict[int, tuple[float, float, float]] = {}  # x, y, size where each kept label settled
-    kept: list[int] = []
+    ranks = np.zeros(len(items), int)
+    for r, members in plan:
+        ranks[members] = r
+    p = Placement.of(labels, water)  # one placement of every label, solved step by step over the active ones
+    active = np.zeros(p.n, bool)  # the labels kept so far, and the step's
+    settled = np.zeros(p.n, bool)  # kept, and where (home) and at what size each settled
+    home_x, home_y, settled_size = p.x.copy(), p.y.copy(), np.zeros(p.n)
+    min_size = np.array([item.min_size for item in items])
     skipped: list[str] = []
 
-    def floor(i: int) -> float:
-        return max(items[i].min_size, NUDGE_MIN_SCALE * settled[i][2]) if i in settled else items[i].min_size
+    def solve(r: int, new: list[int]) -> None:
+        freedom = np.where(ranks >= r - 1, NUDGE, FIXED)
+        freedom[new] = FREE
+        home = (np.where(settled, home_x, p.x), np.where(settled, home_y, p.y))
+        floors = np.where(settled, np.maximum(min_size, NUDGE_MIN_SCALE * settled_size), min_size)
+        place_labels(p, items, frame, active=active, freedom=freedom, home=home, floors=floors)
 
-    def solve(r: int, new: list[int]) -> tuple[Placement, np.ndarray]:
-        at = np.array(sorted([*kept, *new], key=lambda i: (i >= n_country, i)))  # placement index -> item
-        freedom = np.array([FREE if i in new else NUDGE if rank_of[i] >= r - 1 else FIXED for i in at])
-        p = place_labels([labels[i] for i in at if i < n_country], frame, water=[water[i - n_country] for i in at if i >= n_country],
-                         start=(np.array([x[i] for i in at]), np.array([y[i] for i in at])), freedom=freedom,
-                         home=(np.array([settled[i][0] if i in settled else x[i] for i in at]), np.array([settled[i][1] if i in settled else y[i] for i in at])),
-                         floors=np.array([floor(i) for i in at]), seed_out=True)
-        for k, i in enumerate(at):
-            x[i], y[i] = float(p.x[k]), float(p.y[k])
-        return p, at
-
-    def rival(p: Placement, k: int, smaller: list[int]) -> int | None:
-        """The smallest of the `smaller` placement indices whose rects overlap label k's were k at its anchor."""
+    def rival(k: int, smaller: list[int]) -> int | None:
+        """The smallest of the `smaller` labels whose rects overlap label k's were k at its anchor."""
         placed = rects(p)
         a = placed[p.owner == k] + np.tile([p.anchor_x[k] - p.x[k], p.anchor_y[k] - p.y[k]], 2)
         for j in reversed(smaller):
@@ -170,42 +165,41 @@ def place_by_priority(labels: list[Label], water: list[WaterLabel], frame: MapFr
                 return j
         return None
 
-    p, at = place_labels([], frame), np.zeros(0, int)
     for r, step in plan:
         new = list(step)
         while True:
-            p, at = solve(r, new)
-            among = np.ones(len(at), bool)
+            active[new] = True
+            solve(r, new)
+            among = active.copy()
             outside = set() if frame.globe else outside_outline(p, frame)
-            index = {int(i): k for k, i in enumerate(at)}
             retry, failed, to_leader = False, [], False
             for n, i in reversed(list(enumerate(new))):  # smallest first: of two clashing, the smaller goes
-                k, item = index[i], items[i]
-                if not p.water[k] and not p.out[k] and overhang_of(p, k, item) > OVERHANG_MAX:
-                    labels[i].out = True  # hanging off its country: beside it, with a leader, from the next solve
+                if not p.water[i] and not p.out[i] and overhang_of(p, i, items[i]) > OVERHANG_MAX:
+                    p.out[i] = True  # hanging off its country: beside it, with a leader, from the next solve
                     to_leader = True
                     continue
-                off = bool(p.water[k]) and (overhang_of(p, k, item) > OVERHANG_MAX or k in outside)
+                off = bool(p.water[i]) and (overhang_of(p, i, items[i]) > OVERHANG_MAX or i in outside)
                 if off:  # pushed off its water by a smaller label of this step? then that one goes, and again
-                    j = rival(p, k, [index[m] for m in new[n + 1:] if among[index[m]]])
-                    if j is not None:
-                        loser = int(at[j])
+                    loser = rival(i, [m for m in new[n + 1:] if among[m]])
+                    if loser is not None:
                         skipped.append(items[loser].name)
                         new.remove(loser)
+                        active[loser] = False
                         retry = True
                         break
-                if off or clash(p, k, among):
-                    among[k] = False
+                if off or clash(p, i, among):
+                    among[i] = False
                     failed.append(items[i].name)
             if not retry and not to_leader:
                 skipped.extend(failed)
                 break
-        kept = [int(i) for i in at[among]]
+        active = among
         for i in new:
-            if i in kept:
-                settled[i] = (x[i], y[i], items[i].size)
-        p, at = subset(p, among), at[among]
+            if active[i]:
+                settled[i] = True
+                home_x[i], home_y[i], settled_size[i] = p.x[i], p.y[i], items[i].size
     print("labels skipped:", skipped)
-    print(rank_table(plan, kinds, order, {int(i) for i in at}, sys.stdout.isatty() and "NO_COLOR" not in os.environ,
+    print(rank_table(plan, kinds, order, set(np.flatnonzero(active).tolist()), sys.stdout.isatty() and "NO_COLOR" not in os.environ,
                      [item.name for item in items]))
-    return p, [labels[i] for i in at if i < n_country], [water[i - n_country] for i in at if i >= n_country]
+    n_country = len(labels)
+    return subset(p, active), [label for i, label in enumerate(labels) if active[i]], [w for k, w in enumerate(water) if active[n_country + k]]

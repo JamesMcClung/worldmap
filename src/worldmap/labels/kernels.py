@@ -95,13 +95,13 @@ def envelope(i: int, cx: np.ndarray, cy: np.ndarray, width: np.ndarray, height: 
 @njit(cache=True)
 def near_labels(i: int, ex0: float, ey0: float, ex1: float, ey1: float, x: np.ndarray, y: np.ndarray, width: np.ndarray,
                 height: np.ndarray, anchor_x: np.ndarray, anchor_y: np.ndarray, out: np.ndarray, water: np.ndarray,
-                dot_radius: float) -> np.ndarray:
-    """The country labels but i whose box, or ('out') dot with its keep-clear radius, meets the envelope (its
+                active: np.ndarray, dot_radius: float) -> np.ndarray:
+    """The active country labels but i whose box, or ('out') dot with its keep-clear radius, meets the envelope (its
     leader runs from the dot to its box, so lies within those): only these add to i's cost there."""
     near = np.empty(len(x), np.int64)
     n_near = 0
     for j in range(len(x)):
-        if j == i or water[j]:
+        if j == i or water[j] or not active[j]:
             continue
         o0, o1, o2, o3 = x[j] - width[j] / 2, y[j] - height[j] / 2, x[j] + width[j] / 2, y[j] + height[j] / 2
         if out[j]:
@@ -115,22 +115,23 @@ def near_labels(i: int, ex0: float, ey0: float, ex1: float, ey1: float, x: np.nd
 
 @njit(cache=True)
 def country_cost(i: int, cx: np.ndarray, cy: np.ndarray, x: np.ndarray, y: np.ndarray, width: np.ndarray, height: np.ndarray,
-                 anchor_x: np.ndarray, anchor_y: np.ndarray, out: np.ndarray, water: np.ndarray, rects: np.ndarray, owner: np.ndarray,
-                 table: np.ndarray, tx0: float, ty0: float, tstep: float,
+                 anchor_x: np.ndarray, anchor_y: np.ndarray, out: np.ndarray, water: np.ndarray, active: np.ndarray,
+                 rects: np.ndarray, owner: np.ndarray, table: np.ndarray, tx0: float, ty0: float, tstep: float,
                  outline: np.ndarray, ox0: float, oy0: float, ostep: float, wt: np.ndarray) -> np.ndarray:
     """placement.cost_batch for country label i at each candidate centre (cx[k], cy[k]). rects/owner: every label's
     rects where it is now, and whose (placement.rects; only water glyphs are read: country boxes come from x, y,
-    width, height); table...: its country's Coverage; outline...: the frame's."""
+    width, height); active: the labels being placed (the rest are ignored); table...: its country's Coverage;
+    outline...: the frame's."""
     n = len(cx)
     w, h = width[i], height[i]
     ax, ay = anchor_x[i], anchor_y[i]
     cost = np.zeros(n)
     ex0, ey0, ex1, ey1 = envelope(i, cx, cy, width, height, anchor_x, anchor_y, out)
-    others = near_labels(i, ex0, ey0, ex1, ey1, x, y, width, height, anchor_x, anchor_y, out, water, wt[DOT_RADIUS])
+    others = near_labels(i, ex0, ey0, ex1, ey1, x, y, width, height, anchor_x, anchor_y, out, water, active, wt[DOT_RADIUS])
     near = np.empty(len(rects), np.int64)
     n_near = 0
     for g in range(len(rects)):
-        if water[owner[g]] and rects[g, 0] <= ex1 and rects[g, 2] >= ex0 and rects[g, 1] <= ey1 and rects[g, 3] >= ey0:
+        if water[owner[g]] and active[owner[g]] and rects[g, 0] <= ex1 and rects[g, 2] >= ex0 and rects[g, 1] <= ey1 and rects[g, 3] >= ey0:
             near[n_near] = g
             n_near += 1
     for k in range(n):
@@ -173,12 +174,12 @@ def country_cost(i: int, cx: np.ndarray, cy: np.ndarray, x: np.ndarray, y: np.nd
 @njit(cache=True)
 def water_cost(i: int, cx: np.ndarray, cy: np.ndarray, parts: np.ndarray, em: float, anchor: tuple[float, float],
                x: np.ndarray, y: np.ndarray, width: np.ndarray, height: np.ndarray, anchor_x: np.ndarray, anchor_y: np.ndarray,
-               out: np.ndarray, water: np.ndarray, rects: np.ndarray, owner: np.ndarray,
+               out: np.ndarray, water: np.ndarray, active: np.ndarray, rects: np.ndarray, owner: np.ndarray,
                table: np.ndarray, tx0: float, ty0: float, tstep: float,
                outline: np.ndarray, ox0: float, oy0: float, ostep: float, overhang_max: float, wt: np.ndarray) -> np.ndarray:
     """placement.cost_batch for water label i (its glyph boxes `parts`, relative) with its anchor at each candidate
-    (cx[k], cy[k]). rects/owner: every label's rects where it is now, and whose (placement.rects); table...: its
-    water's Coverage; outline...: the frame's."""
+    (cx[k], cy[k]). rects/owner: every label's rects where it is now, and whose (placement.rects); active: the
+    labels being placed (the rest are ignored); table...: its water's Coverage; outline...: the frame's."""
     n, q = len(cx), len(parts)
     cost = np.zeros(n)
     ex0, ey0 = cx.min() + parts[:, 0].min(), cy.min() + parts[:, 1].min()
@@ -187,13 +188,13 @@ def water_cost(i: int, cx: np.ndarray, cy: np.ndarray, parts: np.ndarray, em: fl
     obstacles = np.empty((len(rects), 4))
     n_obs = 0
     for g in range(len(rects)):
-        if owner[g] != i and rects[g, 0] < ex1 and rects[g, 2] > ex0 and rects[g, 1] < ey1 and rects[g, 3] > ey0:
+        if owner[g] != i and active[owner[g]] and rects[g, 0] < ex1 and rects[g, 2] > ex0 and rects[g, 1] < ey1 and rects[g, 3] > ey0:
             obstacles[n_obs] = rects[g]
             n_obs += 1
     leaders = np.empty(len(x), np.int64)  # 'out' country labels whose dot (with its radius) or leader nears our envelope
     n_lead = 0
     for j in range(len(x)):
-        if water[j] or not out[j]:
+        if water[j] or not out[j] or not active[j]:
             continue
         dx, dy = anchor_x[j], anchor_y[j]
         lx = min(max(dx, x[j] - width[j] / 2), x[j] + width[j] / 2)
