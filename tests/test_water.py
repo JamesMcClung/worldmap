@@ -304,7 +304,7 @@ def test_river_ranks_by_name_and_nearest_body() -> None:
     rivers = f.project(load_rivers())
     bodies = [b for b in load_river_bodies(f) if b.text in ("Colorado", "Nile")]
     assert len([b for b in bodies if b.text == "Colorado"]) == 2  # the US's and Argentina's
-    ranks = river_ranks(rivers, bodies, [2 if b.geom.centroid.y < 0 else 3 for b in bodies])
+    ranks = river_ranks(rivers, bodies, np.array([2 if b.geom.centroid.y < 0 else 3 for b in bodies]))
     named = rivers.name_en.map(river_name)
     colorado = (named == "Colorado").values
     south = rivers.geometry.centroid.y.values < 0

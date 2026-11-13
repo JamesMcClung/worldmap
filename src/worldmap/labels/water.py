@@ -2,7 +2,7 @@
 follows, and its glyphs laid out along it. Bodies are in projected map units; labels are in poster pixels."""
 
 import functools
-from collections.abc import Collection, Sequence
+from collections.abc import Collection
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -240,7 +240,7 @@ def load_river_bodies(frame: MapFrame) -> list[WaterBody]:
     return bodies
 
 
-def river_ranks(rivers_projected: gpd.GeoDataFrame, bodies: list[WaterBody], ranks: Sequence[int] | np.ndarray) -> np.ndarray:
+def river_ranks(rivers_projected: gpd.GeoDataFrame, bodies: list[WaterBody], ranks: np.ndarray) -> np.ndarray:
     """Each river line's rank: that of the nearest of the `bodies` (with their `ranks`) of its name (river_name),
     or UNLABELED if none has it (unnamed, or rivers not labelled)."""
     out = np.full(len(rivers_projected), UNLABELED)
@@ -251,7 +251,7 @@ def river_ranks(rivers_projected: gpd.GeoDataFrame, bodies: list[WaterBody], ran
         rows = np.flatnonzero((names == text) & ~shapely.is_empty(lines))
         if len(rows):
             gap = shapely.distance(lines[rows][:, None], np.array([bodies[k].geom for k in mine])[None, :])
-            out[rows] = np.asarray(ranks)[mine][gap.argmin(axis=1)]
+            out[rows] = ranks[mine][gap.argmin(axis=1)]
     return out
 
 
