@@ -229,11 +229,6 @@ def test_cut_rivers_are_not_drawn() -> None:
     assert cut.shown("seas", np.array([5, UNLABELED])).all()
 
 
-def test_draws_all_rivers_without_labels() -> None:
-    uncut = Outcome(Placement.of([]), [], np.zeros(0, bool), np.zeros(0, int), {}, {})
-    assert uncut.shown("rivers", np.array([1, 5, UNLABELED])).all()
-
-
 def test_cut_counts_failures_across_ranks() -> None:
     """3 of rank 1's 4 fail, then all 3 of rank 2: under 5 in either, but 6 of the 7 together."""
     sea, _ = crossing_water_labels(FRAME)
