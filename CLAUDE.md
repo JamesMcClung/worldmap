@@ -71,7 +71,7 @@ Importing any module has no side effects; only `cli.main` (after choosing the ba
 | `labels/water.py` | `--label oceans,seas,lakes,straits,rivers,water`: `kinds_from_labels`, `classify`, `WaterBody`, `load_water_bodies`, `river_name`, `longest_paths`, `load_river_bodies`, `best_stretch`, `river_label`, `fit_curve`, `body_curve`, `WaterLabel`, `make_water_labels`, style constants |
 | `labels/placement.py` | `CostWeights`, `Placement` (per-label arrays, `size`; `parts`: every label's rects, a country label's box its one part; `items`: the labels, `each`/`labels`/`water_labels`; `Placement.of`), `rects`, `unit_px`, `shrink_step`, `FIXED`/`NUDGE`/`FREE`, `OVERHANG_SLICES`, `overhang`, `cost_batch`, `candidates`, `clash`/`clashes`, `place_labels` (moves a `Placement` in place: `active`, `freedom`, `home`, `floors`), `subset`, `outline_coverage`, `outside_outline`, `leader_ends` |
 | `labels/placeable.py` | `Placeable`: what the solvers ask of a country or water label (`name`, `kind`, `full_size`, anchor, `min_size`, `geom`/`cover`) |
-| `labels/kernels.py` | numba (`@njit(cache=True)`) loops behind `cost_batch` (`label_cost`: one kernel for every label, as its rects; `by_area` measures a country's box by area, a water label's glyphs by centre), `clash` and `candidates`; weights passed as an array in `CostWeights` field order (`weight_array`) |
+| `labels/kernels.py` | numba (`@njit(cache=True)`) loops behind `cost_batch` (`label_cost`: one kernel for every label, as its rects; `by_area` measures a country's box by area, a water label's glyphs by centre), `clash`, `candidates` and `escapes`; weights passed as an array in `CostWeights` field order (`weight_array`) |
 | `labels/priority.py` | `label_order`, `ranks_by_quantile` (fifths by area, a river's length x `RIVER_KM2_PER_KM`), `steps`, `overhang_of`, `check_step` (-> `Verdict`: out, rival, skip), `place_by_priority` (step by step, biggest rank first; returns the kept labels' `Placement`), `rank_table` (printed after placement: placed/total per kind and rank, coloured on a tty unless `NO_COLOR`, and each kind's dropped labels biggest first, cut to `DROPPED_WIDTH`) |
 | `labels/geometry.py` | `nearest_point_on_rect`, `two_line`, `Coverage` (summed-area table of a shape: `area` of boxes, `contains` of points), `coverage` (a label's, cached) |
 | `disjoint.py` | `DisjointSets` (union-find: `find`, `union`, `groups`): pieces joined at the seam, river networks, same-named rivers |
@@ -312,6 +312,9 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
   laid out and the draw functions take the size from the placement.
 - Water labels also try steps of a tenth and a fifth of their extent (`WATER_STEP_SCALES`: big steps leave narrow
   water); `CostWeights.overhang` keeps them within `OVERHANG_MAX` of their water.
+- Every label overlapping another also tries the shortest moves that clear each overlap (`kernels.escapes`,
+  `ESCAPE_PX` past touching): steps are too coarse for a pixel or two (Lake Michigan, as long as its lake, was
+  skipped for 1 px into the United States label's box).
 - Drawing: `PathPatch` in `WATER_TEXT` (OKLCH L 0.50 in the ocean hue) with an `OCEAN`-coloured halo, under the country
   labels. `--label countries,water` takes ~17 s (vs ~10 s); ~720 of ~770 labels placed.
 
