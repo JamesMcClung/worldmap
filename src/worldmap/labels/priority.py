@@ -11,13 +11,12 @@ from worldmap.frame import MapFrame
 from worldmap.labels.geometry import Covered, coverage
 from worldmap.labels.label import Label
 from worldmap.labels.placeable import Placeable
-from worldmap.labels.placement import FIXED, FREE, NUDGE, OVERHANG_MAX, Placement, clash, outside_outline, overhang, place_labels, rects, subset
+from worldmap.labels.placement import FIXED, FREE, NUDGE, OVERHANG_MAX, OVERHANG_SLICES, Placement, clash, outside_outline, overhang, place_labels, rects, subset
 from worldmap.labels.water import WATER_KINDS, WaterLabel
 
 N_RANKS = 5
 RIVER_KM2_PER_KM = 10.0  # a river ranks as an area of this many km2 per km of its length
 
-OVERHANG_SLICES = 16  # a country label's box is judged in this many upright slices; a water label by its glyphs
 NUDGE_MIN_SCALE = 0.9  # a nudged label shrinks no further than this share of the size it settled at
 
 Ranker = Callable[[Sequence[str], Sequence[float]], np.ndarray]
@@ -174,8 +173,8 @@ def place_by_priority(labels: list[Label], water: list[WaterLabel], frame: MapFr
             outside = set() if frame.globe else outside_outline(p, frame)
             retry, failed, to_leader = False, [], False
             for n, i in reversed(list(enumerate(new))):  # smallest first: of two clashing, the smaller goes
-                if not p.water[i] and not p.out[i] and overhang_of(p, i, items[i]) > OVERHANG_MAX:
-                    p.out[i] = True  # hanging off its country: beside it, with a leader, from the next solve
+                if not p.water[i] and not p.out[i] and (overhang_of(p, i, items[i]) > OVERHANG_MAX or clash(p, i, among)):
+                    p.out[i] = True  # hanging off its country, or no room on it: beside it, with a leader, from the next solve
                     to_leader = True
                     continue
                 off = bool(p.water[i]) and (overhang_of(p, i, items[i]) > OVERHANG_MAX or i in outside)

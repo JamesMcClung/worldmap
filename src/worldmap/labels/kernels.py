@@ -62,13 +62,6 @@ def below_left(table: np.ndarray, x0: float, y0: float, step: float, x: float, y
 
 
 @njit(cache=True)
-def covered_area(table: np.ndarray, x0: float, y0: float, step: float, bx0: float, by0: float, bx1: float, by1: float) -> float:
-    """Coverage.area for one box."""
-    return (below_left(table, x0, y0, step, bx1, by1) - below_left(table, x0, y0, step, bx0, by1)
-            - below_left(table, x0, y0, step, bx1, by0) + below_left(table, x0, y0, step, bx0, by0))
-
-
-@njit(cache=True)
 def holds(table: np.ndarray, x0: float, y0: float, step: float, bx0: float, by0: float, bx1: float, by1: float) -> bool:
     """Coverage.holds for one box: all four corners covered."""
     return (covered(table, x0, y0, step, bx0, by0) and covered(table, x0, y0, step, bx1, by0)
@@ -119,14 +112,27 @@ def nearby(i: int, ex0: float, ey0: float, ex1: float, ey1: float, rects: np.nda
 
 
 @njit(cache=True)
+def hang(on: np.ndarray) -> float:
+    """placement.overhang: the share of `on` before its first True, or after its last, whichever is more; 1 if none."""
+    first, last = -1, -1
+    for p in range(len(on)):
+        if on[p]:
+            if first < 0:
+                first = p
+            last = p
+    return 1.0 if first < 0 else max(first, len(on) - 1 - last) / len(on)
+
+
+@njit(cache=True)
 def label_cost(i: int, cx: np.ndarray, cy: np.ndarray, parts: np.ndarray, unit: float, by_area: bool,
                x: np.ndarray, y: np.ndarray, width: np.ndarray, height: np.ndarray, anchor_x: np.ndarray, anchor_y: np.ndarray,
                out: np.ndarray, active: np.ndarray, rects: np.ndarray, owner: np.ndarray,
                table: np.ndarray, tx0: float, ty0: float, tstep: float,
-               outline: np.ndarray, ox0: float, oy0: float, ostep: float, overhang_max: float, wt: np.ndarray) -> np.ndarray:
+               outline: np.ndarray, ox0: float, oy0: float, ostep: float, overhang_max: float, slices: int, wt: np.ndarray) -> np.ndarray:
     """placement.cost_batch for label i (its rects `parts`, relative to its position; distances in `unit` px) at
-    each candidate position (cx[k], cy[k]). by_area: how much of it is on its feature is the area of its rects
-    over it (a country), else the area of the rects whose centres are, with its overhang (a water label).
+    each candidate position (cx[k], cy[k]). How much of it is on its feature, and how far it hangs off it: by_area
+    (a country), the area of the box round its rects over it, the box judged in `slices` upright slices, each on
+    it if at least half over it; else (a water label) the area of the rects whose centres are on it, by rect.
     rects/owner: every label's rects where it is now, and whose (placement.rects); active: the labels being
     placed (the rest are ignored); table...: its feature's Coverage; outline...: the frame's."""
     n, q = len(cx), len(parts)
@@ -136,7 +142,7 @@ def label_cost(i: int, cx: np.ndarray, cy: np.ndarray, parts: np.ndarray, unit: 
     obstacles, leaders = np.empty((len(rects), 4)), np.empty(len(x), np.int64)
     n_obs, n_lead = nearby(i, ex0, ey0, ex1, ey1, rects, owner, active, x, y, width, height, anchor_x, anchor_y, out, wt[DOT_RADIUS], obstacles, leaders)
     p0, p1, p2, p3 = parts[:, 0].min(), parts[:, 1].min(), parts[:, 2].max(), parts[:, 3].max()  # the box round its rects
-    on = np.zeros(q, np.bool_)
+    on = np.zeros(slices if by_area else q, np.bool_)
     for k in range(n):
         c, inside, total = 0.0, 0.0, 0.0
         all_in = True
@@ -150,9 +156,7 @@ def label_cost(i: int, cx: np.ndarray, cy: np.ndarray, parts: np.ndarray, unit: 
                 c += wt[OVERLAP] * overlap(g0, g1, g2, g3, obstacles[o, 0], obstacles[o, 1], obstacles[o, 2], obstacles[o, 3]) / (unit * unit)
             area = (g2 - g0) * (g3 - g1)
             total += area
-            if by_area:
-                inside += covered_area(table, tx0, ty0, tstep, g0, g1, g2, g3)
-            else:
+            if not by_area:
                 on[p] = covered(table, tx0, ty0, tstep, (g0 + g2) / 2, (g1 + g3) / 2)
                 if on[p]:
                     inside += area
@@ -181,16 +185,20 @@ def label_cost(i: int, cx: np.ndarray, cy: np.ndarray, parts: np.ndarray, unit: 
             if out[i] and segments_cross(ax, ay, nx, ny, dx, dy, lx, ly):
                 c += wt[LEADER_CROSSES_LEADER]
         if not out[i]:  # an 'out' label is beside its feature by design
+            if by_area:  # the area over it left of each slice edge, differenced
+                bx0, by0, bx1, by1 = cx[k] + p0, cy[k] + p1, cx[k] + p2, cy[k] + p3
+                half = (bx1 - bx0) * (by1 - by0) / slices / 2
+                before = below_left(table, tx0, ty0, tstep, bx0, by1) - below_left(table, tx0, ty0, tstep, bx0, by0)
+                start = before
+                for e in range(slices):
+                    xe = bx0 + (bx1 - bx0) * (e + 1) / slices
+                    upto = below_left(table, tx0, ty0, tstep, xe, by1) - below_left(table, tx0, ty0, tstep, xe, by0)
+                    on[e] = upto - before >= half
+                    before = upto
+                inside = before - start
             c += wt[OFF_FEATURE] * (1 - inside / total) + wt[DRIFT] * math.hypot(cx[k] - ax, cy[k] - ay) / unit
-            if not by_area:
-                first, last = -1, -1
-                for p in range(q):
-                    if on[p]:
-                        if first < 0:
-                            first = p
-                        last = p
-                if (1.0 if first < 0 else max(first, q - 1 - last) / q) > overhang_max:
-                    c += wt[OVERHANG]
+            if hang(on) > overhang_max:
+                c += wt[OVERHANG]
         if not all_in:
             c += wt[OUTSIDE_GLOBE]
         cost[k] = c

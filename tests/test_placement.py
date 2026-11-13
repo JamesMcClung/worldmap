@@ -226,6 +226,25 @@ def test_solver_keeps_a_water_label_within_overhang_max(frame: MapFrame) -> None
     assert overhang(np.abs(centres - x) <= 51) <= OVERHANG_MAX  # on the lake, to within a pixel (Coverage)
 
 
+def test_solver_keeps_a_country_label_within_overhang_max(frame: MapFrame) -> None:
+    """A tall rock fixed over the right 40% of a country label whose country is just its width: sliding clear would
+    hang it 40% off its country's left end; it may hang off by no more than OVERHANG_MAX (judged in slices), and
+    it's the overhang term that keeps it there."""
+    from worldmap.labels.placement import OVERHANG_MAX
+    from worldmap.labels.priority import overhang_of
+
+    def hang(weights: placement.CostWeights) -> float:
+        label = country_label(frame, "Atlantis", -35, 30, 500)
+        w, h = label.width, label.height
+        label.geom = shapely.box(label.anchor_x - w / 2, label.anchor_y - h, label.anchor_x + w / 2, label.anchor_y + h)
+        x, y = label.anchor_x + 0.35 * w, label.anchor_y
+        rock = water_label("Rock", (x, y), shapely.box(x - 0.25 * w, y - 4 * h, x + 0.25 * w, y + 4 * h), np.array([[-0.25 * w, -4 * h, 0.25 * w, 4 * h]]), 10)
+        p = placed([label], frame, water=[rock], freedom=np.array([FREE, FIXED]), weights=weights)
+        return overhang_of(p, 0, label)
+
+    assert hang(placement.CostWeights()) <= OVERHANG_MAX < hang(placement.CostWeights(overhang=0))
+
+
 def test_water_labels_try_fine_steps(frame: MapFrame) -> None:
     """A water label held in narrow water must be able to shift by a sliver: steps of a tenth of its extent."""
     from worldmap.labels.placement import candidates

@@ -38,6 +38,7 @@ PASSES = 40  # coordinate-descent passes (stops early when nothing moves)
 SHRINK_ROUNDS = 12  # rounds of shrinking still-overlapping labels...
 SHRINK_PASSES = 15  # ...each followed by this many passes
 OVERHANG_MAX = 0.3  # a label on its feature (not 'out') may hang off either end of it by no more than this share of its length
+OVERHANG_SLICES = 16  # a country label's box is judged in this many upright slices; a water label by its glyphs
 STAY_BIAS = 1e-6  # ties go to the current position
 SHRINK_FACTOR = 0.94  # a label still clashing after a descent shrinks by this (down to its floor)
 FIXED, NUDGE, FREE = 0, 1, 2  # a label's freedom: stays put; moves (and shrinks) a little, at a cost; moves freely
@@ -57,7 +58,7 @@ class CostWeights:
     off_feature: float = 20  # share of a label (not 'out') off its feature: box area, or glyph boxes by their centres
     drift: float = 0.15  # a label's (not 'out') distance from its anchor, in units (unit_px: heights, or ems)
     outside_globe: float = 1000  # any part of the label outside the globe outline
-    overhang: float = 100  # a water label hanging off its water by over OVERHANG_MAX (overhang): it would be skipped
+    overhang: float = 100  # a label hanging off its feature by over OVERHANG_MAX: it would be skipped, or put 'out'
     nudge: float = 2.0  # a nudged label's distance from its home, in heights (water labels: ems; 'out' labels: none)...
     nudge_max: float = 2.0  # ...which can't be more than this
 
@@ -110,10 +111,7 @@ def overhang(on: Sequence[bool] | np.ndarray) -> float:
     """How far a label hangs off its feature at its worse end: the share of its equal pieces (`on`: each one over
     the feature or not, in reading order) before the first one on it, or after the last; 1 if none is. A gap in
     the middle doesn't count, so a centred label may be mostly off as long as neither end is far off."""
-    flags = np.asarray(on, bool)
-    if not flags.any():
-        return 1.0
-    return max(int(np.argmax(flags)), int(np.argmax(flags[::-1]))) / len(flags)
+    return float(kernels.hang(np.asarray(on, bool)))
 
 
 def unit_px(p: Placement, i: int) -> float:
@@ -152,8 +150,8 @@ def cost_batch(p: Placement, labels: Sequence[Placeable], i: int, cx: np.ndarray
     their overlap with other labels' rects; covering another 'out' label's dot, or its leader crossing them; any
     corner outside the outline. An 'out' label: its leader's length, and its leader crossing other rects (unless
     one covers its dot) and leaders. Any other: its share off its feature (geometry.Coverage: a country label's box
-    area; a water label's glyph boxes whose centres are off, and hanging off it by over OVERHANG_MAX) and its
-    drift from its anchor. Compiled: kernels.label_cost. `placed`: rects(p), if the caller keeps them up to date
+    area; a water label's glyph boxes whose centres are off), hanging off it by over OVERHANG_MAX (a country label
+    in OVERHANG_SLICES slices of its box, a water label by glyph), and its drift from its anchor. Compiled: kernels.label_cost. `placed`: rects(p), if the caller keeps them up to date
     (place_labels does). `active` (a mask, default all): the labels it sees."""
     placed = rects(p) if placed is None else placed
     active = np.ones(p.n, bool) if active is None else active
@@ -162,7 +160,7 @@ def cost_batch(p: Placement, labels: Sequence[Placeable], i: int, cx: np.ndarray
     return kernels.label_cost(i, np.asarray(cx, float), np.asarray(cy, float), p.parts[first:end], unit_px(p, i), not p.water[i],
                               p.x, p.y, p.width, p.height, p.anchor_x, p.anchor_y, p.out, active, placed, p.owner,
                               cover.table, cover.x0, cover.y0, cover.step, outline.table, outline.x0, outline.y0, outline.step,
-                              OVERHANG_MAX, weight_array(weights))
+                              OVERHANG_MAX, OVERHANG_SLICES, weight_array(weights))
 
 
 def candidates(p: Placement, labels: Sequence[Placeable], i: int, grid: bool = False) -> tuple[np.ndarray, np.ndarray]:

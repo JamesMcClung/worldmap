@@ -177,11 +177,13 @@ def test_water_label_mostly_off_its_water_is_skipped() -> None:
     assert place_by_priority([], [sized(sea, 1)], FRAME, ["seas"])[2] == []
 
 
-def test_country_pushed_off_its_country_gets_a_leader() -> None:
-    """A sea fixed over all of Atlantis and round it: its name goes outside, with a leader to it."""
-    country = atlantis(1)
-    x, y = mid_atlantic_px(FRAME)
-    sea = water_label("Sea", (x, y), shapely.box(x - 700, y - 700, x + 700, y + 700), np.array([[-700.0, -700, 700, 700]]), WATER_MIN_PT)
+def test_country_with_no_room_gets_a_leader() -> None:
+    """A sea fixed over all of a small country and just round it: its name goes beside it, with a leader to it
+    (whether the solver keeps it on the country, clashing, or pushes it off)."""
+    country = country_label(FRAME, "Atlantis", -35, 30, 120)
+    country.full_size = 1
+    x, y = country.anchor_x, country.anchor_y
+    sea = water_label("Sea", (x, y), shapely.box(x - 130, y - 130, x + 130, y + 130), np.array([[-130.0, -130, 130, 130]]), WATER_MIN_PT)
     p, labels, kept = place_by_priority([country], [sized(sea, 1e6)], FRAME, ["countries", "seas"], rank=lambda kinds, sizes: np.array([3, 1]))
     assert labels == [country] and bool(p.out[0])
     assert [w.text for w in kept] == ["Sea"] and clashes(p) == []
