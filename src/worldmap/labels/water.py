@@ -97,7 +97,7 @@ def ocean_word(name: str) -> str:
 
 
 def load_water_bodies(kinds: set[Kind], lakes_projected: gpd.GeoDataFrame, frame: MapFrame) -> list[WaterBody]:
-    """The water bodies of `kinds`, most important first: oceans, then by scalerank, then by area. North and South
+    """The water bodies of `kinds`, biggest first (full_size; of two of one name, the bigger). North and South
     Atlantic are one ATLANTIC; on the world map the Pacific, cut by the antimeridian, is labelled twice (left and right of x = 0).
     Every other body is labelled once, on its largest polygon."""
     everywhere = load_marine()
@@ -127,10 +127,10 @@ def load_water_bodies(kinds: set[Kind], lakes_projected: gpd.GeoDataFrame, frame
         bodies += [WaterBody(r.name, "lakes", int(r.scalerank), largest(r.geometry), float(r.km2)) for r in lakes_projected.itertuples() if isinstance(r.name, str) and not r.geometry.is_empty]
     if "rivers" in kinds:
         bodies += load_river_bodies(frame)
-    bodies.sort(key=lambda b: (b.kind != "oceans", b.rank, b.kind == "rivers", -(b.geom.length if b.kind == "rivers" else b.geom.area)))
+    bodies.sort(key=lambda b: -b.full_size)
     seen: set[str] = set()
     unique = []
-    for b in bodies:  # oceans and rivers may share a name (the two Pacifics, far-apart rivers); others once, marine before lakes
+    for b in bodies:  # oceans and rivers may share a name (the two Pacifics, far-apart rivers); others once
         if b.kind in ("oceans", "rivers") or b.text not in seen:
             unique.append(b)
             seen.add(b.text)

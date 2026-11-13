@@ -50,8 +50,8 @@ def test_seas_lakes_and_straits(lakes_projected: gpd.GeoDataFrame) -> None:
     assert "Saint Lawrence River" not in names  # a 'channel' in Natural Earth, but a river: not labelled yet
     assert names.count("Bering Sea") == 1 and names.count("Caspian Sea") == 1
     assert everything[0].kind == "oceans"
-    ranks = [b.rank for b in everything if b.kind != "oceans"]
-    assert ranks == sorted(ranks)
+    sizes = [b.full_size for b in everything]
+    assert sizes == sorted(sizes, reverse=True)
 
 
 def test_bend_straight_and_circle() -> None:
