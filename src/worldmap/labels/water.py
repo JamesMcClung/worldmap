@@ -59,7 +59,6 @@ RIVER_REPEAT_M = 1_500_000  # same-named rivers further apart than this are name
 RIVER_TILT_COST = 0.4  # choosing a river's stretch: steepness (0..1 from level to vertical) against wiggliness...
 RIVER_MIDDLE_COST = 0.3  # ...and distance from the river's middle (0..0.5 of its length)
 RIVER_NAMES = {"Grande": "Rio Grande", "Syr Dar": "Syr Darya"}  # Natural Earth name_en (after dropping " River") -> label
-NOT_RIVERS = (" branch", " Branch", " Canal", " Protoka", " Csatorna")  # name endings of delta channels and canals
 _river_text = fit_gamut(0.42, 0.10, _ocean_hue)
 assert _river_text is not None
 RIVER_TEXT: RGB = _river_text[0]  # darker than WATER_TEXT: it sits on land, not water
@@ -136,8 +135,8 @@ def load_water_bodies(kinds: set[Kind], lakes_projected: gpd.GeoDataFrame, frame
 
 
 def river_name(name_en: object) -> str | None:
-    """A river's label from Natural Earth's English name, or None for unnamed lines, delta channels and canals."""
-    if not isinstance(name_en, str) or name_en.endswith(NOT_RIVERS):
+    """A river's label from Natural Earth's English name, or None for unnamed lines."""
+    if not isinstance(name_en, str):
         return None
     name = name_en.removesuffix(" River")
     return RIVER_NAMES.get(name, name)

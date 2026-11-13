@@ -166,7 +166,7 @@ def test_river_name() -> None:
     assert river_name("Amazon") == "Amazon"
     assert river_name("Paraná River") == "Paraná"
     assert river_name("Grande") == "Rio Grande"
-    assert river_name("Sulina branch") is None and river_name("Suez Canal") is None
+    assert river_name("Suez Canal") == "Suez Canal" and river_name("Sulina branch") == "Sulina branch"
     assert river_name(None) is None and river_name(float("nan")) is None
 
 
