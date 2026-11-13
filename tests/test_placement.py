@@ -25,10 +25,10 @@ def country_label(frame: MapFrame, name: str, lon: float, lat: float, half_px: f
     return new_label(frame, name, (x, y), geom, geom.area, (0.2, 0.2, 0.2))
 
 
-def placed(labels: list[Label], frame: MapFrame, water: Sequence[WaterLabel] = (), start: tuple[np.ndarray, np.ndarray] | None = None,
+def placed(items: Sequence[Label | WaterLabel], frame: MapFrame, start: tuple[np.ndarray, np.ndarray] | None = None,
            **solve: object) -> Placement:
     """A Placement of the labels, from `start` (default: their anchors), placed (place_labels)."""
-    p = Placement.of([*labels, *water])
+    p = Placement.of(items)
     if start is not None:
         p.x, p.y = start[0].copy(), start[1].copy()
     place_labels(p, frame, **solve)  # type: ignore[arg-type]
@@ -62,13 +62,13 @@ def water_on_top_of_it(one_label: list[Label]) -> WaterLabel:
 def test_country_can_shrink_for_water(frame: MapFrame, one_label: list[Label], water_on_top_of_it: WaterLabel) -> None:
     """A sea fixed over a country's label: the country label gives way, by moving or shrinking."""
     start = (np.array([one_label[0].anchor_x, water_on_top_of_it.anchor_x]), np.array([one_label[0].anchor_y, water_on_top_of_it.anchor_y]))
-    p = placed(one_label, frame, water=[water_on_top_of_it], start=start, freedom=np.array([FREE, FIXED]))
+    p = placed([*one_label, water_on_top_of_it], frame, start=start, freedom=np.array([FREE, FIXED]))
     assert clashes(p) == [] or p.size[0] <= one_label[0].min_size
 
 
 def test_clash_is_symmetric(frame: MapFrame, one_label: list[Label], water_on_top_of_it: WaterLabel) -> None:
     start = (np.array([one_label[0].anchor_x, water_on_top_of_it.anchor_x]), np.array([one_label[0].anchor_y, water_on_top_of_it.anchor_y]))
-    p = placed(one_label, frame, water=[water_on_top_of_it], start=start, freedom=np.array([FIXED, FIXED]))
+    p = placed([*one_label, water_on_top_of_it], frame, start=start, freedom=np.array([FIXED, FIXED]))
     assert clashes(p) == [0, 1]
     assert clashes(p, np.array([True, False])) == []
 
@@ -104,13 +104,13 @@ def test_oceans_shrink_no_smaller_than_ocean_floor(frame: MapFrame, monkeypatch:
     x, y = mid_atlantic_px(frame)
     ocean = water_label("OCEAN", (x, y), shapely.box(x - 500, y - 100, x + 500, y + 100), np.array([[-200.0, -20, 200, 20]]), 20, "oceans")
     monkeypatch.setattr(placement, "clashes", always_clashing)  # every shrink round shrinks it
-    p = placed([], frame, water=[ocean])
+    p = placed([ocean], frame)
     assert p.size[0] == pytest.approx(OCEAN_MIN_PT) and ocean.size == 20  # the label itself stays as laid out
 
 
 def test_fixed_labels_stay_put(frame: MapFrame, one_label: list[Label], water_on_top_of_it: WaterLabel) -> None:
     start = (np.array([one_label[0].anchor_x, water_on_top_of_it.anchor_x]), np.array([one_label[0].anchor_y, water_on_top_of_it.anchor_y]))
-    p = placed(one_label, frame, water=[water_on_top_of_it], start=start, freedom=np.array([FIXED, FREE]))
+    p = placed([*one_label, water_on_top_of_it], frame, start=start, freedom=np.array([FIXED, FREE]))
     assert p.x[0] == start[0][0] and p.y[0] == start[1][0]
     assert (p.x[1], p.y[1]) != (start[0][1], start[1][1])  # the water label made way instead
 
@@ -131,7 +131,7 @@ def test_floors_hold(frame: MapFrame, monkeypatch: pytest.MonkeyPatch) -> None:
     x, y = mid_atlantic_px(frame)
     sea = water_label("Sea", (x, y), shapely.box(x - 100, y - 20, x + 100, y + 20), np.array([[-60.0, -10, 60, 10]]), 14)
     monkeypatch.setattr(placement, "clashes", always_clashing)  # every shrink round shrinks it
-    p = placed([], frame, water=[sea], floors=np.array([12.0]))
+    p = placed([sea], frame, floors=np.array([12.0]))
     assert p.size[0] == pytest.approx(12.0)
 
 
@@ -145,7 +145,7 @@ def test_of_takes_labels_in_any_order(frame: MapFrame, one_label: list[Label]) -
 
 def test_subset(frame: MapFrame, one_label: list[Label]) -> None:
     sea, bay = crossing_water_labels(frame)
-    p = placed(one_label, frame, water=[sea, bay])
+    p = placed([*one_label, sea, bay], frame)
     q = subset(p, np.array([True, False, True]))
     assert q.n == 2 and q.owner.tolist() == [0, *[1] * len(bay.parts)] and q.water.tolist() == [False, True]
     assert np.array_equal(rects(q), rects(p)[p.owner != 1])
@@ -164,9 +164,9 @@ def test_shrinking_scales_a_labels_extent_and_rects(frame: MapFrame, monkeypatch
     sea, _ = crossing_water_labels(frame)
     before = Placement.of([*one_label, sea])
     monkeypatch.setattr(placement, "clashes", lambda p, among=None: [0, 1])  # every shrink round shrinks both
-    p = placed(one_label, frame, water=[sea], freedom=np.array([FIXED, FIXED]))
+    p = placed([*one_label, sea], frame, freedom=np.array([FIXED, FIXED]))
     assert (p.size == before.size).all()  # fixed: no shrinking
-    p = placed(one_label, frame, water=[sea], floors=np.array([0.5 * one_label[0].size, 0.5 * sea.size]))
+    p = placed([*one_label, sea], frame, floors=np.array([0.5 * one_label[0].size, 0.5 * sea.size]))
     assert p.size == pytest.approx(0.5 * before.size)
     assert p.width == pytest.approx(0.5 * before.width) and p.height == pytest.approx(0.5 * before.height)
     assert p.parts == pytest.approx(0.5 * before.parts)
@@ -185,7 +185,7 @@ def test_nudge_goes_no_further_than_nudge_max(frame: MapFrame, one_label: list[L
     w, h = label.width, label.height
     tall = water_label("Sea", (label.anchor_x, label.anchor_y), label.geom, np.array([[-w / 2, -2.5 * h, w / 2, 2.5 * h]]), 10)
     start = (np.array([label.anchor_x, label.anchor_x]), np.array([label.anchor_y, label.anchor_y]))
-    p = placed(one_label, frame, water=[tall], start=start, freedom=np.array([NUDGE, FIXED]))
+    p = placed([*one_label, tall], frame, start=start, freedom=np.array([NUDGE, FIXED]))
     assert np.hypot(p.x[0] - label.anchor_x, p.y[0] - label.anchor_y) <= 2 * h + 1e-9  # nudge_max
 
 
@@ -196,7 +196,7 @@ def test_nudged_out_label_goes_where_it_must(frame: MapFrame, one_label: list[La
     w, h = label.width, label.height
     tall = water_label("Sea", (label.anchor_x, label.anchor_y), label.geom, np.array([[-w / 2, -2.5 * h, w / 2, 2.5 * h]]), 10)
     start = (np.array([label.anchor_x, label.anchor_x]), np.array([label.anchor_y, label.anchor_y]))
-    p = placed(one_label, frame, water=[tall], start=start, freedom=np.array([NUDGE, FIXED]))
+    p = placed([*one_label, tall], frame, start=start, freedom=np.array([NUDGE, FIXED]))
     assert clashes(p) == []
 
 
@@ -209,7 +209,7 @@ def test_solver_keeps_a_water_label_within_overhang_max(frame: MapFrame) -> None
     parts = np.array([[-50.0 + 10 * k, -7, -40 + 10 * k, 7] for k in range(10)])
     lake = water_label("Lake", (x, y), shapely.box(x - 50, y - 5, x + 50, y + 5), parts, 10, kind="lakes")
     rock = water_label("Rock", (x + 35, y), shapely.box(x + 10, y - 7, x + 60, y + 7), np.array([[-25.0, -7, 25, 7]]), 10)
-    p = placed([], frame, water=[lake, rock], freedom=np.array([FREE, FIXED]))
+    p = placed([lake, rock], frame, freedom=np.array([FREE, FIXED]))
     centres = parts[:, 0] + 5 + p.x[0]
     assert overhang(np.abs(centres - x) <= 51) <= OVERHANG_MAX  # on the lake, to within a pixel (Coverage)
 
@@ -227,7 +227,7 @@ def test_solver_keeps_a_country_label_within_overhang_max(frame: MapFrame) -> No
         label.geom = shapely.box(label.anchor_x - w / 2, label.anchor_y - h, label.anchor_x + w / 2, label.anchor_y + h)
         x, y = label.anchor_x + 0.35 * w, label.anchor_y
         rock = water_label("Rock", (x, y), shapely.box(x - 0.25 * w, y - 4 * h, x + 0.25 * w, y + 4 * h), np.array([[-0.25 * w, -4 * h, 0.25 * w, 4 * h]]), 10)
-        p = placed([label], frame, water=[rock], freedom=np.array([FREE, FIXED]), weights=weights)
+        p = placed([label, rock], frame, freedom=np.array([FREE, FIXED]), weights=weights)
         return overhang_of(p, 0)
 
     assert hang(placement.CostWeights()) <= OVERHANG_MAX < hang(placement.CostWeights(overhang=0))
@@ -238,7 +238,7 @@ def test_water_labels_try_fine_steps(frame: MapFrame) -> None:
     from worldmap.labels.placement import candidates
 
     sea, _ = crossing_water_labels(frame)
-    p = placed([], frame, water=[sea], freedom=np.array([FIXED]))
+    p = placed([sea], frame, freedom=np.array([FIXED]))
     cx, cy = candidates(p, 0)
     assert np.isclose(np.abs(cy - p.y[0]), 0.1 * p.height[0]).any()
 
@@ -254,7 +254,7 @@ def test_nearby_holds_every_label_that_costs(frame: MapFrame) -> None:
     x, y = frame.to_px(shapely.Point(*frame.to_map.transform(-36, 0))).coords[0]
     sea = water_label("Sea", (x, y), shapely.box(x - 150, y - 30, x + 150, y + 30), np.array([[-40.0 + 10 * k, -7, -30 + 10 * k, 7] for k in range(8)]), 10)
     items = [*labels, sea]
-    p = placed(labels, frame, water=[sea], freedom=np.full(len(items), FIXED))
+    p = placed(items, frame, freedom=np.full(len(items), FIXED))
     for j, by in ((41, 0), (3, 21)):  # 'out' labels with their dots far from their boxes, beside labels 0 and 21
         p.out[j] = True
         p.anchor_x[j], p.anchor_y[j] = p.x[by] + 0.6 * p.width[by], p.y[by]
@@ -296,7 +296,7 @@ def test_solver_glyphs_follow_their_labels(frame: MapFrame, monkeypatch: pytest.
     monkeypatch.setattr(placement, "cost_batch", checked)
     monkeypatch.setattr(placement, "clashes", always_clashing)  # every shrink round shrinks the water labels
     start = (np.array([one_label[0].anchor_x, sea.anchor_x + 40, bay.anchor_x - 25]), np.array([one_label[0].anchor_y, sea.anchor_y, bay.anchor_y + 9]))
-    placed(one_label, frame, water=[sea, bay], start=start)
+    placed([*one_label, sea, bay], frame, start=start)
     assert seen and all(seen)
 
 
