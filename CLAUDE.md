@@ -55,8 +55,8 @@ Importing any module has no side effects; only `cli.main` (after choosing the ba
 
 | Module | Contents |
 |---|---|
-| `cli.py` | `parse_args` (`--label`: `label_kinds`, an ordered list (kinds are placed in its order within a rank) replacing the default `countries`; `water` is expanded into the water kinds in its place; `none` = no labels), `graph_fills` (palette + Baikonur), `main()`: the pipeline as a sequence of stage calls, `place` (`place_by_priority` with the progress line and `summary` on a terminal) |
-| `data.py` | `fetch`, `fetch_all`, `confirm_download`, `etopo15_tile`, file names (`MARINE`: the marine label areas; `RIVERS`), `CRS`, `STATE_COUNTRIES`, lakes filter, `is_dependency`, `parent_index`, `is_labeled`, `load_*` (`load_rivers`: scalerank <= `RIVER_MAX_RANK`, canals included) |
+| `cli.py` | `parse_args` (`--label`: `label_kinds`, an ordered list (kinds are placed in its order within a rank) replacing the default `countries`; `water` is expanded into the water kinds in its place; `none` = no labels), `graph_fills` (palette + Baikonur), `main()`: the pipeline as a sequence of stage calls, `place` (`place_by_priority` with the progress line and `summary` on a terminal), `water_labels`, `body_ranks`, `shown_rivers` (the river lines whose rank wasn't cut) |
+| `data.py` | `fetch`, `fetch_all`, `confirm_download`, `etopo15_tile`, file names (`MARINE`: the marine label areas; `RIVERS`), `CRS`, `STATE_COUNTRIES`, lakes filter, `is_dependency`, `parent_index`, `is_labeled`, `load_*` (`load_rivers`: every scalerank, canals included; `load_lakes`: all but `DRY_LAKES`) |
 | `frame.py` | `MapFrame` (transformers, outline, extent, `crs`, `globe`, `clip`, `label_scale`, `width_in`/`height_in`, `px_per_unit`, `units_per_in`, `canvas`, `project`, `visible`, `to_px`, `px_to_map`), `make_frame`, `cut`, `join_at_antimeridian`, `lon_ranges`, `DPI`, `POSTER_WIDTH_IN` |
 | `crop.py` | `--crop`: `parse_box`, `box_region`, `extent`, `sphere_centre`, `sample_lonlat`, `clip_boxes`, `canvas_centre`, `reach`, `seam_boxes`, `globe_outline`, `crop_frame`, `round_pole`, `fit_frame`, `canvas_frame`, `with_label_scale`, `parse_centre`, `centre_frame`, `centre_recipe`, `centre_spec`, `Candidate`, `candidates`, `matches`, `describe`, `checklist`, `choose` |
 | `colorspace.py` | OKLab/OKLCH conversions, `fit_gamut`, `darken` |
@@ -69,16 +69,16 @@ Importing any module has no side effects; only `cli.main` (after choosing the ba
 | `labels/text.py` | `PX_PER_PT`, `font`, `text_width`, `lines` (straight, centred lines), `bent` (glyphs bent along a curve): text as `TextPath` outlines, no figure needed |
 | `labels/label.py` | `Label` dataclass (`glyphs`: its outlines), `lay_out` (`text.lines`, box padded), `make_labels` (anchors, sizes, exclaves; biggest `full_size` first), `decide_out_and_wrap` |
 | `labels/regions.py` | `--label territories`: `ChildRegion`, `HAND_PICKED` (parent + lon/lat boxes), `child_regions` |
-| `labels/water.py` | `--label oceans,seas,lakes,straits,rivers,water`: `kinds_from_labels`, `classify`, `WaterBody`, `load_water_bodies`, `river_name`, `longest_paths`, `load_river_bodies`, `best_stretch`, `river_label`, `fit_curve`, `body_curve`, `WaterLabel`, `make_water_labels`, style constants |
+| `labels/water.py` | `--label oceans,seas,lakes,straits,rivers,water`: `kinds_from_labels`, `classify`, `WaterBody`, `load_water_bodies`, `river_name`, `longest_paths`, `load_river_bodies`, `river_ranks` (each river line's rank: its nearest same-named body's), `best_stretch`, `river_label`, `fit_curve`, `body_curve`, `WaterLabel`, `make_water_labels` (one per body, None where the name doesn't fit), `unplaced`, style constants |
 | `labels/placement.py` | `CostWeights`, `Placement` (per-label arrays, `size`; `parts`: every label's rects, a country label's box its one part; `items`: the labels, any order, `each` of a kind; `Placement.of`; it knows them only as `Placeable`s), `rects`, `unit_px`, `shrink_step`, `FIXED`/`NUDGE`/`FREE`, `OVERHANG_SLICES`, `overhang`, `cost_batch`, `candidates`, `clash`/`clashes`, `place_labels` (moves a `Placement` in place: `active`, `freedom`, `home`, `floors`), `subset`, `outline_coverage`, `outside_outline`, `leader_ends` |
 | `labels/placeable.py` | `Placeable`: what the solvers ask of a country or water label (`name`, `kind`, `full_size`, anchor, `size`, `min_size`, `parts`, `width`/`height`, `out`, `water`, `geom`/`cover`) |
 | `labels/kernels.py` | numba (`@njit(cache=True)`) loops behind `cost_batch` (`label_cost`: one kernel for every label, as its rects; `on_feature`: `by_area` measures a country's box by area, a water label's glyphs by centre), `clash`, `candidates` and `escapes`; weights passed as an array in `CostWeights` field order (`weight_array`) |
-| `labels/priority.py` | `ranks_by_quantile` (fifths by area, a river's length x `RIVER_KM2_PER_KM`), `steps`, `overhang_of`, `check_step` (-> `Verdict`: out, rival, skip), `place_by_priority` (step by step, biggest rank first; prints nothing, `on_step` before each step; returns an `Outcome`: the kept labels' `Placement`, the plan and the kept mask, which `report.summary` reads) |
-| `labels/report.py` | `progress` (on a terminal, a bar of the rank being placed), `rank_table` (placed/total per kind and rank, coloured on a tty unless `NO_COLOR`, and each kind's dropped labels, biggest first), `summary` (the skipped labels, then the table) |
+| `labels/priority.py` | `ranks_by_quantile` (fifths by area, a river's length x `RIVER_KM2_PER_KM`), `steps`, `overhang_of`, `check_step` (-> `Verdict`: out, rival, skip), `Unplaced`, `saturated`, `place_by_priority` (step by step, biggest rank first; prints nothing, `on_step` before each step; returns an `Outcome`: the kept labels' `Placement`, the plan, the kept mask, every entry's rank and the kinds `cut`, which `report.summary` reads; `Outcome.shown`: which ranks of a kind are drawn) |
+| `labels/report.py` | `progress` (on a terminal, a bar of the rank being placed), `rank_table` (placed/total per kind and rank, coloured on a tty unless `NO_COLOR`, and each kind's dropped labels, biggest first), `summary` (the skipped labels, the kinds cut, then the table) |
 | `labels/geometry.py` | `nearest_point_on_rect`, `two_line`, `Coverage` (summed-area table of a shape: `area` of boxes, `contains` of points), `coverage` (a label's, cached), `on_feature` (a label's pieces on its feature, judged by the solver's kernel: `overhang_of`, `inside_share`) |
 | `disjoint.py` | `DisjointSets` (union-find: `find`, `union`, `groups`): pieces joined at the seam, river networks, same-named rivers |
 | `curves.py` | `arc_lengths`, `along`, `bend` (points along a polyline + its left normal): text bending for `colorbars.curved_title` and water labels |
-| `render.py` | `new_figure`, `draw_countries`, `draw_stripes`, `draw_borders`, `draw_states`, `draw_rivers`, `draw_lakes`, `subtract_lakes`, `glyph_patch`, `draw_labels`, `draw_water_labels` (both from the `Placement` alone), `HALO`, line widths and z-orders |
+| `render.py` | `new_figure`, `draw_countries`, `draw_stripes`, `draw_borders`, `draw_states`, `draw_rivers`, `drawable_lakes` (>= `LAKE_MIN_PX`), `draw_lakes`, `subtract_lakes`, `glyph_patch`, `draw_labels`, `draw_water_labels` (both from the `Placement` alone), `HALO`, line widths and z-orders |
 
 Pipeline (`cli.main`):
 1. **Colouring** of all country features. Dependencies (`is_dependency`: `SOVEREIGNT != ADMIN`, not a lease or
@@ -91,8 +91,8 @@ Pipeline (`cli.main`):
    (`UNWEIGHTED_LARGEST = 10`, but the test is `rank < 10`, so 9 are exempt; kept for output stability).
 2. **Drawing**: full Robinson globe outline (poles included; the canvas is its bounding box plus a small pad; Antarctica is drawn in
    hardcoded white with no label), outline stroked, figure background transparent, country fills, state lines for `STATE_COUNTRIES`, Baikonur special case.
-   The country polygons cover lakes, so every lake in `ne_10m_lakes.zip` (a `physical/` NE file) of >= `LAKE_MIN_KM2`,
-   minus the usually-dry `DRY_LAKES`, is painted back in `OCEAN` at zorder 2.5 (above the state lines that cross them;
+   The country polygons cover lakes, so every lake in `ne_10m_lakes.zip` (a `physical/` NE file) covering >= `LAKE_MIN_PX` = 10 poster pixels of the frame
+   (`drawable_lakes`; a crop shows smaller lakes), minus the usually-dry `DRY_LAKES`, is painted back in `OCEAN` at zorder 2.5 (above the state lines that cross them;
    `holed_patches` keeps islands). The lakes are then subtracted (`subtract_lakes`), so label placement treats them as water.
 3. **Labels**: anchor points, font size, in/out mode, wrapping, then `place_by_priority`: labels are ranked into
    fifths by full size and placed step by step (rank, then `--label` kind), each step a cost-minimising placement
@@ -288,6 +288,13 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
   water by over `OVERHANG_MAX` = 30% at either end (`overhang_of`: per glyph; a gap in the middle is fine) or out of
   a crop's outline, is skipped for good. A water label pushed off its water first looks for a smaller label of the
   step overlapping it at its anchor: that one is skipped instead and the step re-solved.
+- Saturation cut: features whose label can't be laid out at all (`Unplaced`: a river shorter than its name, a bay
+  under `WATER_MIN_INSIDE`) are ranked with the labels and count as failed in their step. A step with >= `CUT_MIN_DROPS`
+  = 5 failed, >= `CUT_SHARE` = 30% of it, is undone (a `Placement.copy` snapshot, so what it nudged goes back) and its
+  kind is *cut* at that rank: no later rank of it is tried. Every kind can be cut, countries too. A label-driven
+  feature (rivers: `cli.shown_rivers`) is drawn iff its rank is before its kind's cut; one without a label ranks
+  `UNLABELED` = 6, drawn only when the kind wasn't cut. The world map with `--label countries,water` cuts seas, lakes
+  and straits from rank 2, rivers from 3. Lakes are not label-driven (`LAKE_MIN_PX`).
 - So big labels are never pushed around by small ones (a river name once moved Czech Republic to Denmark), and in
   a crop the frame's biggest features win, whatever their kind.
 
@@ -317,13 +324,13 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
   `ESCAPE_PX` past touching): steps are too coarse for a pixel or two (Lake Michigan, as long as its lake, was
   skipped for 1 px into the United States label's box).
 - Drawing: `PathPatch` in `WATER_TEXT` (OKLCH L 0.50 in the ocean hue) with an `OCEAN`-coloured halo, under the country
-  labels. `--label countries,water` takes ~17 s (vs ~10 s); ~720 of ~770 labels placed.
+  labels. `--label countries,water` takes ~23 s (vs ~10 s); ~690 of ~2000 candidates placed (most of the rest cut).
 
 ## `--rivers`
 
-Natural Earth `ne_10m_rivers_lake_centerlines` (`data.RIVERS`), scalerank 0 (biggest) to `RIVER_MAX_RANK` = 8;
-9+ are short tributaries; canals count as rivers. `render.draw_rivers` draws them in `RIVER` (OKLCH 0.54/0.10/240, darker
-than the ocean so it shows on every fill), `river_width` thinning linearly from `RIVER_WIDTH_MAX` to `RIVER_WIDTH_MIN`,
+Natural Earth `ne_10m_rivers_lake_centerlines` (`data.RIVERS`), every scalerank 0 (biggest) to 12; canals count as
+rivers. With river labels, only the lines whose rank isn't cut are drawn (`cli.shown_rivers`); without, every line. `render.draw_rivers` draws them in `RIVER` (OKLCH 0.54/0.10/240, darker
+than the ocean so it shows on every fill), `river_width` thinning linearly from `RIVER_WIDTH_MAX` to `RIVER_WIDTH_MIN` at `RIVER_THIN_RANK` = 8,
 thin ones first. `Z_RIVERS` = 2.2: above the state lines, below the lakes, which hide the centrelines through them.
 Labels ignore them.
 
@@ -343,7 +350,7 @@ Labels ignore them.
   however far the river wiggles above it (`height_above`). Its `geom` is a `RIVER_CORRIDOR_EM` buffer of the whole river.
 - Placement: by priority like every label (a river ranks by its whole length). Drawn in `RIVER_TEXT` with the
   country labels' white halo; capped at `RIVER_MAX_PT` and `RIVER_SCALE_MAX` x the crop's scale.
-- `--label countries,rivers` takes ~12 s; ~360 of ~385 river names kept.
+- `--label countries,rivers` takes ~12 s; rivers are cut from rank 3, ~310 of ~1060 river names kept.
 
 ## Gotchas
 
