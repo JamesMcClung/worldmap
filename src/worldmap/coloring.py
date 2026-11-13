@@ -269,7 +269,7 @@ def load_or_compute_coloring(countries: gpd.GeoDataFrame, major: list[bool], rec
     edges = add_proximity_edges(merged, adjacency(merged), merged_major, N_COLORS, max_gap=MAX_GAP, min_deg=MIN_DEG)
     edges |= {(min(node_of[a], node_of[b]), max(node_of[a], node_of[b])) for a, b in extra_edges if node_of[a] != node_of[b]}
     # Balance colour usage by country count, but don't count the largest countries, so their colours aren't penalised.
-    areas = merged.to_crs(EQUAL_AREA_CRS).geometry.area
+    areas = countries.km2.groupby(np.asarray(node_of)).sum()  # each merged node's: its rows' (data.with_km2)
     weights = [0.0 if rank < UNWEIGHTED_LARGEST else 1.0 for rank in areas.rank(ascending=False, method="first")]
     k, node_class = color_graph(len(merged), edges, weights, kmin=N_COLORS)
     class_pairs = {(min(node_class[i], node_class[j]), max(node_class[i], node_class[j])) for i, j in edges}
