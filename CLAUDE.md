@@ -355,16 +355,16 @@ Labels ignore them.
 - `rivers` is a water kind; `water` = all kinds (oceans, seas, lakes, straits, rivers). `--label rivers` or `water`
   also draws the rivers (`cli.draws_rivers`).
 - Bodies (`load_river_bodies`): the drawn rivers grouped by `river_name(name_en)` (English, merges Rhein/Rhin; drops
-  " River", `RIVER_NAMES` fixes; canals and delta channels are named too, though too short to fit on the world map), every drawn river (`RIVER_SIZE_MAX_RANK` only caps the size ramp). Natural
+  " River", `RIVER_NAMES` fixes; canals and delta channels are named too, though too short to fit on the world map), every drawn river. Natural
   Earth breaks rivers at lakes, reservoirs and junctions, so `longest_paths` joins ends within `RIVER_JOIN_M` and takes
   the longest path through each network's maximum spanning tree (an exhaustive search blew up on deltas). Same-named
   networks `RIVER_REPEAT_M` apart are labelled separately (Colorado US/Argentina). `WaterBody.geom` is the line.
-- `river_label`: italic, `river_size` by rank; `best_stretch` picks the straightest, most level stretch near the middle
+- `river_label`: italic, `river_size` linear in its line width (`river_width` of its thickest piece's scalerank: `RIVER_MAX_PT` 8.5 down to `RIVER_MIN_PT` 4.2); `best_stretch` picks the straightest, most level stretch near the middle
   for the name + an em; `fit_curve` on it; `lay_out(rise=)` puts the baseline `RIVER_GAP_EM` above the curve plus
   however far the river wiggles above it (`height_above`). Its `geom` is a `RIVER_CORRIDOR_EM` buffer of the whole river.
 - Placement: by priority like every label (a river ranks by its whole length). Drawn in `RIVER_TEXT` with the
   country labels' white halo; capped at `RIVER_MAX_PT` and `RIVER_SCALE_MAX` x the crop's scale.
-- `--label countries,rivers` takes ~11 s; rivers are cut from rank 4, ~410 of ~1060 river names kept.
+- `--label countries,rivers` takes ~11 s; rivers are cut from rank 5, ~590 of ~1060 river names kept.
 
 ## Gotchas
 
