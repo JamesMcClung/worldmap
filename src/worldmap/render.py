@@ -153,11 +153,12 @@ def subtract_lakes(countries_projected: gpd.GeoDataFrame, lakes_projected: gpd.G
 
 
 def draw_labels(ax: Axes, labels: list[Label], placement: Placement, frame: MapFrame) -> None:
-    """Move each label's text to its placed position, and draw leader lines and dots for 'out' labels."""
+    """Move each label's text to its placed position and size, and draw leader lines and dots for 'out' labels."""
     end_x, end_y = leader_ends(placement)
     for i, label in enumerate(labels):
         x, y = frame.px_to_map(placement.x[i], placement.y[i])
         label.text.set_position((float(x), float(y)))
+        label.text.set_fontsize(float(placement.size[i]))
         if placement.out[i]:
             x0, y0 = frame.px_to_map(placement.anchor_x[i], placement.anchor_y[i])
             x1, y1 = frame.px_to_map(end_x[i], end_y[i])
@@ -174,7 +175,8 @@ def draw_water_labels(ax: Axes, water: list[WaterLabel], placement: Placement, f
     river_halo = [pe.withStroke(linewidth=WATER_HALO_PX * 72 / DPI, foreground=RIVER_HALO)]
     for k, label in enumerate(water):
         river = label.kind == "rivers"
-        vertices = np.asarray(label.glyphs.vertices) + [placement.x[first + k], placement.y[first + k]]
+        scale = placement.size[first + k] / label.size  # shrunk in placing
+        vertices = np.asarray(label.glyphs.vertices) * scale + [placement.x[first + k], placement.y[first + k]]
         x, y = frame.px_to_map(vertices[:, 0], vertices[:, 1])
         path = Path(np.stack([x, y], -1), label.glyphs.codes)
         ax.add_patch(PathPatch(path, fc=RIVER_TEXT if river else WATER_TEXT, ec="none", lw=0, zorder=LABEL_ZORDER - 0.1,

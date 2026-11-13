@@ -55,21 +55,7 @@ def test_full_size_of_breakaways(countries: gpd.GeoDataFrame) -> None:
         assert labels[name].full_size > 0
 
 
-def test_label_shrinks_a_step_but_not_under_its_floor() -> None:
-    from test_placement import country_label
-
-    from worldmap.labels.label import SHRINK_FACTOR
-
-    label = country_label(make_frame(), "Atlantis", -35, 30, 500)
-    size, w, h = label.size, label.width, label.height
-    assert label.shrink_toward(size * 0.99) == pytest.approx(0.99)  # a whole step would go under: stops at the floor
-    assert label.size == pytest.approx(size * 0.99)
-    assert (label.width, label.height) == pytest.approx((w * 0.99, h * 0.99))
-    assert label.shrink_toward(label.size) == 1.0
-    assert label.shrink_toward(0) == SHRINK_FACTOR
-
-
-def test_label_min_size_and_unit() -> None:
+def test_label_min_size() -> None:
     from test_placement import country_label
 
     from worldmap.labels.label import SHRINK_MIN_PT
@@ -77,4 +63,4 @@ def test_label_min_size_and_unit() -> None:
     label = country_label(make_frame(), "Atlantis", -35, 30, 500)
     assert label.min_size == SHRINK_MIN_PT  # the world frame: label_scale 1
     label.label_scale = 2
-    assert label.min_size == 2 * SHRINK_MIN_PT and label.unit_px == label.height
+    assert label.min_size == 2 * SHRINK_MIN_PT

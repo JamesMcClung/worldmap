@@ -79,7 +79,7 @@ def test_country_can_shrink_for_water(frame: MapFrame, one_label: list[Label], w
     """A sea fixed over a country's label: the country label gives way, by moving or shrinking."""
     start = (np.array([one_label[0].anchor_x, water_on_top_of_it.anchor_x]), np.array([one_label[0].anchor_y, water_on_top_of_it.anchor_y]))
     p = placed(one_label, frame, water=[water_on_top_of_it], start=start, freedom=np.array([FREE, FIXED]))
-    assert clashes(p) == [] or one_label[0].size <= one_label[0].min_size
+    assert clashes(p) == [] or p.size[0] <= one_label[0].min_size
 
 
 def test_clash_is_symmetric(frame: MapFrame, one_label: list[Label], water_on_top_of_it: WaterLabel) -> None:
@@ -125,8 +125,8 @@ def test_oceans_shrink_no_smaller_than_ocean_floor(frame: MapFrame, monkeypatch:
     x, y = mid_atlantic_px(frame)
     ocean = water_label("OCEAN", (x, y), shapely.box(x - 500, y - 100, x + 500, y + 100), np.array([[-200.0, -20, 200, 20]]), 20, "oceans")
     monkeypatch.setattr(placement, "clashes", always_clashing)  # every shrink round shrinks it
-    placed([], frame, water=[ocean])
-    assert ocean.size == pytest.approx(OCEAN_MIN_PT)
+    p = placed([], frame, water=[ocean])
+    assert p.size[0] == pytest.approx(OCEAN_MIN_PT) and ocean.size == 20  # the label itself stays as laid out
 
 
 def test_fixed_labels_stay_put(frame: MapFrame, one_label: list[Label], water_on_top_of_it: WaterLabel) -> None:
@@ -152,8 +152,8 @@ def test_floors_hold(frame: MapFrame, monkeypatch: pytest.MonkeyPatch) -> None:
     x, y = mid_atlantic_px(frame)
     sea = water_label("Sea", (x, y), shapely.box(x - 100, y - 20, x + 100, y + 20), np.array([[-60.0, -10, 60, 10]]), 14)
     monkeypatch.setattr(placement, "clashes", always_clashing)  # every shrink round shrinks it
-    placed([], frame, water=[sea], floors=np.array([12.0]))
-    assert sea.size == pytest.approx(12.0)
+    p = placed([], frame, water=[sea], floors=np.array([12.0]))
+    assert p.size[0] == pytest.approx(12.0)
 
 
 def test_subset(frame: MapFrame, one_label: list[Label]) -> None:
@@ -162,6 +162,26 @@ def test_subset(frame: MapFrame, one_label: list[Label]) -> None:
     q = subset(p, np.array([True, False, True]))
     assert q.n == 2 and q.owner.tolist() == [0, *[1] * len(bay.parts)] and q.water.tolist() == [False, True]
     assert np.array_equal(rects(q), rects(p)[p.owner != 1])
+
+
+def test_shrink_step_stops_at_the_floor() -> None:
+    from worldmap.labels.placement import SHRINK_FACTOR, shrink_step
+
+    assert shrink_step(10, 0) == SHRINK_FACTOR
+    assert shrink_step(10, 9.9) == pytest.approx(0.99)  # a whole step would go under: stops at the floor
+    assert shrink_step(10, 10) == 1.0 and shrink_step(10, 12) == 1.0
+
+
+def test_shrinking_scales_a_labels_extent_and_rects(frame: MapFrame, monkeypatch: pytest.MonkeyPatch, one_label: list[Label]) -> None:
+    sea, _ = crossing_water_labels(frame)
+    before = Placement.of(one_label, [sea])
+    monkeypatch.setattr(placement, "clashes", lambda p, among=None: [0, 1])  # every shrink round shrinks both
+    p = placed(one_label, frame, water=[sea], freedom=np.array([FIXED, FIXED]))
+    assert (p.size == before.size).all()  # fixed: no shrinking
+    p = placed(one_label, frame, water=[sea], floors=np.array([0.5 * one_label[0].size, 0.5 * sea.size]))
+    assert p.size == pytest.approx(0.5 * before.size)
+    assert p.width == pytest.approx(0.5 * before.width) and p.height == pytest.approx(0.5 * before.height)
+    assert p.parts == pytest.approx(0.5 * before.parts)
 
 
 def test_water_floor_scales_with_the_frame() -> None:

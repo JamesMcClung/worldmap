@@ -125,9 +125,6 @@ def test_water_label_layout(frame: MapFrame, lakes_projected: gpd.GeoDataFrame) 
     assert OCEAN_MIN_PT <= atlantic.size <= OCEAN_PT and WATER_MIN_PT <= med.size <= SEA_MAX_PT
     assert len(med.parts) == len("MediterraneanSea")
     assert med.inside_share(med.anchor_x, med.anchor_y) >= WATER_MIN_INSIDE
-    width = med.parts[:, 2].max() - med.parts[:, 0].min()
-    med.scale(0.5)
-    assert med.parts[:, 2].max() - med.parts[:, 0].min() == pytest.approx(width / 2)
 
 
 def test_hopeless_bodies_left_out(frame: MapFrame, lakes_projected: gpd.GeoDataFrame) -> None:
@@ -288,11 +285,8 @@ def test_inside_share_counts_glyphs_by_their_centres() -> None:
     assert lake.inside_share(30, 0) == pytest.approx(0.7)  # the right 3 glyphs' centres are past x = 52
 
 
-def test_water_label_shrinks_to_its_floor_and_no_further() -> None:
+def test_water_label_name() -> None:
     from test_placement import water_label
 
     sea = water_label("Sea", (0, 0), shapely.box(0, 0, 10, 10), np.array([[-30.0, -7, 30, 7]]), 10)
     assert sea.name == sea.text == "Sea"
-    assert sea.shrink_toward(9.9) == pytest.approx(0.99) and sea.size == pytest.approx(9.9)
-    assert sea.shrink_toward(9.9) == 1.0
-    assert sea.unit_px == pytest.approx(9.9 * PX_PER_PT)

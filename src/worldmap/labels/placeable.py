@@ -18,16 +18,5 @@ class Placeable(Covered, Protocol):
         ...
 
     @property
-    def size(self) -> float:  # pt
-        ...
-
-    @property
     def min_size(self) -> float:  # pt: it shrinks no further
-        ...
-
-    @property
-    def unit_px(self) -> float:  # its nudge's unit: a height, or an em
-        ...
-
-    def shrink_toward(self, floor: float) -> float:  # shrinks a step, stopping at floor; returns the factor (1: none)
         ...

@@ -31,8 +31,7 @@ FONT_SCALE = 1.6  # font size (pt) = FONT_SCALE / 10 x sqrt(area), with the area
 POINTS_PER_INCH = 72
 LABEL_ZORDER = 6
 HALO = [pe.withStroke(linewidth=2.2, foreground=(1, 1, 1, 0.55))]
-SHRINK_FACTOR = 0.94  # a label still clashing after a descent shrinks by this...
-SHRINK_MIN_PT = 5  # ...down to no less than this (scaled by the frame's label_scale)
+SHRINK_MIN_PT = 5  # a label shrinks (placement.shrink_step) down to no less than this (scaled by the frame's label_scale)
 BOX_PAD_X, BOX_PAD_Y = 1.06, 1.15  # label box = rendered text extent scaled by these
 
 # Island-heavy countries: several polygons of at least SIGNIFICANT_SHARE of the largest, the largest being under
@@ -72,31 +71,13 @@ class Label:
 
     @property
     def size(self) -> float:
-        """Its font size (pt)."""
+        """Its font size (pt), as laid out: placing it may shrink it (Placement.size)."""
         return float(self.text.get_fontsize())
 
     @property
     def min_size(self) -> float:
         """The smallest it may shrink to (pt)."""
         return SHRINK_MIN_PT * self.label_scale
-
-    @property
-    def unit_px(self) -> float:
-        """How far a nudged label's moves are measured in: its height."""
-        return self.height
-
-    def shrink_toward(self, floor: float) -> float:
-        """Shrink text and box a step (shrink_step); return the factor."""
-        factor = shrink_step(self.size, floor)
-        self.text.set_fontsize(self.size * factor)
-        self.width *= factor
-        self.height *= factor
-        return factor
-
-
-def shrink_step(size: float, floor: float) -> float:
-    """The factor a label of `size` (pt) shrinks by: SHRINK_FACTOR, or less so as to stop at `floor`; 1 at or under it."""
-    return 1.0 if size <= floor else max(SHRINK_FACTOR, floor / size)
 
 
 def measure(label: Label, renderer: RendererBase) -> None:

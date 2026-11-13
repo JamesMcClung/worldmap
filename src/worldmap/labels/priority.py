@@ -197,7 +197,7 @@ def place_by_priority(labels: list[Label], water: list[WaterLabel], frame: MapFr
         for i in new:
             if active[i]:
                 settled[i] = True
-                home_x[i], home_y[i], settled_size[i] = p.x[i], p.y[i], items[i].size
+                home_x[i], home_y[i], settled_size[i] = p.x[i], p.y[i], p.size[i]
     print("labels skipped:", skipped)
     print(rank_table(plan, kinds, order, set(np.flatnonzero(active).tolist()), sys.stdout.isatty() and "NO_COLOR" not in os.environ,
                      [item.name for item in items]))

@@ -13,7 +13,7 @@ from worldmap.labels import kernels
 from worldmap.labels.geometry import Coverage, coverage, nearest_point_on_rect
 from worldmap.labels.label import Label
 from worldmap.labels.placeable import Placeable
-from worldmap.labels.water import WaterLabel
+from worldmap.labels.water import PX_PER_PT, WaterLabel
 
 SEED = 7
 OUTLINE_SIMPLIFY_PX = 0.5
@@ -39,6 +39,7 @@ SHRINK_ROUNDS = 12  # rounds of shrinking still-overlapping labels...
 SHRINK_PASSES = 15  # ...each followed by this many passes
 OVERHANG_MAX = 0.3  # a label on its feature (not 'out') may hang off either end of it by no more than this share of its length
 STAY_BIAS = 1e-6  # ties go to the current position
+SHRINK_FACTOR = 0.94  # a label still clashing after a descent shrinks by this (down to its floor)
 FIXED, NUDGE, FREE = 0, 1, 2  # a label's freedom: stays put; moves (and shrinks) a little, at a cost; moves freely
 
 
@@ -68,12 +69,14 @@ class Placement:
     """Per-label arrays: the country labels in their order, then the water labels. x/y are box centres for country
     labels; for a water label they are where its anchor goes, and width/height are its glyph boxes' extent (only
     used to scale its moves). Every label's rects are in `parts` (offsets from x/y), `owner` their label
-    (ascending): a country label's box, a water label's glyph boxes."""
+    (ascending): a country label's box, a water label's glyph boxes. The labels themselves stay as laid out:
+    shrinking changes only `size` (pt) and the extents here, which the draw functions read."""
 
     x: np.ndarray
     y: np.ndarray
     width: np.ndarray
     height: np.ndarray
+    size: np.ndarray
     anchor_x: np.ndarray
     anchor_y: np.ndarray
     out: np.ndarray  # bool
@@ -97,6 +100,7 @@ class Placement:
             anchor_x.copy(), anchor_y.copy(),
             np.array([label.width for label in labels] + [e[0] for e in extent], float),
             np.array([label.height for label in labels] + [e[1] for e in extent], float),
+            np.array([label.size for label in labels] + [w.size for w in water], float),
             anchor_x, anchor_y, np.array([label.out for label in labels] + [False] * len(water), bool),
             np.array([False] * len(labels) + [True] * len(water), bool),
             np.vstack([np.zeros((0, 4)), *boxes, *[w.parts for w in water]]),
@@ -112,6 +116,16 @@ def overhang(on: Sequence[bool] | np.ndarray) -> float:
     if not flags.any():
         return 1.0
     return max(int(np.argmax(flags)), int(np.argmax(flags[::-1]))) / len(flags)
+
+
+def unit_px(p: Placement, i: int) -> float:
+    """What label i's moves are measured in: a country label's height, a water label's em."""
+    return float(p.size[i] * PX_PER_PT if p.water[i] else p.height[i])
+
+
+def shrink_step(size: float, floor: float) -> float:
+    """The factor a label of `size` (pt) shrinks by: SHRINK_FACTOR, or less so as to stop at `floor`; 1 at or under it."""
+    return 1.0 if size <= floor else max(SHRINK_FACTOR, floor / size)
 
 
 def leader_ends(p: Placement) -> tuple[np.ndarray, np.ndarray]:
@@ -153,7 +167,7 @@ def cost_batch(p: Placement, labels: Sequence[Placeable], i: int, cx: np.ndarray
     o = (outline.table, outline.x0, outline.y0, outline.step)
     cx, cy = np.asarray(cx, float), np.asarray(cy, float)
     if p.water[i]:
-        return kernels.water_cost(i, cx, cy, p.parts[p.owner == i], label.unit_px, (float(label.anchor_x), float(label.anchor_y)),
+        return kernels.water_cost(i, cx, cy, p.parts[p.owner == i], unit_px(p, i), (float(label.anchor_x), float(label.anchor_y)),
                                   p.x, p.y, p.width, p.height, p.anchor_x, p.anchor_y, p.out, p.water, active, placed, p.owner,
                                   cover.table, cover.x0, cover.y0, cover.step, *o, OVERHANG_MAX, weight_array(weights))
     return kernels.country_cost(i, cx, cy, p.x, p.y, p.width, p.height, p.anchor_x, p.anchor_y, p.out, p.water, active, placed, p.owner,
@@ -190,8 +204,8 @@ def place_labels(p: Placement, items: Sequence[Placeable], frame: MapFrame, seed
                  floors: np.ndarray | None = None) -> None:
     """Place the `active` labels of `p` (a mask, default all; the rest are ignored), `items` being its labels in its
     order, from where they are, moving p. Free 'out' labels first move, in order, to their best spot, so they start
-    separated; then coordinate descent. Labels still clashing after it (clashes) are shrunk slightly (their text
-    too) and the descent repeated. `freedom` (per label, default FREE): FIXED labels stay where they are, at their
+    separated; then coordinate descent. Labels still clashing after it (clashes) are shrunk a step (shrink_step:
+    in p, not the labels) and the descent repeated. `freedom` (per label, default FREE): FIXED labels stay where they are, at their
     size; NUDGE labels pay `weights.nudge` for their distance from `home` (default: where they start). `floors`:
     the size (pt) each label shrinks no lower than (default: each label's min_size)."""
     active = np.ones(p.n, bool) if active is None else active
@@ -214,7 +228,7 @@ def place_labels(p: Placement, items: Sequence[Placeable], frame: MapFrame, seed
         cx, cy = candidates(p, items, i, grid)
         cost = cost_batch(p, items, i, cx, cy, weights, outline, placed, active)
         if freedom[i] == NUDGE and not p.out[i]:  # an 'out' label has no spot of its own to keep, only its dot
-            away = np.hypot(cx - home_x[i], cy - home_y[i]) / items[i].unit_px
+            away = np.hypot(cx - home_x[i], cy - home_y[i]) / unit_px(p, i)
             cost += np.where(away <= weights.nudge_max, weights.nudge * away, np.inf)
         cost[0] -= stay_bias
         j = int(np.argmin(cost))
@@ -236,7 +250,8 @@ def place_labels(p: Placement, items: Sequence[Placeable], frame: MapFrame, seed
         if not clashing:
             break
         for i in clashing:
-            factor = items[i].shrink_toward(floors[i])
+            factor = shrink_step(p.size[i], floors[i])
+            p.size[i] *= factor
             p.width[i] *= factor
             p.height[i] *= factor
             p.parts[first[i]:first[i + 1]] *= factor
@@ -248,7 +263,7 @@ def subset(p: Placement, keep: np.ndarray) -> Placement:
     """The placement of the `keep` labels (boolean mask) only, in the same order."""
     new_index = np.cumsum(keep) - 1
     glyph_kept = keep[p.owner]
-    return Placement(p.x[keep], p.y[keep], p.width[keep], p.height[keep], p.anchor_x[keep], p.anchor_y[keep], p.out[keep],
+    return Placement(p.x[keep], p.y[keep], p.width[keep], p.height[keep], p.size[keep], p.anchor_x[keep], p.anchor_y[keep], p.out[keep],
                      p.water[keep], p.parts[glyph_kept], new_index[p.owner[glyph_kept]])
 
 
