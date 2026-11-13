@@ -11,7 +11,7 @@ from worldmap.frame import MapFrame
 from worldmap.labels.geometry import Covered, coverage
 from worldmap.labels.label import Label
 from worldmap.labels.placeable import Placeable
-from worldmap.labels.placement import FIXED, FREE, NUDGE, OVERHANG_MAX, Placement, clash, outside_outline, overhang, place_labels, rects_of, subset
+from worldmap.labels.placement import FIXED, FREE, NUDGE, OVERHANG_MAX, Placement, clash, glyph_boxes, outside_outline, overhang, place_labels, rects_of, subset
 from worldmap.labels.water import WATER_KINDS, WaterLabel
 
 N_RANKS = 5
@@ -116,8 +116,7 @@ def overhang_of(p: Placement, k: int, item: Covered) -> float:
     """overhang of label k: of its glyphs (a water label), each on its water if its box's centre is, as the solver
     has it (cost_batch); or of OVERHANG_SLICES slices of its box (a country), each on it if at least half over it."""
     if p.water[k]:
-        rects, owner = rects_of(p)
-        g = rects[owner == k]
+        g = glyph_boxes(p)[p.owner == k]
         return overhang(coverage(item).contains((g[:, 0] + g[:, 2]) / 2, (g[:, 1] + g[:, 3]) / 2))
     x0, y0, w, h = p.x[k] - p.width[k] / 2, p.y[k] - p.height[k] / 2, p.width[k], p.height[k]
     edges = x0 + w * np.arange(OVERHANG_SLICES + 1) / OVERHANG_SLICES
