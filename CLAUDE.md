@@ -69,9 +69,9 @@ Importing any module has no side effects; only `cli.main` (after choosing the ba
 | `labels/label.py` | `Label` dataclass, `make_labels` (anchors, sizes, exclaves), `decide_out_and_wrap` |
 | `labels/regions.py` | `--label territories`: `ChildRegion`, `HAND_PICKED` (parent + lon/lat boxes), `child_regions` |
 | `labels/water.py` | `--label oceans,seas,lakes,straits,rivers,water`: `kinds_from_labels`, `classify`, `WaterBody`, `load_water_bodies`, `river_name`, `longest_paths`, `load_river_bodies`, `best_stretch`, `river_label`, `fit_curve`, `body_curve`, `WaterLabel`, `make_water_labels`, style constants |
-| `labels/placement.py` | `CostWeights`, `Placement` (per-label arrays, `size`; `parts`: every label's rects, a country label's box its one part; `Placement.of`), `rects`, `unit_px`, `shrink_step`, `FIXED`/`NUDGE`/`FREE`, `overhang`, `cost_batch`, `candidates`, `clash`/`clashes`, `place_labels` (moves a `Placement` in place: `active`, `freedom`, `home`, `floors`), `subset`, `outline_coverage`, `outside_outline`, `leader_ends` |
+| `labels/placement.py` | `CostWeights`, `Placement` (per-label arrays, `size`; `parts`: every label's rects, a country label's box its one part; `Placement.of`), `rects`, `unit_px`, `shrink_step`, `FIXED`/`NUDGE`/`FREE`, `OVERHANG_SLICES`, `overhang`, `cost_batch`, `candidates`, `clash`/`clashes`, `place_labels` (moves a `Placement` in place: `active`, `freedom`, `home`, `floors`), `subset`, `outline_coverage`, `outside_outline`, `leader_ends` |
 | `labels/placeable.py` | `Placeable`: what the solvers ask of a country or water label (`name`, `kind`, `full_size`, anchor, `min_size`, `geom`/`cover`) |
-| `labels/kernels.py` | numba (`@njit(cache=True)`) loops behind `cost_batch`, `clash` and `candidates`; weights passed as an array in `CostWeights` field order (`weight_array`) |
+| `labels/kernels.py` | numba (`@njit(cache=True)`) loops behind `cost_batch` (`label_cost`: one kernel for every label, as its rects; `by_area` measures a country's box by area, a water label's glyphs by centre), `clash` and `candidates`; weights passed as an array in `CostWeights` field order (`weight_array`) |
 | `labels/priority.py` | `label_order`, `ranks_by_quantile` (fifths by area, a river's length x `RIVER_KM2_PER_KM`), `steps`, `overhang_of`, `place_by_priority` (step by step, biggest rank first), `rank_table` (printed after placement: placed/total per kind and rank, coloured on a tty unless `NO_COLOR`, and each kind's dropped labels biggest first, cut to `DROPPED_WIDTH`) |
 | `labels/geometry.py` | `rect`, `nearest_point_on_rect`, `two_line`, `Coverage` (summed-area table of a shape: `area` of boxes, `contains` of points), `coverage` (a label's, cached) |
 | `disjoint.py` | `DisjointSets` (union-find: `find`, `union`, `groups`): pieces joined at the seam, river networks, same-named rivers |
@@ -265,7 +265,8 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
   short narrow one) becomes an "out" label with a leader line. Long names wrap onto 2 lines when much wider than their
   country; stuck labels shrink (floor `SHRINK_MIN_PT` x `label_scale`) before being skipped.
 - Cost terms: label must lie inside the globe outline, label-label overlap, covering another leader's dot, leader/label and leader/leader crossings,
-  drifting outside the country, leader length, a nudged label's distance from where it settled; weights in `CostWeights`.
+  drifting outside the country (`off_feature`, `drift`), hanging off it by over `OVERHANG_MAX` (`overhang`, in
+  `OVERHANG_SLICES` upright slices), leader length, a nudged label's distance from where it settled; weights in `CostWeights`.
   Box tests against a country, water body or the outline read its `Coverage` (summed-area table), not shapely; the
   inner loops are numba kernels (`labels/kernels.py`, compiled on first run and cached in `__pycache__`).
 
@@ -279,12 +280,11 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
 - One `Placement` holds every label; each step solves it over the active ones (kept so far, and the step's), the step's labels `FREE`, the kept labels of this rank and the one before `NUDGE`d
   (they pay `CostWeights.nudge` per height/em from where they settled, at most `nudge_max`, and shrink to no less
   than `NUDGE_MIN_SCALE` of their settled size), older ones `FIXED`. Then the step's labels are checked smallest
-  first: one clashing (`clash`, symmetric for every kind) with a label still kept, or a water label hanging off its
+  first: a country label clashing (`clash`, symmetric for every kind) with a label still kept, or hanging off its
+  country by over `OVERHANG_MAX`, becomes 'out' (leader) and the step is re-solved; one already out and clashing, or a water label clashing or hanging off its
   water by over `OVERHANG_MAX` = 30% at either end (`overhang_of`: per glyph; a gap in the middle is fine) or out of
   a crop's outline, is skipped for good. A water label pushed off its water first looks for a smaller label of the
-  step overlapping it at its anchor: that one is skipped instead and the step re-solved. A country label hanging off
-  its country by over `OVERHANG_MAX` (judged in `OVERHANG_SLICES` upright slices) becomes 'out' (leader) and the
-  step is re-solved.
+  step overlapping it at its anchor: that one is skipped instead and the step re-solved.
 - So big labels are never pushed around by small ones (a river name once moved Czech Republic to Denmark), and in
   a crop the frame's biggest features win, whatever their kind.
 
@@ -304,10 +304,8 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
 - `WaterLabel`: one bent `Path` per label plus a halo-padded box per glyph (`parts`), both relative to its position.
   Bodies whose name doesn't sit >= `WATER_MIN_INSIDE` over them at their anchor are left out up front (`inside_share`:
   glyph box area whose centres are on the water, as the solver counts it).
-- Solver: water labels come after the country labels in `Placement`; x/y is their anchor position. Country terms skip
-  water labels' boxes (so with no water every array is as before), plus overlap with water glyph boxes and their own
-  leader crossing them. Water labels: glyph-box overlap with everything, other leaders/dots, `outside_water` (glyph
-  centres over the body, approximate), `water_drift`, outside globe. A label still clashing (`clashes`, any kind)
+- Solver: water labels come after the country labels in `Placement`; x/y is their anchor position. Every label pays
+  the same terms on its rects (`label_cost`); a water label's `off_feature` counts glyph centres over the body. A label still clashing (`clashes`, any kind)
   after descent shrinks a step (`shrink_step`): in the `Placement` only (`size`, extents, rects); the labels stay as
   laid out and the draw functions take the size from the placement.
 - Water labels also try steps of a tenth and a fifth of their extent (`WATER_STEP_SCALES`: big steps leave narrow
