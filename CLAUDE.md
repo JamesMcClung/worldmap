@@ -305,8 +305,8 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
 - Solver: water labels come after the country labels in `Placement`; x/y is their anchor position. Country terms skip
   water labels' boxes (so with no water every array is as before), plus overlap with water glyph boxes and their own
   leader crossing them. Water labels: glyph-box overlap with everything, other leaders/dots, `outside_water` (glyph
-  centres over the body, approximate), `water_drift`, outside globe. `clashes` -> (country, water); country labels shrink
-  only for country clashes, water labels for anything.
+  centres over the body, approximate), `water_drift`, outside globe. A label still clashing (`clashes`, any kind)
+  after descent shrinks a step (`shrink_step`).
 - Water labels also try steps of a tenth and a fifth of their extent (`WATER_STEP_SCALES`: big steps leave narrow
   water); `CostWeights.overhang` keeps them within `OVERHANG_MAX` of their water.
 - Drawing: `PathPatch` in `WATER_TEXT` (OKLCH L 0.50 in the ocean hue) with an `OCEAN`-coloured halo, under the country
