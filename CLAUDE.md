@@ -55,7 +55,7 @@ Importing any module has no side effects; only `cli.main` (after choosing the ba
 
 | Module | Contents |
 |---|---|
-| `cli.py` | `parse_args` (`--label`: `label_kinds`, an ordered list (the order kinds are placed in within a rank) that replaces the default `countries`; `none` = no labels), `graph_fills` (palette + Baikonur), `main()`: the pipeline as a sequence of stage calls |
+| `cli.py` | `parse_args` (`--label`: `label_kinds`, an ordered list (the order kinds are placed in within a rank) that replaces the default `countries`; `none` = no labels), `graph_fills` (palette + Baikonur), `main()`: the pipeline as a sequence of stage calls, `place` (`place_by_priority` with the progress line and `summary` on a terminal) |
 | `data.py` | `fetch`, `fetch_all`, `confirm_download`, `etopo15_tile`, file names (`MARINE`: the marine label areas; `RIVERS`), `CRS`, `STATE_COUNTRIES`, lakes filter, `is_dependency`, `parent_index`, `is_labeled`, `load_*` (`load_rivers`: scalerank <= `RIVER_MAX_RANK`, no canals) |
 | `frame.py` | `MapFrame` (transformers, outline, extent, `crs`, `globe`, `clip`, `label_scale`, `width_in`/`height_in`, `px_per_unit`, `units_per_in`, `canvas`, `project`, `visible`, `to_px`, `px_to_map`), `make_frame`, `cut`, `join_at_antimeridian`, `lon_ranges`, `DPI`, `POSTER_WIDTH_IN` |
 | `crop.py` | `--crop`: `parse_box`, `box_region`, `extent`, `sphere_centre`, `sample_lonlat`, `clip_boxes`, `canvas_centre`, `reach`, `seam_boxes`, `globe_outline`, `crop_frame`, `round_pole`, `fit_frame`, `canvas_frame`, `with_label_scale`, `parse_centre`, `centre_frame`, `centre_recipe`, `centre_spec`, `Candidate`, `candidates`, `matches`, `describe`, `checklist`, `choose` |
@@ -66,14 +66,16 @@ Importing any module has no side effects; only `cli.main` (after choosing the ba
 | `colorbars.py` | `--type topographic`: `bar_region`, `globe_side`, `inner_side`, `curved_title`, `draw_colorbar` (right-triangle bars in the canvas corners; rectangles in a crop) |
 | `earth.py` | `--color earth`: `earth_values` (raster sampling, cache), `earth_fill`, `build_regions`, `share_across_seam`, `join_touching`, `fill_at` |
 | `pins.py` | `load_pins`, `PinStyle` (every sprite shading constant), `pin_sprite`, `draw_pins`, `pick_pins` |
-| `labels/label.py` | `Label` dataclass (`glyphs`: its outlines), `lay_out` (TextPath, no figure needed), `make_labels` (anchors, sizes, exclaves; biggest `full_size` first), `decide_out_and_wrap` |
+| `labels/text.py` | `PX_PER_PT`, `font`, `text_width`, `lines` (straight, centred lines), `bent` (glyphs bent along a curve): text as `TextPath` outlines, no figure needed |
+| `labels/label.py` | `Label` dataclass (`glyphs`: its outlines), `lay_out` (`text.lines`, box padded), `make_labels` (anchors, sizes, exclaves; biggest `full_size` first), `decide_out_and_wrap` |
 | `labels/regions.py` | `--label territories`: `ChildRegion`, `HAND_PICKED` (parent + lon/lat boxes), `child_regions` |
 | `labels/water.py` | `--label oceans,seas,lakes,straits,rivers,water`: `kinds_from_labels`, `classify`, `WaterBody`, `load_water_bodies`, `river_name`, `longest_paths`, `load_river_bodies`, `best_stretch`, `river_label`, `fit_curve`, `body_curve`, `WaterLabel`, `make_water_labels`, style constants |
-| `labels/placement.py` | `CostWeights`, `Placement` (per-label arrays, `size`; `parts`: every label's rects, a country label's box its one part; `items`: the labels, `each`/`labels`/`water_labels`; `Placement.of`), `rects`, `unit_px`, `shrink_step`, `FIXED`/`NUDGE`/`FREE`, `OVERHANG_SLICES`, `overhang`, `cost_batch`, `candidates`, `clash`/`clashes`, `place_labels` (moves a `Placement` in place: `active`, `freedom`, `home`, `floors`), `subset`, `outline_coverage`, `outside_outline`, `leader_ends` |
-| `labels/placeable.py` | `Placeable`: what the solvers ask of a country or water label (`name`, `kind`, `full_size`, anchor, `min_size`, `geom`/`cover`) |
-| `labels/kernels.py` | numba (`@njit(cache=True)`) loops behind `cost_batch` (`label_cost`: one kernel for every label, as its rects; `by_area` measures a country's box by area, a water label's glyphs by centre), `clash`, `candidates` and `escapes`; weights passed as an array in `CostWeights` field order (`weight_array`) |
-| `labels/priority.py` | `label_order`, `ranks_by_quantile` (fifths by area, a river's length x `RIVER_KM2_PER_KM`), `steps`, `overhang_of`, `check_step` (-> `Verdict`: out, rival, skip), `place_by_priority` (step by step, biggest rank first; returns the kept labels' `Placement`), `progress` (on a terminal, a bar of the rank being placed), `rank_table` (printed after placement: placed/total per kind and rank, coloured on a tty unless `NO_COLOR`, and each kind's dropped labels, biggest first) |
-| `labels/geometry.py` | `nearest_point_on_rect`, `two_line`, `Coverage` (summed-area table of a shape: `area` of boxes, `contains` of points), `coverage` (a label's, cached) |
+| `labels/placement.py` | `CostWeights`, `Placement` (per-label arrays, `size`; `parts`: every label's rects, a country label's box its one part; `items`: the labels, any order, `each`/`labels`/`water_labels`; `Placement.of`), `rects`, `unit_px`, `shrink_step`, `FIXED`/`NUDGE`/`FREE`, `OVERHANG_SLICES`, `overhang`, `cost_batch`, `candidates`, `clash`/`clashes`, `place_labels` (moves a `Placement` in place: `active`, `freedom`, `home`, `floors`), `subset`, `outline_coverage`, `outside_outline`, `leader_ends` |
+| `labels/placeable.py` | `Placeable`: what the solvers ask of a country or water label (`name`, `kind`, `full_size`, anchor, `size`, `min_size`, `parts`, `width`/`height`, `out`, `water`, `geom`/`cover`) |
+| `labels/kernels.py` | numba (`@njit(cache=True)`) loops behind `cost_batch` (`label_cost`: one kernel for every label, as its rects; `on_feature`: `by_area` measures a country's box by area, a water label's glyphs by centre), `clash`, `candidates` and `escapes`; weights passed as an array in `CostWeights` field order (`weight_array`) |
+| `labels/priority.py` | `label_order`, `ranks_by_quantile` (fifths by area, a river's length x `RIVER_KM2_PER_KM`), `steps`, `overhang_of`, `check_step` (-> `Verdict`: out, rival, skip), `place_by_priority` (step by step, biggest rank first; prints nothing, `on_step` before each step; returns the kept labels' `Placement`) |
+| `labels/report.py` | `progress` (on a terminal, a bar of the rank being placed), `rank_table` (placed/total per kind and rank, coloured on a tty unless `NO_COLOR`, and each kind's dropped labels, biggest first), `summary` (the skipped labels, then the table) |
+| `labels/geometry.py` | `nearest_point_on_rect`, `two_line`, `Coverage` (summed-area table of a shape: `area` of boxes, `contains` of points), `coverage` (a label's, cached), `on_feature` (a label's pieces on its feature, judged by the solver's kernel: `overhang_of`, `inside_share`) |
 | `disjoint.py` | `DisjointSets` (union-find: `find`, `union`, `groups`): pieces joined at the seam, river networks, same-named rivers |
 | `curves.py` | `arc_lengths`, `along`, `bend` (points along a polyline + its left normal): text bending for `colorbars.curved_title` and water labels |
 | `render.py` | `new_figure`, `draw_countries`, `draw_stripes`, `draw_borders`, `draw_states`, `draw_rivers`, `draw_lakes`, `subtract_lakes`, `glyph_patch`, `draw_labels`, `draw_water_labels` (both from the `Placement` alone), `HALO`, line widths and z-orders |
@@ -217,7 +219,7 @@ oceans) gets Equal Earth centred on its longitude instead, clipped a hair either
   only (`candidates`, built in the world frame, then lon/lat). A country's extent leaves out what territories label
   separately (`HAND_PICKED`, which also has the far-flung islands for this). `Candidate.aliases` match too: a
   country's `NAME_EN` (UAE), a territory's parent (so `united` lists Alaska (US) beside the United States).
-  Several matches: a `questionary` `checklist` (no select-all/invert keys; exact first, `describe` = text, kind,
+  Several matches: a `questionary` `checklist` (no select-all/invert keys; exact first, then by kind, biggest `full_size` first; `describe` = text, kind,
   and the centre crop that reproduces the crop, to copy and adjust). Every name crop prints that of everything chosen
   (`cropping to France; the same as --crop 2.62,46.33/1375km,1270km`): `centre_recipe` takes the canvas's middle
   (`canvas_centre`) and bisects each size in the crop's projection (`CENTRE_BISECTIONS`). Left out if a centre crop that size picks the other projection (only the US Minor
@@ -306,7 +308,7 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
 - `WaterLabel`: one bent `Path` per label plus a halo-padded box per glyph (`parts`), both relative to its position.
   Bodies whose name doesn't sit >= `WATER_MIN_INSIDE` over them at their anchor are left out up front (`inside_share`:
   glyph box area whose centres are on the water, as the solver counts it).
-- Solver: water labels come after the country labels in `Placement`; x/y is their anchor position. Every label pays
+- Solver: in `Placement` a water label's x/y is its anchor position. Every label pays
   the same terms on its rects (`label_cost`); a water label's `off_feature` counts glyph centres over the body. A label still clashing (`clashes`, any kind)
   after descent shrinks a step (`shrink_step`): in the `Placement` only (`size`, extents, rects); the labels stay as
   laid out and the draw functions take the size from the placement.
