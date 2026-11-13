@@ -240,7 +240,7 @@ def shown_rivers(frame: MapFrame, bodies: list[WaterBody], fits: list[WaterLabel
     return rivers[outcome.shown("rivers", river_ranks(rivers, [bodies[k] for k in named], ranks[named]))]
 
 
-def place(items: Sequence[Placeable], frame: MapFrame, order: list[str], unfit: Sequence[Unplaced] = ()) -> Outcome:
+def place(items: Sequence[Placeable], frame: MapFrame, order: list[str], unfit: Sequence[Unplaced]) -> Outcome:
     """place_by_priority, showing on a terminal the rank being placed, then printing its summary."""
     tty, columns = sys.stdout.isatty(), shutil.get_terminal_size().columns
 
