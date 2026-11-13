@@ -55,31 +55,31 @@ Importing any module has no side effects; only `cli.main` (after choosing the ba
 
 | Module | Contents |
 |---|---|
-| `cli.py` | `parse_args` (`--label`: `label_kinds`, an ordered list (kinds are placed in its order within a rank) replacing the default `countries`; `water` is expanded into the water kinds in its place; `none` = no labels), `graph_fills` (palette + Baikonur), `main()`: the pipeline as a sequence of stage calls, `place` (`place_by_priority` with the progress line and `summary` on a terminal), `water_labels`, `shown_rivers` (the river lines whose rank wasn't cut) |
-| `data.py` | `fetch`, `fetch_all`, `confirm_download`, `etopo15_tile`, file names (`MARINE`: the marine label areas; `RIVERS`), `CRS`, `STATE_COUNTRIES`, lakes filter, `is_dependency`, `parent_index`, `is_labeled`, `load_*` (`load_rivers`: every scalerank, canals included; `load_lakes`: all but `DRY_LAKES`) |
-| `frame.py` | `MapFrame` (transformers, outline, extent, `crs`, `globe`, `clip`, `label_scale`, `width_in`/`height_in`, `px_per_unit`, `units_per_in`, `canvas`, `project`, `visible`, `to_px`, `px_to_map`), `make_frame`, `cut`, `join_at_antimeridian`, `lon_ranges`, `DPI`, `POSTER_WIDTH_IN` |
-| `crop.py` | `--crop`: `parse_box`, `box_region`, `extent`, `sphere_centre`, `sample_lonlat`, `clip_boxes`, `canvas_centre`, `reach`, `seam_boxes`, `globe_outline`, `crop_frame`, `round_pole`, `fit_frame`, `canvas_frame`, `with_label_scale`, `parse_centre`, `centre_frame`, `centre_recipe`, `centre_spec`, `Candidate`, `candidates`, `matches`, `describe`, `checklist`, `choose` |
+| `cli.py` | `parse_args` (`--label`: an ordered list replacing the default `countries`; `water` expands in place; `none` = no labels), `main()` (the pipeline as a sequence of stage calls), `place` (placing with the progress line and summary), `shown_rivers` |
+| `data.py` | Natural Earth/ETOPO downloads (`fetch`, `fetch_all`, `etopo15_tile`), file names, `load_*`, which features are dependencies/labelled |
+| `frame.py` | `MapFrame`: projection, canvas, `project`/`visible`/`to_px`, `label_scale`; `make_frame` (world), antimeridian helpers, `DPI`, `POSTER_WIDTH_IN` |
+| `crop.py` | `--crop`: box/centre/name specs (`parse_box`, `parse_centre`, `candidates`, `choose`) -> `crop_frame`/`centre_frame`, `centre_recipe` |
 | `colorspace.py` | OKLab/OKLCH conversions, `fit_gamut`, `darken` |
-| `coloring.py` | `merge_into_parents`, `adjacency`, `add_proximity_edges`, `color_graph`, `make_palette`, `load_or_compute_coloring` (cache), `spot_check`, `OCEAN` |
-| `disputed.py` | `--disputed`: `parse_note`, `ALIASES`, `HAND_CLAIMS`, `LABEL_TEXT`, `Dispute`, `load_disputes`, `dispute_edges`, `dispute_fills`, `stripe_parts`, `border_lines`, `disputed_label_args` |
-| `topographic.py` | `--type topographic`: `elevation_grid` (ETOPO -> cached 3' grid), `Grid` (a window has an origin), `elevation_window`, `read_etopo`, `read_tiles`, `elevation_for`, `sample`, `Scale` (`LAND`, `SEA`, `ICE`), `Contours`, `colorize`, `relief`, `shade`, `soften`, `poster_grid`, `polygon_mask`, `coastline`, `draw_topography` |
-| `colorbars.py` | `--type topographic`: `bar_region`, `globe_side`, `inner_side`, `curved_title`, `draw_colorbar` (right-triangle bars in the canvas corners; rectangles in a crop) |
-| `earth.py` | `--color earth`: `earth_values` (raster sampling, cache), `earth_fill`, `build_regions`, `share_across_seam`, `join_touching`, `fill_at` |
+| `coloring.py` | graph colouring (`adjacency`, `add_proximity_edges`, `color_graph`), `make_palette`, `load_or_compute_coloring` (cache), `OCEAN` |
+| `disputed.py` | `--disputed`: `load_disputes` (`NOTE_BRK` parsing, `ALIASES`, `HAND_CLAIMS`), `dispute_edges`, `stripe_parts`, `border_lines` |
+| `topographic.py` | `--type topographic`: elevation data (`elevation_grid`, `elevation_for`), `Scale`s, `relief`, `coastline`, `draw_topography` |
+| `colorbars.py` | `--type topographic`: `draw_colorbar` (right-triangle bars in the canvas corners; rectangles in a crop), `curved_title` |
+| `earth.py` | `--color earth`: `earth_values` (raster sampling, cache), `earth_fill`, `build_regions`, `fill_at` |
 | `pins.py` | `load_pins`, `PinStyle` (every sprite shading constant), `pin_sprite`, `draw_pins`, `pick_pins` |
-| `labels/text.py` | `PX_PER_PT`, `font`, `text_width`, `lines` (straight, centred lines), `bent` (glyphs bent along a curve): text as `TextPath` outlines, no figure needed |
-| `labels/label.py` | `Label` dataclass (`glyphs`: its outlines), `lay_out` (`text.lines`, box padded), `make_labels` (anchors, sizes, exclaves; biggest `full_size` first), `decide_out_and_wrap` |
-| `labels/regions.py` | `--label territories`: `ChildRegion`, `HAND_PICKED` (parent + lon/lat boxes), `child_regions` |
-| `labels/water.py` | `--label oceans,seas,lakes,straits,rivers,water`: `kinds_from_labels`, `classify`, `WaterBody`, `load_water_bodies`, `river_name`, `longest_paths`, `load_river_bodies`, `river_ranks` (each river line's rank: its nearest same-named body's), `best_stretch`, `river_label`, `fit_curve`, `body_curve`, `WaterLabel`, `make_water_labels` (one per body, an `Unplaced` where the name doesn't fit), style constants |
-| `labels/placement.py` | `CostWeights`, `Placement` (per-label arrays, `size`; `parts`: every label's rects, a country label's box its one part; `items`: the labels, any order, `each` of a kind; `Placement.of`; it knows them only as `Placeable`s), `rects`, `unit_px`, `shrink_step`, `FIXED`/`NUDGE`/`FREE`, `OVERHANG_SLICES`, `overhang`, `cost_batch`, `candidates`, `clash`/`clashes`, `place_labels` (moves a `Placement` in place: `active`, `freedom`, `home`, `floors`), `subset`, `outline_coverage`, `outside_outline`, `leader_ends` |
-| `labels/placeable.py` | `Placeable`: what the solvers ask of a country or water label (`name`, `kind`, `full_size`, anchor, `size`, `min_size`, `parts`, `width`/`height`, `out`, `water`, `geom`/`cover`) |
-| `labels/kernels.py` | numba (`@njit(cache=True)`) loops behind `cost_batch` (`label_cost`: one kernel for every label, as its rects; `on_feature`: `by_area` measures a country's box by area, a water label's glyphs by centre), `clash`, `candidates` and `escapes`; weights passed as an array in `CostWeights` field order (`weight_array`) |
-| `labels/priority.py` | `ranks_by_quantile` (fifths by area, a river's length L as `RIVER_KM2` x L^`RIVER_POWER`), `steps`, `overhang_of`, `check_step` (-> `Verdict`: out, rival, skip), `Unplaced`, `saturated`, `Settled` (what placing has decided: copied for a cut's rollback), `Cuts`, `place_step`, `place_by_priority` (its entries, labels and `Unplaced` in any order; step by step, biggest rank first; prints nothing, `on_step` before each step; returns an `Outcome` indexed like the entries: the kept labels' `Placement`, the plan, the kept mask, every entry's rank and the kinds `cut`, which `report.summary` reads; `Outcome.shown`: which ranks of a kind are drawn) |
-| `labels/report.py` | `progress` (on a terminal, a bar of the rank being placed), `rank_table` (placed/total per kind and rank, coloured on a tty unless `NO_COLOR`, and each kind's dropped labels, biggest first), `summary` (the skipped labels, the kinds cut, then the table) |
-| `labels/geometry.py` | `nearest_point_on_rect`, `two_line`, `Coverage` (summed-area table of a shape: `area` of boxes, `contains` of points), `coverage` (a label's, cached), `on_feature` (a label's pieces on its feature, judged by the solver's kernel: `overhang_of`, `inside_share`) |
-| `rivers.py` | `--rivers`: `RiverFlow` (`downstream`: a piece's best rank upstream), `split_at_junctions`, `flow` (mouths, then Dijkstra), `river_flow` (cached) |
-| `disjoint.py` | `DisjointSets` (union-find: `find`, `union`, `groups`): pieces joined at the seam, river networks, same-named rivers |
-| `curves.py` | `arc_lengths`, `along`, `bend` (points along a polyline + its left normal): text bending for `colorbars.curved_title` and water labels |
-| `render.py` | `new_figure`, `draw_countries`, `draw_stripes`, `draw_borders`, `draw_states`, `draw_rivers`, `drawable_lakes` (>= `LAKE_MIN_IN2`), `draw_lakes`, `subtract_lakes`, `glyph_patch`, `draw_labels`, `draw_water_labels` (both from the `Placement` alone), `HALO`, line widths and z-orders |
+| `labels/text.py` | text as `TextPath` outlines, no figure needed: `font`, `text_width`, `lines`, `bent` (glyphs along a curve) |
+| `labels/label.py` | country labels: `Label`, `lay_out`, `make_labels` (anchors, sizes, exclaves), `decide_out_and_wrap` |
+| `labels/regions.py` | `--label territories`: `HAND_PICKED` (parent + lon/lat boxes), `child_regions` |
+| `labels/water.py` | water and river labels: `classify`, `load_water_bodies`, `load_river_bodies`, `fit_curve`, `river_label`, `WaterLabel`, `make_water_labels`, style constants, `river_width` |
+| `labels/placement.py` | the solver: `Placement` (per-label arrays; knows labels only as `Placeable`s), `CostWeights`, `FIXED`/`NUDGE`/`FREE`, `place_labels`, `clash`/`clashes` |
+| `labels/placeable.py` | `Placeable`: what the solvers ask of a country or water label |
+| `labels/kernels.py` | numba (`@njit(cache=True)`) loops behind the solver; weights passed as an array in `CostWeights` field order (`weight_array`) |
+| `labels/priority.py` | `place_by_priority` (prints nothing; returns an `Outcome` indexed like its entries), `ranks_by_quantile`, `check_step`, `Unplaced`, `Settled` |
+| `labels/report.py` | `progress`, `rank_table` (coloured on a tty unless `NO_COLOR`), `summary` (what was skipped and cut) |
+| `labels/geometry.py` | `Coverage` (summed-area table of a shape), `coverage` (cached), `on_feature`, rect helpers |
+| `rivers.py` | `--rivers`: `river_flow` (cached): pieces split at junctions, oriented toward mouths |
+| `disjoint.py` | `DisjointSets` (union-find) |
+| `curves.py` | `arc_lengths`, `along`, `bend`: text bending for colour bar titles and water labels |
+| `render.py` | the `draw_*` layers (labels drawn from the `Placement` alone), `drawable_lakes`, `subtract_lakes`, line widths and z-orders |
 
 Pipeline (`cli.main`):
 1. **Colouring** of all country features. Dependencies (`is_dependency`: `SOVEREIGNT != ADMIN`, not a lease or
