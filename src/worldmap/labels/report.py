@@ -41,7 +41,8 @@ def rank_table(plan: list[tuple[int, list[int]]], kinds: Sequence[str], order: S
         hue = GREEN if n == of else RED if n == 0 else YELLOW
         return f"{hue}{str(of) if short and hue != YELLOW else text:>8}{PLAIN}"
 
-    room = DROPPED_WIDTH if columns is None else columns - (12 + 8 * N_RANKS + 16 + 3 * len(" │") + 1)
+    widths = [12, 8 * N_RANKS, 16]  # the columns before the dropped one
+    room = DROPPED_WIDTH if columns is None else columns - (sum(widths) + len(widths) * len(" │") + 1)
     if room < DROPPED_MIN:
         names = ()
 
@@ -68,7 +69,6 @@ def rank_table(plan: list[tuple[int, list[int]]], kinds: Sequence[str], order: S
 
     shown = [kind for kind in order if total[kind].any()]
     header = [f"{'rank':<12}", "".join(f"{r:>8}" for r in range(1, N_RANKS + 1)), f"{'all':>8}{'%':>8}"]
-    widths = [12, 8 * N_RANKS, 16]
     if names:
         header.append(" dropped")
         widths.append(max(len(text) for text in [header[-1], *map(gone, shown)]))
