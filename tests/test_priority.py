@@ -185,7 +185,7 @@ def test_saturated() -> None:
 
 def test_cut_drops_the_whole_group_and_later_ranks() -> None:
     sea, bay = crossing_water_labels(FRAME)
-    out = place_by_priority([sized(sea, 100), sized(bay, 10)], FRAME, ["seas"], rank=lambda k, s: np.array([1, 2] + [1] * 5), unfit=unfit(5))
+    out = place_by_priority([sized(sea, 100), sized(bay, 10), *unfit(5)], FRAME, ["seas"], rank=lambda k, s: np.array([1, 2] + [1] * 5))
     assert out.cut == {"seas": 1} and not out.kept.any() and out.placement.n == 0
     assert out.cut_fit == {"seas": 1}  # the sea fit before the cut undid it
     assert list(out.shown("seas", np.array([1, 2, UNLABELED]))) == [False, False, False]
@@ -193,18 +193,18 @@ def test_cut_drops_the_whole_group_and_later_ranks() -> None:
 
 def test_no_cut_below_the_minimum_drops() -> None:
     sea, _ = crossing_water_labels(FRAME)
-    out = place_by_priority([sized(sea, 100)], FRAME, ["seas"], rank=lambda k, s: np.ones(5, int), unfit=unfit(4))
+    out = place_by_priority([sized(sea, 100), *unfit(4)], FRAME, ["seas"], rank=lambda k, s: np.ones(5, int))
     assert out.cut == {} and out.kept[0] and list(out.shown("seas", np.array([5, UNLABELED]))) == [True, True]
 
 
 def test_unfit_only_group_cuts() -> None:
     sea, _ = crossing_water_labels(FRAME)
-    out = place_by_priority([sized(sea, 1)], FRAME, ["seas"], rank=lambda k, s: np.array([2] + [1] * 5), unfit=unfit(5))
+    out = place_by_priority([sized(sea, 1), *unfit(5)], FRAME, ["seas"], rank=lambda k, s: np.array([2] + [1] * 5))
     assert out.cut == {"seas": 1} and not out.kept[0]
 
 
 def test_countries_are_cut_too() -> None:
-    out = place_by_priority([atlantis(1)], FRAME, ["countries"], rank=lambda k, s: np.ones(6, int), unfit=unfit(5, "countries"))
+    out = place_by_priority([atlantis(1), *unfit(5, "countries")], FRAME, ["countries"], rank=lambda k, s: np.ones(6, int))
     assert out.cut == {"countries": 1} and not out.kept[0]
 
 
@@ -218,8 +218,8 @@ def test_cut_rolls_back_what_the_group_nudged() -> None:
     nudged = place_by_priority([atlantis(1), sized(sea_on(atlantis(1)), 1)], FRAME, ["countries", "seas"], rank=lambda k, s: np.array([1, 2])).placement
     alone = place_by_priority([atlantis(1)], FRAME, ["countries"], rank=lambda k, s: np.array([1])).placement
     assert (nudged.x[0], nudged.y[0]) != (alone.x[0], alone.y[0])  # the sea moves Atlantis, so the test means something
-    p = place_by_priority([atlantis(1), sized(sea_on(atlantis(1)), 1)], FRAME, ["countries", "seas"],
-                          rank=lambda k, s: np.array([1, 2] + [2] * 5), unfit=unfit(5)).placement
+    p = place_by_priority([atlantis(1), sized(sea_on(atlantis(1)), 1), *unfit(5)], FRAME, ["countries", "seas"],
+                          rank=lambda k, s: np.array([1, 2] + [2] * 5)).placement
     assert p.n == 1 and (p.x[0], p.y[0], p.size[0]) == (alone.x[0], alone.y[0], alone.size[0])
 
 
@@ -232,14 +232,14 @@ def test_cut_rivers_are_not_drawn() -> None:
 def test_cut_counts_failures_across_ranks() -> None:
     """3 of rank 1's 4 fail, then all 3 of rank 2: under 5 in either, but 6 of the 7 together."""
     sea, _ = crossing_water_labels(FRAME)
-    out = place_by_priority([sized(sea, 100)], FRAME, ["seas"], rank=lambda k, s: np.array([1, 1, 1, 1, 2, 2, 2]), unfit=unfit(6))
+    out = place_by_priority([sized(sea, 100), *unfit(6)], FRAME, ["seas"], rank=lambda k, s: np.array([1, 1, 1, 1, 2, 2, 2]))
     assert out.cut == {"seas": 2} and out.kept[0]
 
 
 def test_cut_share_is_of_every_rank() -> None:
     """Rank 1's 5 failures are 5 of 26: under 30% of the kind, so the sea stays; rank 2 tips it."""
     sea, _ = crossing_water_labels(FRAME)
-    out = place_by_priority([sized(sea, 100)], FRAME, ["seas"], rank=lambda k, s: np.array([1] * 6 + [2] * 20), unfit=unfit(25))
+    out = place_by_priority([sized(sea, 100), *unfit(25)], FRAME, ["seas"], rank=lambda k, s: np.array([1] * 6 + [2] * 20))
     assert out.cut == {"seas": 2} and out.kept[0]
 
 
@@ -247,5 +247,14 @@ def test_progress_counts_the_steps_a_cut_skips() -> None:
     """Seas are cut at rank 1, so rank 2's seas step is skipped: its labels still count as done, or the bar never fills."""
     calls: list[tuple[int, int, int, str]] = []
     rank = lambda k, s: np.array([1] * 5 + [2] * 2 + [2])  # noqa: E731
-    place_by_priority([], FRAME, ["seas", "rivers"], rank=rank, unfit=unfit(7) + unfit(1, "rivers"), on_step=lambda *a: calls.append(a))
+    place_by_priority([*unfit(7), *unfit(1, "rivers")], FRAME, ["seas", "rivers"], rank=rank, on_step=lambda *a: calls.append(a))
     assert calls == [(1, 0, 5, "seas"), (2, 2, 3, "rivers")]
+
+
+def test_entries_keep_the_callers_order() -> None:
+    """Unplaced entries may come anywhere: kept and ranks follow the entries as given."""
+    sea, _ = crossing_water_labels(FRAME)
+    out = place_by_priority([Unplaced("Cove", "seas", 1.0), sized(sea, 100), Unplaced("Creek", "rivers", 1.0)], FRAME, ["seas", "rivers"],
+                            rank=lambda k, s: np.array([2, 1, 3]))
+    assert list(out.kept) == [False, True, False] and list(out.ranks) == [2, 1, 3]
+    assert [w.text for w in of_kind(out.placement, WaterLabel)] == ["Sea"]

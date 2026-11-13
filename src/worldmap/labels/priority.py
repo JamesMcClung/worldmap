@@ -119,11 +119,11 @@ def check_step(p: Placement, new: list[int], active: np.ndarray, frame: MapFrame
 
 @dataclass
 class Outcome:
-    """What place_by_priority did with its labels."""
+    """What place_by_priority did with its entries."""
     placement: Placement  # the kept labels'
-    plan: list[tuple[int, list[int]]]  # its steps (steps), indices into its labels, then the unfit
-    kept: np.ndarray  # bool, per label, then per unfit (False)
-    ranks: np.ndarray  # int, per label, then per unfit; UNLABELED for kinds not placed
+    plan: list[tuple[int, list[int]]]  # its steps (steps), indices into its entries
+    kept: np.ndarray  # bool, per entry (an Unplaced never is)
+    ranks: np.ndarray  # int, per entry; UNLABELED for kinds not placed
     cut: dict[str, int]  # kind -> the rank it was cut at
     cut_fit: dict[str, int]  # kind -> its labels placed in that rank before the cut undid them
 
@@ -203,20 +203,22 @@ def place_step(s: Settled, r: int, new: list[int], ranks: np.ndarray, min_size: 
     s.home_x[kept], s.home_y[kept], s.size[kept] = s.p.x[kept], s.p.y[kept], s.p.size[kept]
 
 
-def place_by_priority(items: Sequence[Placeable], frame: MapFrame, order: Sequence[str],
-                      rank: Ranker = ranks_by_quantile, on_step: Callable[[int, int, int, str], None] | None = None,
-                      unfit: Sequence[Unplaced] = ()) -> Outcome:
-    """Place the labels (`items`) step by step (steps, with `rank`; place_step), returning the Outcome. Before
-    each step, on_step(rank, labels of the rank's steps done so far, of all its steps, the step's kind). The
-    `unfit` are ranked with the labels and count as failed in their step. A step after which its kind's failures
-    so far saturate all its labels (Cuts.tally) is undone, and the kind cut there: its later steps are skipped."""
-    n = len(items)
-    everything: list[Placeable | Unplaced] = [*items, *unfit]
-    kinds = [e.kind for e in everything]
-    plan = steps(kinds, [e.full_size for e in everything], order, rank)
-    ranks = np.full(len(everything), UNLABELED)
+def place_by_priority(entries: Sequence[Placeable | Unplaced], frame: MapFrame, order: Sequence[str],
+                      rank: Ranker = ranks_by_quantile, on_step: Callable[[int, int, int, str], None] | None = None) -> Outcome:
+    """Place the labels among the `entries` step by step (steps, with `rank`; place_step), returning the Outcome.
+    Before each step, on_step(rank, labels of the rank's steps done so far, of all its steps, the step's kind).
+    An Unplaced entry is ranked with the labels and counts as failed in its step. A step after which its kind's
+    failures so far saturate all its labels (Cuts.tally) is undone, and the kind cut there: its later steps are
+    skipped."""
+    kinds = [e.kind for e in entries]
+    plan = steps(kinds, [e.full_size for e in entries], order, rank)
+    ranks = np.full(len(entries), UNLABELED)
     for r, members in plan:
         ranks[members] = r
+    labelled = [k for k, e in enumerate(entries) if not isinstance(e, Unplaced)]
+    items = [e for e in entries if not isinstance(e, Unplaced)]
+    label_of = np.full(len(entries), -1)  # entry -> its label's index in the placement
+    label_of[labelled] = np.arange(len(labelled))
     s = Settled.of(items)
     min_size = np.array([item.min_size for item in items])
     cuts = Cuts.of(plan, kinds)
@@ -230,8 +232,10 @@ def place_by_priority(items: Sequence[Placeable], frame: MapFrame, order: Sequen
         if kind in cuts.at:
             continue
         before = s.copy()
-        members = [i for i in step if i < n]
-        place_step(s, r, members, ranks[:n], min_size, frame)
+        members = [int(label_of[k]) for k in step if label_of[k] >= 0]
+        place_step(s, r, members, ranks[labelled], min_size, frame)
         if cuts.tally(kind, r, len(step), int(s.active[members].sum())):
             s = before
-    return Outcome(subset(s.p, s.active), plan, np.concatenate([s.active, np.zeros(len(unfit), bool)]), ranks, cuts.at, cuts.fit)
+    kept = np.zeros(len(entries), bool)
+    kept[labelled] = s.active
+    return Outcome(subset(s.p, s.active), plan, kept, ranks, cuts.at, cuts.fit)

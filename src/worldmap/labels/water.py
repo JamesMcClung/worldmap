@@ -486,9 +486,9 @@ def largest_line(geom: BaseGeometry) -> LineString:
     return max(shapely.get_parts(geom), key=lambda g: g.length)
 
 
-def make_water_labels(bodies: list[WaterBody], frame: MapFrame) -> list[WaterLabel | None]:
-    """A curved label per body, in the same order; None for those with under WATER_MIN_INSIDE of their glyph boxes
-    over their body to start with (most small bays: no room for their name), and rivers too short for theirs."""
+def make_water_labels(bodies: list[WaterBody], frame: MapFrame) -> list[WaterLabel | Unplaced]:
+    """A curved label per body, in the same order; an Unplaced for those with under WATER_MIN_INSIDE of their glyph
+    boxes over their body to start with (most small bays: no room for their name), and rivers too short for theirs."""
     ppu = frame.px_per_unit
     labels: list[WaterLabel | None] = []
     for body in bodies:
@@ -504,9 +504,4 @@ def make_water_labels(bodies: list[WaterBody], frame: MapFrame) -> list[WaterLab
         size = float(np.clip(SEA_FILL * arc_lengths(curve)[-1] / width_1pt, low * frame.label_scale, high * frame.label_scale))
         label = lay_out(body, curve, size, frame.to_px(body.geom), frame.label_scale)
         labels.append(label if label.inside_share(label.anchor_x, label.anchor_y) >= WATER_MIN_INSIDE else None)
-    return labels
-
-
-def unplaced(body: WaterBody) -> Unplaced:
-    """A body whose name doesn't fit, as place_by_priority counts it."""
-    return Unplaced(body.text, body.kind, body.full_size)
+    return [Unplaced(b.text, b.kind, b.full_size) if label is None else label for b, label in zip(bodies, labels)]

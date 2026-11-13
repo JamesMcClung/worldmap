@@ -75,7 +75,7 @@ def test_progress(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_summary_lists_the_skipped_then_the_rank_table() -> None:
     sea, bay = crossing_water_labels(FRAME)
     outcome = place_by_priority([sized(sea, 100), sized(bay, 10)], FRAME, ["seas"])
-    lines = summary([sea, bay], [], outcome, ["seas"], color=False, columns=None).split("\n")
+    lines = summary([sea, bay], outcome, ["seas"], color=False, columns=None).split("\n")
     assert lines[0] == "labels skipped: ['Bay']"
     assert lines[3].startswith("seas") and lines[3].endswith("│ Bay")
 
@@ -83,8 +83,8 @@ def test_summary_lists_the_skipped_then_the_rank_table() -> None:
 def test_summary_shows_unfit_and_cuts() -> None:
     sea, _ = crossing_water_labels(FRAME)
     bays = [Unplaced(f"Bay {k}", "seas", 1.0) for k in range(5)]
-    outcome = place_by_priority([sized(sea, 100)], FRAME, ["seas"], rank=lambda k, s: np.ones(6, int), unfit=bays)
-    lines = summary([sea], bays, outcome, ["seas"], color=False, columns=None).split("\n")
+    outcome = place_by_priority([sized(sea, 100), *bays], FRAME, ["seas"], rank=lambda k, s: np.ones(6, int))
+    lines = summary([sea, *bays], outcome, ["seas"], color=False, columns=None).split("\n")
     assert lines[0] == "labels skipped: []"  # what a cut drops is only counted: thousands on the world map
     assert lines[1] == "cut: seas from rank 1 (6 dropped)"
     assert lines[4].startswith("seas") and "(1/)6" in lines[4]  # the sea fit before the cut
@@ -93,9 +93,9 @@ def test_summary_shows_unfit_and_cuts() -> None:
 def test_summary_lists_neither_the_unfit_nor_the_cut() -> None:
     sea, bay = crossing_water_labels(FRAME)
     rivers = [Unplaced(f"Creek {k}", "rivers", 1.0) for k in range(5)]
-    outcome = place_by_priority([sized(sea, 100), sized(bay, 10)], FRAME, ["seas", "rivers"], rank=lambda k, s: np.array([1, 1] + [2] * 5 + [1]),
-                                unfit=rivers + [Unplaced("Cove", "seas", 1.0)])
-    lines = summary([sea, bay], [*rivers, Unplaced("Cove", "seas", 1.0)], outcome, ["seas", "rivers"], color=False, columns=None).split("\n")
+    entries = [sized(sea, 100), sized(bay, 10), *rivers, Unplaced("Cove", "seas", 1.0)]
+    outcome = place_by_priority(entries, FRAME, ["seas", "rivers"], rank=lambda k, s: np.array([1, 1] + [2] * 5 + [1]))
+    lines = summary(entries, outcome, ["seas", "rivers"], color=False, columns=None).split("\n")
     assert lines[0] == "labels skipped: ['Bay']"
     assert lines[1] == "cut: rivers from rank 2 (5 dropped)"
 

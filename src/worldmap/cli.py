@@ -14,7 +14,6 @@ from collections.abc import Sequence
 
 import geopandas as gpd
 import matplotlib
-import numpy as np
 import shapely
 from matplotlib.axes import Axes
 from shapely.geometry import Point
@@ -33,7 +32,7 @@ from worldmap.labels.placeable import Placeable
 from worldmap.labels.priority import Outcome, Unplaced, place_by_priority
 from worldmap.labels.regions import child_regions
 from worldmap.labels.report import progress, summary
-from worldmap.labels.water import WATER_KINDS, Kind, WaterBody, WaterLabel, kinds_from_labels, load_water_bodies, make_water_labels, river_ranks, unplaced
+from worldmap.labels.water import WATER_KINDS, Kind, WaterBody, WaterLabel, kinds_from_labels, load_water_bodies, make_water_labels, river_ranks
 from worldmap.pins import draw_pins, load_pins, pick_pins, pin_sprite
 from worldmap.render import draw_borders, draw_countries, draw_labels, draw_lakes, drawable_lakes, draw_rivers, draw_states, draw_stripes, draw_water_labels, new_figure, subtract_lakes
 from worldmap.topographic import ICE, ICE_CONTOURS, LAND, LAND_CONTOURS, SEA, SEA_CONTOURS, draw_topography
@@ -190,10 +189,10 @@ def main(argv: list[str] | None = None) -> None:
     relabel, extra = disputed_label_args(disputes, lambda i, pt: fill_of(i, pt) if regions else DISPUTED_GREY) if args.disputed else ({}, [])
     labels = make_labels(shown, frame, fill_of, children, "countries" in args.label, relabel, extra)
     decide_out_and_wrap(labels)
-    bodies, fits = water_labels(kinds_from_labels(args.label), lakes_p, frame)
-    outcome = place([*labels, *present(fits)], frame, args.label, unfit_of(bodies, fits))
+    bodies, water = water_labels(kinds_from_labels(args.label), lakes_p, frame)
+    outcome = place([*labels, *water], frame, args.label)
     if draws_rivers(args):
-        draw_rivers(ax, shown_rivers(frame, bodies, fits, len(labels), outcome))
+        draw_rivers(ax, shown_rivers(frame, bodies, outcome, len(labels)))
     placement = outcome.placement
     draw_labels(ax, placement, frame)
     draw_water_labels(ax, placement, frame)
@@ -204,53 +203,35 @@ def main(argv: list[str] | None = None) -> None:
     print("wrote", out, "labels:", int((~placement.water).sum()), "leaders:", int(placement.out.sum()), "water labels:", int(placement.water.sum()))
 
 
-def water_labels(kinds: set[Kind], lakes_projected: gpd.GeoDataFrame, frame: MapFrame) -> tuple[list[WaterBody], list[WaterLabel | None]]:
-    """The water bodies of `kinds` and their labels (make_water_labels: None where the name doesn't fit)."""
+def water_labels(kinds: set[Kind], lakes_projected: gpd.GeoDataFrame, frame: MapFrame) -> tuple[list[WaterBody], list[WaterLabel | Unplaced]]:
+    """The water bodies of `kinds` and their labels, one per body (make_water_labels: an Unplaced where the name
+    doesn't fit)."""
     bodies = load_water_bodies(kinds, lakes_projected, frame) if kinds else []
     return bodies, make_water_labels(bodies, frame)
 
 
-def present(fits: list[WaterLabel | None]) -> list[WaterLabel]:
-    return [w for w in fits if w is not None]
-
-
-def unfit_of(bodies: list[WaterBody], fits: list[WaterLabel | None]) -> list[Unplaced]:
-    return [unplaced(b) for b, w in zip(bodies, fits) if w is None]
-
-
-def body_ranks(fits: list[WaterLabel | None], ranks: np.ndarray, first: int) -> np.ndarray:
-    """Each body's rank, in body order, from place's `ranks` of [labels before them (`first`), the fitting
-    bodies' labels, then the unfit bodies]."""
-    order = np.argsort([w is None for w in fits], kind="stable")  # the fitting first, then the unfit
-    out = np.empty(len(fits), int)
-    out[order] = ranks[first:first + len(fits)]
-    return out
-
-
-def shown_rivers(frame: MapFrame, bodies: list[WaterBody], fits: list[WaterLabel | None], first: int,
-                 outcome: Outcome | None) -> gpd.GeoDataFrame:
-    """The river lines to draw, projected: those whose rank (water.river_ranks, from the bodies' ranks in
-    `outcome`; body_ranks) rivers weren't cut at; every one if rivers weren't labelled (`outcome` None: no
-    labels placed at all)."""
+def shown_rivers(frame: MapFrame, bodies: list[WaterBody], outcome: Outcome | None, first: int) -> gpd.GeoDataFrame:
+    """The river lines to draw, projected: those whose rank (water.river_ranks; the bodies' are `outcome`'s ranks
+    from entry `first` on) rivers weren't cut at; every one if no labels were placed at all (`outcome` None)."""
     rivers = frame.project(load_rivers())
     if outcome is None:
         return rivers
-    ranks = body_ranks(fits, outcome.ranks, first)
+    ranks = outcome.ranks[first:first + len(bodies)]
     named = [k for k, b in enumerate(bodies) if b.kind == "rivers"]
     return rivers[outcome.shown("rivers", river_ranks(rivers, [bodies[k] for k in named], ranks[named]))]
 
 
-def place(items: Sequence[Placeable], frame: MapFrame, order: list[str], unfit: Sequence[Unplaced]) -> Outcome:
+def place(entries: Sequence[Placeable | Unplaced], frame: MapFrame, order: list[str]) -> Outcome:
     """place_by_priority, showing on a terminal the rank being placed, then printing its summary."""
     tty, columns = sys.stdout.isatty(), shutil.get_terminal_size().columns
 
     def show(r: int, done: int, of: int, kind: str) -> None:
         print(f"\r\x1b[K{progress(r, done, of, kind, columns)}", end="", flush=True)
 
-    outcome = place_by_priority(items, frame, order, on_step=show if tty else None, unfit=unfit)
+    outcome = place_by_priority(entries, frame, order, on_step=show if tty else None)
     if tty:
         print("\r\x1b[K", end="")
-    print(summary(items, unfit, outcome, order, tty and "NO_COLOR" not in os.environ, columns if tty else None))
+    print(summary(entries, outcome, order, tty and "NO_COLOR" not in os.environ, columns if tty else None))
     return outcome
 
 
@@ -274,16 +255,16 @@ def draw_topographic(args: argparse.Namespace, out: str, frame: MapFrame) -> Non
         draw_colorbar(ax, frame, "tr", SEA, "Depth", SEA_CONTOURS)
     draw_colorbar(ax, frame, "bl", ICE, "Ice", ICE_CONTOURS)
     kinds = kinds_from_labels(args.label)
-    bodies, fits = water_labels(kinds, drawable_lakes(frame), frame)
+    bodies, water = water_labels(kinds, drawable_lakes(frame), frame)
     outcome = None
     if kinds:  # without water kinds no label stage runs
         # A crop's bars sit over the map: keep the labels off them.
         bars: list[Corner] = ["br", "tr", "bl"] if args.ocean else ["br", "bl"]
         room = frame if frame.globe else dataclasses.replace(frame, outline=label_outline(frame, bars))
-        outcome = place(present(fits), room, args.label, unfit_of(bodies, fits))
+        outcome = place(water, room, args.label)
         draw_water_labels(ax, outcome.placement, frame)
     if draws_rivers(args):
-        draw_rivers(ax, shown_rivers(frame, bodies, fits, 0, outcome))
+        draw_rivers(ax, shown_rivers(frame, bodies, outcome, 0))
     ax.set_xlim(frame.xmin, frame.xmax)
     ax.set_ylim(frame.ymin, frame.ymax)
     add_pins(ax, frame, args)
