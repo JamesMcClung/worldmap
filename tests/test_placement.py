@@ -157,6 +157,7 @@ def test_subset(frame: MapFrame, one_label: list[Label]) -> None:
     q = subset(p, np.array([True, False, True]))
     assert q.n == 2 and q.owner.tolist() == [0, *[1] * len(bay.parts)] and q.water.tolist() == [False, True]
     assert np.array_equal(rects(q), rects(p)[p.owner != 1])
+    assert q.labels == one_label and q.water_labels == [bay] and [i for i, _ in q.each(WaterLabel)] == [1]
 
 
 def test_shrink_step_stops_at_the_floor() -> None:

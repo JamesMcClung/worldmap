@@ -2,8 +2,9 @@
 leader-line clutter, drifting off the country and leaving the globe. All units are poster pixels."""
 
 import functools
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
+from typing import TypeVar
 
 import numpy as np
 from shapely.geometry import Polygon
@@ -14,6 +15,8 @@ from worldmap.labels.geometry import Coverage, coverage, nearest_point_on_rect
 from worldmap.labels.label import Label
 from worldmap.labels.placeable import Placeable
 from worldmap.labels.water import PX_PER_PT, WaterLabel
+
+T = TypeVar("T")
 
 SEED = 7
 OUTLINE_SIMPLIFY_PX = 0.5
@@ -87,6 +90,18 @@ class Placement:
     @property
     def n(self) -> int:
         return len(self.x)
+
+    def each(self, kind: type[T]) -> Iterator[tuple[int, T]]:
+        """The index and label of each of its labels of `kind` (Label, WaterLabel)."""
+        return ((i, item) for i, item in enumerate(self.items) if isinstance(item, kind))
+
+    @property
+    def labels(self) -> list[Label]:
+        return [label for _, label in self.each(Label)]
+
+    @property
+    def water_labels(self) -> list[WaterLabel]:
+        return [label for _, label in self.each(WaterLabel)]
 
     @classmethod
     def of(cls, labels: Sequence[Label], water: Sequence[WaterLabel] = ()) -> "Placement":

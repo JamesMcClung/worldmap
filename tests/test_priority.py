@@ -122,37 +122,37 @@ def boxed_in() -> tuple[WaterLabel, object]:
 
 def test_smaller_of_a_clashing_pair_is_skipped() -> None:
     sea, bay = crossing_water_labels(FRAME)
-    p, labels, kept = place_by_priority([], [sized(sea, 100), sized(bay, 10)], FRAME, ["seas"])
-    assert [w.text for w in kept] == ["Sea"] and labels == []
+    p = place_by_priority([], [sized(sea, 100), sized(bay, 10)], FRAME, ["seas"])
+    assert [w.text for w in p.water_labels] == ["Sea"] and p.labels == []
     assert clashes(p) == []
 
 
 def test_country_can_lose_to_a_bigger_sea() -> None:
     sea, frame = boxed_in()
-    _, labels, kept = place_by_priority([atlantis(1)], [sized(sea, 1e6)], frame, ["countries", "seas"],
-                                        rank=lambda kinds, sizes: np.array([3, 1]))  # the sea two ranks up: fixed
-    assert labels == [] and [w.text for w in kept] == ["Sea"]
+    p = place_by_priority([atlantis(1)], [sized(sea, 1e6)], frame, ["countries", "seas"],
+                          rank=lambda kinds, sizes: np.array([3, 1]))  # the sea two ranks up: fixed
+    assert p.labels == [] and [w.text for w in p.water_labels] == ["Sea"]
 
 
 def test_label_order_breaks_ties_within_a_rank() -> None:
     sea, frame = boxed_in()
     same = lambda kinds, sizes: np.array([1, 1])  # noqa: E731
-    _, labels, kept = place_by_priority([atlantis(1)], [sized(sea, 1)], frame, ["countries", "seas"], rank=same)
-    assert [label.name for label in labels] == ["Atlantis"] and kept == []
+    p = place_by_priority([atlantis(1)], [sized(sea, 1)], frame, ["countries", "seas"], rank=same)
+    assert [label.name for label in p.labels] == ["Atlantis"] and p.water_labels == []
     sea, frame = boxed_in()
-    _, labels, kept = place_by_priority([atlantis(1)], [sized(sea, 1)], frame, ["seas", "countries"], rank=same)
-    assert labels == [] and [w.text for w in kept] == ["Sea"]
+    p = place_by_priority([atlantis(1)], [sized(sea, 1)], frame, ["seas", "countries"], rank=same)
+    assert p.labels == [] and [w.text for w in p.water_labels] == ["Sea"]
 
 
 def test_two_ranks_down_is_fixed() -> None:
-    alone, _, _ = place_by_priority([atlantis(1)], [], FRAME, ["countries", "seas"])  # rank 1 too
+    alone = place_by_priority([atlantis(1)], [], FRAME, ["countries", "seas"])  # rank 1 too
     country = atlantis(1)
     w, h = country.width, country.height
     small = water_label("Small", (country.anchor_x, country.anchor_y), country.geom, np.array([[-w / 2, -h / 2, w / 2, h / 2]]), 10)
     x, y = FRAME.to_px(shapely.Point(*FRAME.to_map.transform(150, -30))).coords[0]
     big = water_label("Big", (x, y), shapely.box(x - 200, y - 50, x + 200, y + 50), np.array([[-100.0, -20, 100, 20]]), 10)
-    p, labels, _ = place_by_priority([country], [sized(big, 1e6), sized(small, 1e3)], FRAME, ["countries", "seas"], rank=lambda kinds, sizes: np.array([1, 1, 3]))
-    assert labels == [country] and (p.x[0], p.y[0]) == (alone.x[0], alone.y[0])
+    p = place_by_priority([country], [sized(big, 1e6), sized(small, 1e3)], FRAME, ["countries", "seas"], rank=lambda kinds, sizes: np.array([1, 1, 3]))
+    assert p.labels == [country] and (p.x[0], p.y[0]) == (alone.x[0], alone.y[0])
 
 
 def test_crop_skips_water_labels_outside_the_outline() -> None:
@@ -160,13 +160,13 @@ def test_crop_skips_water_labels_outside_the_outline() -> None:
     x, y = FRAME.px_to_map(np.array(mid_atlantic_px(FRAME)[0]), np.array(mid_atlantic_px(FRAME)[1]))
     half = 2000 / FRAME.px_per_unit  # an outline that leaves out the sea, far off to one side
     cropped = replace(FRAME, globe=False, outline=[(x + half, y - half), (x + 3 * half, y - half), (x + 3 * half, y + half), (x + half, y + half)])
-    assert place_by_priority([], [sea], cropped, ["seas"])[2] == []
-    assert [w.text for w in place_by_priority([], [crossing_water_labels(FRAME)[0]], FRAME, ["seas"])[2]] == ["Sea"]
+    assert place_by_priority([], [sea], cropped, ["seas"]).water_labels == []
+    assert [w.text for w in place_by_priority([], [crossing_water_labels(FRAME)[0]], FRAME, ["seas"]).water_labels] == ["Sea"]
 
 
 def test_nothing_to_place() -> None:
-    p, labels, water = place_by_priority([], [], FRAME, ["countries"])
-    assert p.n == 0 and labels == [] and water == []
+    p = place_by_priority([], [], FRAME, ["countries"])
+    assert p.n == 0 and p.labels == [] and p.water_labels == []
 
 
 def test_water_label_mostly_off_its_water_is_skipped() -> None:
@@ -174,7 +174,7 @@ def test_water_label_mostly_off_its_water_is_skipped() -> None:
     x, y = mid_atlantic_px(FRAME)
     parts = np.array([[-30.0 + 10 * k, -7, -20 + 10 * k, 7] for k in range(6)])  # wherever it goes, 2 of 6 glyphs off one end
     sea = water_label("Sea", (x, y), shapely.box(x - 12, y - 7, x + 12, y + 7), parts, WATER_MIN_PT)
-    assert place_by_priority([], [sized(sea, 1)], FRAME, ["seas"])[2] == []
+    assert place_by_priority([], [sized(sea, 1)], FRAME, ["seas"]).water_labels == []
 
 
 def test_country_with_no_room_gets_a_leader() -> None:
@@ -184,9 +184,9 @@ def test_country_with_no_room_gets_a_leader() -> None:
     country.full_size = 1
     x, y = country.anchor_x, country.anchor_y
     sea = water_label("Sea", (x, y), shapely.box(x - 130, y - 130, x + 130, y + 130), np.array([[-130.0, -130, 130, 130]]), WATER_MIN_PT)
-    p, labels, kept = place_by_priority([country], [sized(sea, 1e6)], FRAME, ["countries", "seas"], rank=lambda kinds, sizes: np.array([3, 1]))
-    assert labels == [country] and bool(p.out[0])
-    assert [w.text for w in kept] == ["Sea"] and clashes(p) == []
+    p = place_by_priority([country], [sized(sea, 1e6)], FRAME, ["countries", "seas"], rank=lambda kinds, sizes: np.array([3, 1]))
+    assert p.labels == [country] and bool(p.out[0])
+    assert [w.text for w in p.water_labels] == ["Sea"] and clashes(p) == []
 
 
 def test_centred_label_may_hang_off_both_ends() -> None:
@@ -194,7 +194,7 @@ def test_centred_label_may_hang_off_both_ends() -> None:
     x, y = mid_atlantic_px(FRAME)
     parts = np.array([[-50.0 + 5 * k, -7, -45 + 5 * k, 7] for k in range(20)])
     sea = water_label("Sea", (x, y), shapely.box(x - 24, y - 20, x + 24, y + 20), parts, WATER_MIN_PT)
-    assert [w.text for w in place_by_priority([], [sized(sea, 1)], FRAME, ["seas"])[2]] == ["Sea"]
+    assert [w.text for w in place_by_priority([], [sized(sea, 1)], FRAME, ["seas"]).water_labels] == ["Sea"]
 
 
 def test_water_label_on_a_narrow_lake_is_kept() -> None:
@@ -202,7 +202,7 @@ def test_water_label_on_a_narrow_lake_is_kept() -> None:
     x, y = mid_atlantic_px(FRAME)
     parts = np.array([[-50.0 + 10 * k, -7, -40 + 10 * k, 7] for k in range(10)])
     lake = water_label("Lake", (x, y), shapely.box(x - 52, y - 2.5, x + 52, y + 2.5), parts, WATER_MIN_PT, kind="lakes")
-    assert [w.text for w in place_by_priority([], [sized(lake, 1)], FRAME, ["lakes"])[2]] == ["Lake"]
+    assert [w.text for w in place_by_priority([], [sized(lake, 1)], FRAME, ["lakes"]).water_labels] == ["Lake"]
 
 
 def test_check_step_puts_a_clashing_country_out_without_touching_the_placement() -> None:

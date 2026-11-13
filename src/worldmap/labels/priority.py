@@ -173,9 +173,8 @@ def check_step(p: Placement, new: list[int], active: np.ndarray, frame: MapFrame
 
 
 def place_by_priority(labels: list[Label], water: list[WaterLabel], frame: MapFrame, order: Sequence[str],
-                      rank: Ranker = ranks_by_quantile) -> tuple[Placement, list[Label], list[WaterLabel]]:
-    """Place the labels step by step (steps, with `rank`), returning the placement of those kept (country labels first, then
-    water labels, as the draw functions take them) and the kept labels. In each step the step's labels are free,
+                      rank: Ranker = ranks_by_quantile) -> Placement:
+    """Place the labels step by step (steps, with `rank`), returning the placement of those kept. In each step the step's labels are free,
     the labels already placed of its rank and the rank before are nudged (they pay for leaving where they settled
     and shrink to no less than NUDGE_MIN_SCALE of their settled size), and the rest stay put. Then check_step
     decides which labels go 'out' or are skipped, and the step is solved again until it puts none out and finds
@@ -222,5 +221,4 @@ def place_by_priority(labels: list[Label], water: list[WaterLabel], frame: MapFr
     print("labels skipped:", skipped)
     print(rank_table(plan, kinds, order, set(np.flatnonzero(active).tolist()), sys.stdout.isatty() and "NO_COLOR" not in os.environ,
                      [item.name for item in items]))
-    n_country = len(labels)
-    return subset(p, active), [label for i, label in enumerate(labels) if active[i]], [w for k, w in enumerate(water) if active[n_country + k]]
+    return subset(p, active)

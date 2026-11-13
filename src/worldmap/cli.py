@@ -188,14 +188,14 @@ def main(argv: list[str] | None = None) -> None:
     labels = make_labels(shown, frame, fill_of, children, "countries" in args.label, relabel, extra)
     decide_out_and_wrap(labels)
     water = make_water_labels(load_water_bodies(kinds_from_labels(args.label), lakes_p, frame), frame) if kinds_from_labels(args.label) else []
-    placement, labels, water = place_by_priority(labels, water, frame, label_order(args.label))
-    draw_labels(ax, labels, placement, frame)
-    draw_water_labels(ax, water, placement, frame)
+    placement = place_by_priority(labels, water, frame, label_order(args.label))
+    draw_labels(ax, placement, frame)
+    draw_water_labels(ax, placement, frame)
 
     add_pins(ax, frame, args)
     # Layout above is measured at DPI; saving at another resolution only rescales it.
     fig.savefig(out, dpi=args.dpi, transparent=True)
-    print("wrote", out, "labels:", len(labels), "leaders:", int(placement.out.sum()), "water labels:", len(water))
+    print("wrote", out, "labels:", len(placement.labels), "leaders:", int(placement.out.sum()), "water labels:", len(placement.water_labels))
 
 
 def add_pins(ax: Axes, frame: MapFrame, args: argparse.Namespace) -> None:
@@ -224,8 +224,8 @@ def draw_topographic(args: argparse.Namespace, out: str, frame: MapFrame) -> Non
         # A crop's bars sit over the map: keep the labels off them.
         bars: list[Corner] = ["br", "tr", "bl"] if args.ocean else ["br", "bl"]
         room = frame if frame.globe else dataclasses.replace(frame, outline=label_outline(frame, bars))
-        placement, _, water = place_by_priority([], make_water_labels(load_water_bodies(kinds, frame.project(load_lakes()), frame), frame), room, label_order(args.label))
-        draw_water_labels(ax, water, placement, frame)
+        placement = place_by_priority([], make_water_labels(load_water_bodies(kinds, frame.project(load_lakes()), frame), frame), room, label_order(args.label))
+        draw_water_labels(ax, placement, frame)
     ax.set_xlim(frame.xmin, frame.xmax)
     ax.set_ylim(frame.ymin, frame.ymax)
     add_pins(ax, frame, args)

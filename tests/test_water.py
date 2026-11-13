@@ -145,7 +145,7 @@ def test_draw_water_labels(frame: MapFrame, lakes_projected: gpd.GeoDataFrame) -
     p.x[0] += 100  # somewhere other than its anchor
     fig, ax = new_figure(frame)
     before = len(ax.patches)
-    draw_water_labels(ax, med, p, frame)
+    draw_water_labels(ax, p, frame)
     added = ax.patches[before:]
     assert len(added) == 1 and isinstance(added[0], PathPatch)
     assert np.allclose(added[0].get_facecolor()[:3], WATER_TEXT)

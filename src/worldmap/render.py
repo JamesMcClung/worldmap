@@ -161,10 +161,10 @@ def glyph_patch(glyphs: Path, scale: float, x: float, y: float, frame: MapFrame,
     return PathPatch(Path(np.stack([mx, my], -1), glyphs.codes), ec="none", lw=0, joinstyle="round", **style)  # type: ignore[arg-type]
 
 
-def draw_labels(ax: Axes, labels: list[Label], placement: Placement, frame: MapFrame) -> None:
-    """Each label's glyphs at its placed position and size, and leader lines and dots for 'out' labels."""
+def draw_labels(ax: Axes, placement: Placement, frame: MapFrame) -> None:
+    """Each country label's glyphs at its placed position and size, and leader lines and dots for 'out' labels."""
     end_x, end_y = leader_ends(placement)
-    for i, label in enumerate(labels):
+    for i, label in placement.each(Label):
         ax.add_patch(glyph_patch(label.glyphs, placement.size[i] / label.size, placement.x[i], placement.y[i], frame,
                                  fc=label.color, zorder=LABEL_ZORDER, path_effects=HALO))
         if placement.out[i]:
@@ -174,14 +174,12 @@ def draw_labels(ax: Axes, labels: list[Label], placement: Placement, frame: MapF
             ax.plot([x0], [y0], marker="o", ms=LEADER_DOT_SIZE, color=label.color, zorder=Z_LEADERS)
 
 
-def draw_water_labels(ax: Axes, water: list[WaterLabel], placement: Placement, frame: MapFrame) -> None:
-    """Each water label's bent glyphs at its placed position (the water labels come after the country labels in
-    `placement`), blue with a water-coloured halo (rivers: darker, with the country labels' halo), just under the
-    country labels."""
-    first = placement.n - len(water)
+def draw_water_labels(ax: Axes, placement: Placement, frame: MapFrame) -> None:
+    """Each water label's bent glyphs at its placed position and size, blue with a water-coloured halo (rivers:
+    darker, with the country labels' halo), just under the country labels."""
     halo = [pe.withStroke(linewidth=WATER_HALO_PX * 72 / DPI, foreground=WATER_HALO)]
     river_halo = [pe.withStroke(linewidth=WATER_HALO_PX * 72 / DPI, foreground=RIVER_HALO)]
-    for k, label in enumerate(water):
+    for i, label in placement.each(WaterLabel):
         river = label.kind == "rivers"
-        ax.add_patch(glyph_patch(label.glyphs, placement.size[first + k] / label.size, placement.x[first + k], placement.y[first + k], frame,
+        ax.add_patch(glyph_patch(label.glyphs, placement.size[i] / label.size, placement.x[i], placement.y[i], frame,
                                  fc=RIVER_TEXT if river else WATER_TEXT, zorder=LABEL_ZORDER - 0.1, path_effects=river_halo if river else halo))
