@@ -28,7 +28,7 @@ UNWEIGHTED_LARGEST = 10  # the biggest countries don't count towards colour bala
 WORLD_WIDTH_M = 2 * np.pi * 6378137.0  # width of EPSG:6933 in metres (shift for wrap-around at the antimeridian)
 SIMPLIFY_M = 10_000  # outline simplification for the distance queries
 TOP_UP_SEARCH_M = 5_000_000  # how far to look for top-up neighbours
-COLORING_RULE = "top10-exempt-count-balance/v4-dispute-edges"  # bump when the colouring logic changes, to invalidate the cache
+COLORING_RULE = "top10-exempt-count-balance/v5-dispute-edges-first"  # bump when the colouring logic changes, to invalidate the cache
 SPOT_CHECK_PAIRS = [("South Korea", "Japan"), ("Russia", "United States of America"), ("Malaysia", "Philippines"), ("Italy", "Greece"), ("France", "United Kingdom"), ("United Kingdom", "Norway"), ("India", "Sri Lanka")]
 
 
@@ -266,8 +266,9 @@ def load_or_compute_coloring(countries: gpd.GeoDataFrame, major: list[bool], rec
         except (ValueError, KeyError):
             pass
     merged, merged_major, node_of = merge_into_parents(countries, major, parent_of)
-    edges = add_proximity_edges(merged, adjacency(merged), merged_major, N_COLORS, max_gap=MAX_GAP, min_deg=MIN_DEG)
-    edges |= {(min(node_of[a], node_of[b]), max(node_of[a], node_of[b])) for a, b in extra_edges if node_of[a] != node_of[b]}
+    # The extra edges go in before the links across water, which are kept only while the graph stays colourable.
+    must = {(min(node_of[a], node_of[b]), max(node_of[a], node_of[b])) for a, b in extra_edges if node_of[a] != node_of[b]}
+    edges = add_proximity_edges(merged, adjacency(merged) | must, merged_major, N_COLORS, max_gap=MAX_GAP, min_deg=MIN_DEG)
     # Balance colour usage by country count, but don't count the largest countries, so their colours aren't penalised.
     areas = countries.km2.groupby(np.asarray(node_of)).sum()  # each merged node's: its rows' (data.with_km2)
     weights = [0.0 if rank < UNWEIGHTED_LARGEST else 1.0 for rank in areas.rank(ascending=False, method="first")]
