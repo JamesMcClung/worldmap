@@ -28,8 +28,9 @@ from worldmap.earth import Fill, build_regions, fill_at
 from worldmap.frame import DPI, MapFrame, make_frame
 from worldmap.labels.label import Label, decide_out_and_wrap, make_labels
 from worldmap.labels.placement import Placement
-from worldmap.labels.priority import label_order, place_by_priority, progress, summary
+from worldmap.labels.priority import label_order, place_by_priority
 from worldmap.labels.regions import child_regions
+from worldmap.labels.report import progress, summary
 from worldmap.labels.water import WATER_KINDS, WaterLabel, kinds_from_labels, load_water_bodies, make_water_labels
 from worldmap.pins import draw_pins, load_pins, pick_pins, pin_sprite
 from worldmap.render import draw_borders, draw_countries, draw_labels, draw_lakes, draw_rivers, draw_states, draw_stripes, draw_water_labels, new_figure, subtract_lakes
