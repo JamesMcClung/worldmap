@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from worldmap.data import RIVER_MAX_RANK, is_labeled, load_countries, load_marine, load_rivers, parent_index
+from worldmap.data import is_labeled, load_countries, load_marine, load_rivers, parent_index
 
 
 def test_dependencies_and_parents() -> None:
@@ -34,7 +34,7 @@ def test_load_marine() -> None:
 
 def test_load_rivers() -> None:
     rivers = load_rivers()
-    assert rivers.scalerank.max() <= RIVER_MAX_RANK
+    assert rivers.scalerank.max() == 12  # every rank: labels decide which are drawn
     assert {"Amazonas", "Nile", "Mississippi", "Danube"} <= set(rivers.name)
 
 

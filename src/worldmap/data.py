@@ -35,7 +35,6 @@ ETOPO15_URL = "https://www.ngdc.noaa.gov/mgg/global/relief/ETOPO2022/data/15s/15
 ETOPO15_DIR = "etopo15"
 
 DRY_LAKES = {"Lake Eyre North", "Lake Torrens", "Lake Gairdner", "Lake Mackay", "Lake Frome", "Lake Barlee"}  # Australian salt pans, usually dry
-RIVER_MAX_RANK = 8  # rivers of scalerank (0 = biggest) up to this are drawn; 9+ are short tributaries
 EQUAL_AREA_CRS = "+proj=eqearth"  # for every km2 (with_km2)
 
 CRS = "+proj=robin +lon_0=0 +datum=WGS84"  # the map's projection
@@ -197,9 +196,8 @@ def load_lakes() -> gpd.GeoDataFrame:
 
 
 def load_rivers() -> gpd.GeoDataFrame:
-    """Rivers, canals and their centrelines through lakes, of scalerank <= RIVER_MAX_RANK."""
-    rivers = gpd.read_file(fetch(RIVERS))[["name", "name_en", "featurecla", "scalerank", "geometry"]]
-    return rivers[rivers.scalerank <= RIVER_MAX_RANK]
+    """Rivers, canals and their centrelines through lakes, of every scalerank (their labels decide which are drawn)."""
+    return gpd.read_file(fetch(RIVERS))[["name", "name_en", "featurecla", "scalerank", "geometry"]]
 
 
 def load_marine() -> gpd.GeoDataFrame:
