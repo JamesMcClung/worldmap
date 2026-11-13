@@ -57,7 +57,7 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "ddf105d07c3853f2eb4f3bb60ab76eca84efe794daab16f13f3484938db177f5"
+    "sha256": "37807a19369b4e0979b8141ff6acc3da3be726446d89f94f8dde1757b467bcd7"
   },
   "disputed": {
     "env": {
@@ -208,7 +208,7 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "ecbebe3c2c3639bf5f61271f3039da835bd52c9c7483a58d55a95c8a1ddfb65f"
+    "sha256": "8183823b7c72806b7d4e56b1aa2709ad7af32be70c092833c6d6dce99a30bddc"
   },
   "water": {
     "env": {
@@ -229,6 +229,6 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "d8215e5fa687985a16f2ed187113db6e81142096f9e6c86d917b8f940c67be61"
+    "sha256": "ae2cab42dd42abc221a2865f11f08d1f645523d6e921c2d856b48e97541c5255"
   }
 }

@@ -17,8 +17,8 @@ def test_ranks_are_fifths_of_every_kind_together() -> None:
     assert list(ranks_by_quantile(kinds, [10, 9, 8, 7, 6, 5, 4, 3, 2, 1])) == [1, 1, 2, 2, 3, 3, 4, 4, 5, 5]
 
 
-def test_rivers_rank_by_ten_times_their_length() -> None:
-    assert list(ranks_by_quantile(["seas", "seas", "rivers"], [400, 600, 50])) == [4, 1, 2]  # the river as 500
+def test_rivers_rank_by_a_power_of_their_length() -> None:
+    assert list(ranks_by_quantile(["seas", "seas", "rivers"], [400, 600, 130])) == [4, 1, 2]  # the river as 1.6 * 130 ** 1.19 = 525
 
 
 def test_ranks_zero_and_nan() -> None:

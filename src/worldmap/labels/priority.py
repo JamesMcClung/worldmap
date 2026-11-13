@@ -15,7 +15,12 @@ from worldmap.labels.placeable import Placeable
 from worldmap.labels.placement import FIXED, FREE, NUDGE, OVERHANG_MAX, OVERHANG_SLICES, Placement, clash, outside_outline, overhang, place_labels, rects, subset
 
 N_RANKS = 5
-RIVER_KM2_PER_KM = 10.0  # a river ranks as an area of this many km2 per km of its length
+# A river ranks as an area of RIVER_KM2 * length (km) ** RIVER_POWER km2. The power is the trend of 751 rivers'
+# Wikidata drainage basins (P2053) against their Natural Earth length: basin ~ 37 * L ** 1.19 (log-log fit, r 0.70,
+# scatter x3). The true 37 moved rivers up about a rank; 1.6 puts 80 rivers in rank 1 of the world map with
+# --label water (with 10 * L, 100 were).
+RIVER_KM2 = 1.6
+RIVER_POWER = 1.19
 
 UNLABELED = N_RANKS + 1  # the rank of a feature with no label: drawn only if its kind was never cut
 CUT_SHARE = 0.3  # a kind is cut at the first rank by which this share of all its labels (every rank) have failed...
@@ -40,9 +45,9 @@ def saturated(failed: int, total: int) -> bool:
 
 def ranks_by_quantile(kinds: Sequence[str], sizes: Sequence[float]) -> np.ndarray:
     """Each label's rank, 1..N_RANKS: which fifth (for 5 ranks) of every label, whatever its kind, biggest first, it
-    falls in, a river's length (km) counting as RIVER_KM2_PER_KM times it in km2. A size of 0 (or unknown) is the
+    falls in, a river's length L (km) counting as RIVER_KM2 * L ** RIVER_POWER km2. A size of 0 (or unknown) is the
     last rank."""
-    size = np.array([RIVER_KM2_PER_KM * v if k == "rivers" else v for k, v in zip(kinds, sizes)], float)
+    size = np.array([RIVER_KM2 * v ** RIVER_POWER if k == "rivers" else v for k, v in zip(kinds, sizes)], float)
     ranks = np.full(len(size), N_RANKS)
     known = np.flatnonzero(size > 0)  # NaN compares False
     biggest_first = known[np.argsort(-size[known], kind="stable")]
