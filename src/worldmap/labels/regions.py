@@ -63,7 +63,7 @@ class ChildRegion:
     parent_name: str  # the parent's label text, or its PARENT_SHORT, e.g. "Australia", "US"
     feature: int  # row whose fill colours it: the dependency itself, or the parent for a hand-picked region
     polys: list[Polygon]  # projected polygons it labels
-    km2: float = 0.0  # the whole region's area, however much of it the frame shows
+    km2: float  # the whole region's area, however much of it the frame shows
 
     @property
     def text(self) -> str:
