@@ -25,7 +25,7 @@ area is >= `LAKE_MIN_PX` poster pixels.
   where failed = the group's labels not kept + its unfit features, and total = the group's labels + its unfit features.
 - When a group triggers a cut, all of that group's labels are dropped (including the ones that placed), along with every later rank of that kind. The
   placement is restored to what it was before the group was solved: positions, sizes, `out` flags, and which labels are active or settled.
-- `countries` and `territories` are never cut (`UNCUT`).
+- Every kind can be cut, countries and territories included.
 - A drawn feature is shown iff its rank < its kind's cut rank. With no cut every rank is shown. A feature with no label
   (an unnamed river line, or a kind that isn't in `--label`) ranks `N_RANKS + 1` = 6: shown iff its kind was not cut.
   A side branch of a named river takes the rank of the nearest body of that name.
@@ -104,7 +104,7 @@ Check `world`'s count and the lake names against the data before you fix the num
 
 **Interfaces:**
 - Produces, in `priority.py`:
-  - `CUT_SHARE = 0.3`, `CUT_MIN_DROPS = 5`, `UNCUT = ("countries", "territories")`
+  - `CUT_SHARE = 0.3`, `CUT_MIN_DROPS = 5`
   - `saturated(failed: int, total: int) -> bool`: the Global Constraints test
   - `class Unplaced(NamedTuple): name: str; kind: str; full_size: float`, a feature of a labelled kind with no label that fits
   - `place_by_priority(items, frame, order, rank=ranks_by_quantile, on_step=None, unfit: Sequence[Unplaced] = ()) -> Outcome`
@@ -143,9 +143,9 @@ def test_unfit_only_group_cuts() -> None:
     out = place_by_priority([sized(sea, 1)], FRAME, ["seas"], rank=ranks, unfit=unfit(5))
     assert out.cut == {"seas": 1} and not out.kept[0]
 
-def test_countries_are_never_cut() -> None:
+def test_countries_are_cut_too() -> None:
     out = place_by_priority([atlantis(1)], FRAME, ["countries"], rank=lambda k, s: np.ones(6, int), unfit=unfit(5, "countries"))
-    assert out.cut == {} and out.kept[0]
+    assert out.cut == {"countries": 1} and not out.kept[0]
 
 def test_cut_rolls_back_what_the_group_nudged() -> None:
     sea, bay = crossing_water_labels(FRAME)
@@ -163,8 +163,8 @@ If it doesn't, build the sea on top of Atlantis's anchor with `water_label`.
 - [ ] **Step 3: Implement.** `steps` is unchanged and runs over `[*items, *unfit]`'s kinds and sizes, so an
   unfit-only (rank, kind) group gets its own step. In the step loop, indices `>= len(items)` are unfit. Skip solving
   when a step has no items. Skip every step whose kind is already in `cut`. Take a snapshot (`p.copy()`, `active`,
-  `settled`, `home_x`, `home_y`, `settled_size`) before solving the step. After the step, if its kind isn't in `UNCUT`
-  and `saturated(failed, total)`, restore the snapshot, deactivate the step's items and record `cut[kind] = r`.
+  `settled`, `home_x`, `home_y`, `settled_size`) before solving the step. After the step, if
+  `saturated(failed, total)`, restore the snapshot, deactivate the step's items and record `cut[kind] = r`.
   `solve` closes over `p`, so restore by assigning the arrays back into `p` (or make `p` `nonlocal`).
 - [ ] **Step 4:** Run `.venv/bin/pytest tests/test_priority.py tests/test_report.py -n0`. Expected: PASS. The report
   tests use `outcome.plan`/`kept`, and with no unfit those are unchanged.
@@ -291,4 +291,4 @@ def test_draws_all_rivers_without_labels() -> None:
 ### Task 7: CLAUDE.md
 
 - [ ] Update: the `data.py`/`render.py`/`priority.py`/`report.py` rows, "Drawing" (lakes by `LAKE_MIN_PX`), `--rivers`
-  (no rank cap, label-driven), "Priority placement" (unfit, cut, rollback, `UNCUT`), and the river-label counts. Commit `CLAUDE: label-driven features`.
+  (no rank cap, label-driven), "Priority placement" (unfit, cut, rollback), and the river-label counts. Commit `CLAUDE: label-driven features`.
