@@ -356,7 +356,6 @@ class WaterLabel:
     def name(self) -> str:
         return self.text
 
-
     def inside_share(self, x: float, y: float) -> float:
         """The share of the glyph boxes' area on the body when the label is at (x, y), a box being on it if its
         centre is, as the solver has it (placement.cost_batch)."""
