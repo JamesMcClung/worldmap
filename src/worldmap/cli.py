@@ -10,6 +10,7 @@ import os
 import shutil
 import sys
 import time
+from collections.abc import Sequence
 
 import geopandas as gpd
 import matplotlib
@@ -26,12 +27,13 @@ from worldmap.crop import (CROP_MARGIN, box_region, candidates, centre_frame, ce
                            parse_box, parse_centre)
 from worldmap.earth import Fill, build_regions, fill_at
 from worldmap.frame import DPI, MapFrame, make_frame
-from worldmap.labels.label import Label, decide_out_and_wrap, make_labels
+from worldmap.labels.label import decide_out_and_wrap, make_labels
+from worldmap.labels.placeable import Placeable
 from worldmap.labels.placement import Placement
 from worldmap.labels.priority import label_order, place_by_priority
 from worldmap.labels.regions import child_regions
 from worldmap.labels.report import progress, summary
-from worldmap.labels.water import WATER_KINDS, WaterLabel, kinds_from_labels, load_water_bodies, make_water_labels
+from worldmap.labels.water import WATER_KINDS, kinds_from_labels, load_water_bodies, make_water_labels
 from worldmap.pins import draw_pins, load_pins, pick_pins, pin_sprite
 from worldmap.render import draw_borders, draw_countries, draw_labels, draw_lakes, draw_rivers, draw_states, draw_stripes, draw_water_labels, new_figure, subtract_lakes
 from worldmap.topographic import ICE, ICE_CONTOURS, LAND, LAND_CONTOURS, SEA, SEA_CONTOURS, draw_topography
@@ -191,7 +193,7 @@ def main(argv: list[str] | None = None) -> None:
     labels = make_labels(shown, frame, fill_of, children, "countries" in args.label, relabel, extra)
     decide_out_and_wrap(labels)
     water = make_water_labels(load_water_bodies(kinds_from_labels(args.label), lakes_p, frame), frame) if kinds_from_labels(args.label) else []
-    placement = place(labels, water, frame, label_order(args.label))
+    placement = place([*labels, *water], frame, label_order(args.label))
     draw_labels(ax, placement, frame)
     draw_water_labels(ax, placement, frame)
 
@@ -201,17 +203,17 @@ def main(argv: list[str] | None = None) -> None:
     print("wrote", out, "labels:", len(placement.labels), "leaders:", int(placement.out.sum()), "water labels:", len(placement.water_labels))
 
 
-def place(labels: list[Label], water: list[WaterLabel], frame: MapFrame, order: list[str]) -> Placement:
+def place(items: Sequence[Placeable], frame: MapFrame, order: list[str]) -> Placement:
     """place_by_priority, showing on a terminal the rank being placed, then printing its summary."""
     tty, columns = sys.stdout.isatty(), shutil.get_terminal_size().columns
 
     def show(r: int, done: int, of: int, kind: str) -> None:
         print(f"\r\x1b[K{progress(r, done, of, kind, columns)}", end="", flush=True)
 
-    placement = place_by_priority(labels, water, frame, order, on_step=show if tty else None)
+    placement = place_by_priority(items, frame, order, on_step=show if tty else None)
     if tty:
         print("\r\x1b[K", end="")
-    print(summary([*labels, *water], placement, order, tty and "NO_COLOR" not in os.environ, columns if tty else None))
+    print(summary(items, placement, order, tty and "NO_COLOR" not in os.environ, columns if tty else None))
     return placement
 
 
@@ -241,7 +243,7 @@ def draw_topographic(args: argparse.Namespace, out: str, frame: MapFrame) -> Non
         # A crop's bars sit over the map: keep the labels off them.
         bars: list[Corner] = ["br", "tr", "bl"] if args.ocean else ["br", "bl"]
         room = frame if frame.globe else dataclasses.replace(frame, outline=label_outline(frame, bars))
-        placement = place([], make_water_labels(load_water_bodies(kinds, frame.project(load_lakes()), frame), frame), room, label_order(args.label))
+        placement = place(make_water_labels(load_water_bodies(kinds, frame.project(load_lakes()), frame), frame), room, label_order(args.label))
         draw_water_labels(ax, placement, frame)
     ax.set_xlim(frame.xmin, frame.xmax)
     ax.set_ylim(frame.ymin, frame.ymax)

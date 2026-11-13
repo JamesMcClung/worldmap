@@ -8,10 +8,9 @@ import numpy as np
 
 from worldmap.frame import MapFrame
 from worldmap.labels.geometry import coverage, on_feature
-from worldmap.labels.label import Label
 from worldmap.labels.placeable import Placeable
 from worldmap.labels.placement import FIXED, FREE, NUDGE, OVERHANG_MAX, OVERHANG_SLICES, Placement, clash, outside_outline, overhang, place_labels, rects, subset
-from worldmap.labels.water import WATER_KINDS, WaterLabel
+from worldmap.labels.water import WATER_KINDS
 
 N_RANKS = 5
 RIVER_KM2_PER_KM = 10.0  # a river ranks as an area of this many km2 per km of its length
@@ -106,15 +105,14 @@ def check_step(p: Placement, new: list[int], active: np.ndarray, frame: MapFrame
     return verdict
 
 
-def place_by_priority(labels: list[Label], water: list[WaterLabel], frame: MapFrame, order: Sequence[str],
+def place_by_priority(items: Sequence[Placeable], frame: MapFrame, order: Sequence[str],
                       rank: Ranker = ranks_by_quantile, on_step: Callable[[int, int, int, str], None] | None = None) -> Placement:
-    """Place the labels step by step (steps, with `rank`), returning the placement of those kept. Before each
+    """Place the labels (`items`) step by step (steps, with `rank`), returning the placement of those kept. Before each
     step, on_step(rank, labels of the rank's steps done so far, of all its steps, the step's kind). In each step the step's labels are free,
     the labels already placed of its rank and the rank before are nudged (they pay for leaving where they settled
     and shrink to no less than NUDGE_MIN_SCALE of their settled size), and the rest stay put. Then check_step
     decides which labels go 'out' or are skipped, and the step is solved again until it puts none out and finds
     no rival to skip."""
-    items: list[Placeable] = [*labels, *water]
     kinds = [item.kind for item in items]
     plan = steps(kinds, [item.full_size for item in items], order, rank)
     ranks = np.zeros(len(items), int)

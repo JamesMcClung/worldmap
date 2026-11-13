@@ -73,7 +73,7 @@ def test_progress(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_summary_lists_the_skipped_then_the_rank_table() -> None:
     sea, bay = crossing_water_labels(FRAME)
-    p = place_by_priority([], [sized(sea, 100), sized(bay, 10)], FRAME, ["seas"])
+    p = place_by_priority([sized(sea, 100), sized(bay, 10)], FRAME, ["seas"])
     lines = summary([sea, bay], p, ["seas"], color=False, columns=None).split("\n")
     assert lines[0] == "labels skipped: ['Bay']"
     assert lines[3].startswith("seas") and lines[3].endswith("│ Bay")
