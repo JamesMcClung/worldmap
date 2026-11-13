@@ -4,7 +4,7 @@ the first rank by which too many of all its labels have failed (saturated): that
 of the kind are dropped."""
 
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, replace
 from typing import NamedTuple
 
 import numpy as np
@@ -125,7 +125,7 @@ class Outcome:
     kept: np.ndarray  # bool, per label, then per unfit (False)
     ranks: np.ndarray  # int, per label, then per unfit; UNLABELED for kinds not placed
     cut: dict[str, int]  # kind -> the rank it was cut at
-    cut_fit: dict[str, int] = field(default_factory=dict)  # kind -> its labels placed in that rank before the cut undid them
+    cut_fit: dict[str, int]  # kind -> its labels placed in that rank before the cut undid them
 
     def shown(self, kind: str, ranks: np.ndarray) -> np.ndarray:
         """Which features of `kind`, of these `ranks`, are drawn: those ranked before its cut, if it was cut."""
