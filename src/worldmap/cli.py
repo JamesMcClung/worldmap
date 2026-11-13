@@ -201,7 +201,7 @@ def main(argv: list[str] | None = None) -> None:
     add_pins(ax, frame, args)
     # Layout above is measured at DPI; saving at another resolution only rescales it.
     fig.savefig(out, dpi=args.dpi, transparent=True)
-    print("wrote", out, "labels:", len(placement.labels), "leaders:", int(placement.out.sum()), "water labels:", len(placement.water_labels))
+    print("wrote", out, "labels:", int((~placement.water).sum()), "leaders:", int(placement.out.sum()), "water labels:", int(placement.water.sum()))
 
 
 def place(items: Sequence[Placeable], frame: MapFrame, order: list[str]) -> Placement:

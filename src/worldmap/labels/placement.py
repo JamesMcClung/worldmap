@@ -12,10 +12,8 @@ from shapely.geometry import Polygon
 from worldmap.frame import MapFrame
 from worldmap.labels import kernels
 from worldmap.labels.geometry import Coverage, coverage, nearest_point_on_rect
-from worldmap.labels.label import Label
 from worldmap.labels.placeable import Placeable
 from worldmap.labels.text import PX_PER_PT
-from worldmap.labels.water import WaterLabel
 
 T = TypeVar("T")
 
@@ -94,16 +92,8 @@ class Placement:
         return len(self.x)
 
     def each(self, kind: type[T]) -> Iterator[tuple[int, T]]:
-        """The index and label of each of its labels of `kind` (Label, WaterLabel)."""
+        """The index and label of each of its labels of `kind` (label.Label, water.WaterLabel)."""
         return ((i, item) for i, item in enumerate(self.items) if isinstance(item, kind))
-
-    @property
-    def labels(self) -> list[Label]:
-        return [label for _, label in self.each(Label)]
-
-    @property
-    def water_labels(self) -> list[WaterLabel]:
-        return [label for _, label in self.each(WaterLabel)]
 
     @classmethod
     def of(cls, items: Sequence[Placeable]) -> "Placement":

@@ -1,4 +1,5 @@
 from collections.abc import Sequence
+from typing import TypeVar
 
 import numpy as np
 import pytest
@@ -10,6 +11,8 @@ from worldmap.labels.label import Label, new_label
 from worldmap.labels.placement import FIXED, FREE, NUDGE, Placement, clashes, place_labels, rects, subset
 from worldmap.labels import placement
 from worldmap.labels.water import OCEAN_MIN_PT, WATER_MIN_PT, WaterLabel
+
+T = TypeVar("T", Label, WaterLabel)
 
 
 @pytest.fixture(scope="module")
@@ -23,6 +26,11 @@ def country_label(frame: MapFrame, name: str, lon: float, lat: float, half_px: f
     half = half_px / frame.px_per_unit
     geom = shapely.box(x - half, y - half, x + half, y + half)
     return new_label(frame, name, (x, y), geom, geom.area, (0.2, 0.2, 0.2))
+
+
+def of_kind(p: Placement, kind: type[T]) -> list[T]:
+    """Its labels of `kind` (Label, WaterLabel), in order."""
+    return [item for _, item in p.each(kind)]
 
 
 def placed(items: Sequence[Label | WaterLabel], frame: MapFrame, start: tuple[np.ndarray, np.ndarray] | None = None,
@@ -149,7 +157,7 @@ def test_subset(frame: MapFrame, one_label: list[Label]) -> None:
     q = subset(p, np.array([True, False, True]))
     assert q.n == 2 and q.owner.tolist() == [0, *[1] * len(bay.parts)] and q.water.tolist() == [False, True]
     assert np.array_equal(rects(q), rects(p)[p.owner != 1])
-    assert q.labels == one_label and q.water_labels == [bay] and [i for i, _ in q.each(WaterLabel)] == [1]
+    assert of_kind(q, Label) == one_label and of_kind(q, WaterLabel) == [bay] and [i for i, _ in q.each(WaterLabel)] == [1]
 
 
 def test_shrink_step_stops_at_the_floor() -> None:
