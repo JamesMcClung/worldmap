@@ -4,11 +4,14 @@ import os
 import sys
 import urllib.request
 import zipfile
+from collections.abc import Sequence
 from pathlib import Path
 
 import geopandas as gpd
+import numpy as np
 import pandas as pd
 import shapely
+from shapely.geometry.base import BaseGeometry
 
 # Data files and caches live in the repo's .cache/ (found from this file, so it needs an editable install).
 CACHE = Path(__file__).resolve().parent.parent.parent / ".cache"
@@ -160,6 +163,11 @@ def parent_index(countries: gpd.GeoDataFrame) -> dict[int, int]:
                 raise ValueError(f"no parent feature {row.SOVEREIGNT!r} for dependency {row.NAME_EN!r}")
             parents[i] = index_of[row.SOVEREIGNT]
     return parents
+
+
+def km2(geoms: Sequence[BaseGeometry]) -> np.ndarray:
+    """Each lon/lat geometry's area in km2."""
+    return gpd.GeoSeries(geoms, crs="EPSG:4326").to_crs(EQUAL_AREA_CRS).area.to_numpy() / 1e6
 
 
 def with_km2(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:

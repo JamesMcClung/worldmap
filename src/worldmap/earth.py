@@ -16,7 +16,7 @@ from shapely import affinity
 from shapely.geometry import MultiPolygon, Point, Polygon, box
 
 from worldmap.colorspace import RGB, fit_gamut
-from worldmap.data import CACHE, COUNTRIES, RASTER, fetch, with_km2
+from worldmap.data import CACHE, COUNTRIES, RASTER, fetch, km2
 from worldmap.disjoint import DisjointSets
 from worldmap.frame import SEAM_GRID_DEG, SEAM_SNAP_PX, WORLD, MapFrame
 
@@ -147,7 +147,7 @@ def share_across_seam(parts: list[Polygon], values: list[list[float]]) -> list[l
     out = [list(v) for v in values]
     for members in sets.groups():
         if len(members) > 1:
-            weights = with_km2(gpd.GeoDataFrame(geometry=[parts[k] for k in members], crs="EPSG:4326")).km2
+            weights = km2([parts[k] for k in members])
             mean = list(np.average([values[k] for k in members], axis=0, weights=weights))
             for k in members:
                 out[k] = mean

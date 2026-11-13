@@ -8,7 +8,7 @@ import geopandas as gpd
 from shapely.geometry import MultiPolygon, Polygon
 from shapely.geometry.base import BaseGeometry
 
-from worldmap.data import parent_index, with_km2
+from worldmap.data import km2, parent_index
 from worldmap.frame import MapFrame
 from worldmap.labels.label import RENAME
 
@@ -81,7 +81,7 @@ def in_boxes(lon: float, lat: float, boxes: Sequence[Box]) -> bool:
 def picked_km2(parent: BaseGeometry, boxes: Sequence[Box]) -> float:
     """The area (km2) of the parent's lon/lat polygons a HAND_PICKED region's boxes select, all of them."""
     picked = [p for p in polygons(parent) if in_boxes(p.representative_point().x, p.representative_point().y, boxes)]
-    return float(with_km2(gpd.GeoDataFrame(geometry=picked, crs="EPSG:4326")).km2.sum())
+    return float(km2(picked).sum())
 
 
 def child_regions(countries: gpd.GeoDataFrame, countries_projected: gpd.GeoDataFrame, frame: MapFrame) -> list[ChildRegion]:
