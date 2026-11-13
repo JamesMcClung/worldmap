@@ -4,7 +4,6 @@ from collections.abc import Collection, Mapping, Sequence
 
 import numpy as np
 
-from worldmap.labels.placeable import Placeable
 from worldmap.labels.priority import N_RANKS, Outcome, Unplaced
 
 DROPPED_WIDTH = 40  # the rank table's dropped labels of a kind fit in this many characters off a terminal
@@ -97,9 +96,10 @@ def progress(r: int, done: int, of: int, kind: str, columns: int) -> str:
     return text[:columns - 1]
 
 
-def summary(entries: Sequence[Placeable | Unplaced], outcome: Outcome, order: Sequence[str], color: bool, columns: int | None) -> str:
-    """What place_by_priority did with its `entries`: the labels skipped in the steps it kept, biggest first, the
+def summary(outcome: Outcome, order: Sequence[str], color: bool, columns: int | None) -> str:
+    """What place_by_priority did with its entries: the labels skipped in the steps it kept, biggest first, the
     kinds cut, where and how many that dropped, then the rank_table (which counts the Unplaced too)."""
+    entries = outcome.entries
     placed = set(np.flatnonzero(outcome.kept).tolist())
     dropped = dict.fromkeys(outcome.cut, 0)
     skipped = []

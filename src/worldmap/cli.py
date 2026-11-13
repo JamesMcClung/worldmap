@@ -234,7 +234,7 @@ def place(entries: Sequence[Placeable | Unplaced], frame: MapFrame, order: list[
     outcome = place_by_priority(entries, frame, order, on_step=show if tty else None)
     if tty:
         print("\r\x1b[K", end="")
-    print(summary(entries, outcome, order, tty and "NO_COLOR" not in os.environ, columns if tty else None))
+    print(summary(outcome, order, tty and "NO_COLOR" not in os.environ, columns if tty else None))
     return outcome
 
 
