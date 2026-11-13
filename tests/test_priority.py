@@ -9,7 +9,7 @@ from worldmap.frame import make_frame
 from worldmap.labels import priority
 from worldmap.labels.label import Label
 from worldmap.labels.placement import Placement, clashes, overhang
-from worldmap.labels.priority import check_step, label_order, place_by_priority, rank_table, ranks_by_quantile, steps
+from worldmap.labels.priority import check_step, label_order, place_by_priority, progress, rank_table, ranks_by_quantile, steps
 from worldmap.labels.water import WATER_MIN_PT, WaterLabel
 
 
@@ -101,6 +101,13 @@ def test_rank_table_in_colour() -> None:
     assert rows[3] == f"seas         │{yellow}     1/2{end}       -{red}       1{end}       -       - │{yellow}     1/3{end}{yellow}     33%{end}"
     assert rows[5] == f"all          │{yellow}     2/3{end}       -{red}     0/1{end}       -       - │{yellow}     2/4{end}{yellow}     50%{end}"
     assert rows[6] == f"%            │{yellow}     67%{end}       -{red}      0%{end}       -       - │{yellow}     50%{end}"
+
+
+def test_progress(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The rank, a bar of its labels done, the step's kind; never as wide as the terminal."""
+    monkeypatch.setattr(priority, "PROGRESS_WIDTH", 4)
+    assert progress(2, 1, 4, "seas", 80) == "placing rank 2/5 █░░░ 1/4 seas"
+    assert progress(2, 1, 4, "seas", 20) == "placing rank 2/5 █░"
 
 
 def test_steps_empty() -> None:

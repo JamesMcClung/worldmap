@@ -126,6 +126,17 @@ def rank_table(plan: list[tuple[int, list[int]]], kinds: Sequence[str], order: S
     return "\n".join([*rows, row("all", "all"), row("%", "all", percent=True)])
 
 
+PROGRESS_WIDTH = 30  # characters of the progress bar
+
+
+def progress(r: int, done: int, of: int, kind: str, columns: int) -> str:
+    """The progress line shown on a terminal while placing: the rank, a bar of its labels placed so far (`done` of
+    `of`: those of its finished steps), the step's kind; cut to `columns` - 1 so it never wraps."""
+    full = round(PROGRESS_WIDTH * done / of) if of else PROGRESS_WIDTH
+    text = f"placing rank {r}/{N_RANKS} {'█' * full}{'░' * (PROGRESS_WIDTH - full)} {done}/{of} {kind}"
+    return text[:columns - 1]
+
+
 def overhang_of(p: Placement, k: int) -> float:
     """overhang of label k: of its glyphs (a water label), each on its water if its box's centre is, as the solver
     has it (cost_batch); or of OVERHANG_SLICES slices of its box (a country), each on it if at least half over it."""
@@ -213,7 +224,14 @@ def place_by_priority(labels: list[Label], water: list[WaterLabel], frame: MapFr
         floors = np.where(settled, np.maximum(min_size, NUDGE_MIN_SCALE * settled_size), min_size)
         place_labels(p, frame, active=active, freedom=freedom, home=home, floors=floors)
 
+    tty = sys.stdout.isatty()
+    columns = shutil.get_terminal_size().columns if tty else None
+    in_rank = {r: sum(len(step) for q, step in plan if q == r) for r, _ in plan}
+    done = {r: 0 for r in in_rank}
     for r, step in plan:
+        if columns is not None:
+            print(f"\r\x1b[K{progress(r, done[r], in_rank[r], kinds[step[0]], columns)}", end="", flush=True)
+        done[r] += len(step)
         new = list(step)
         while True:
             active[new] = True
@@ -232,7 +250,9 @@ def place_by_priority(labels: list[Label], water: list[WaterLabel], frame: MapFr
             if active[i]:
                 settled[i] = True
                 home_x[i], home_y[i], settled_size[i] = p.x[i], p.y[i], p.size[i]
+    if columns is not None:
+        print("\r\x1b[K", end="")
     print("labels skipped:", skipped)
-    print(rank_table(plan, kinds, order, set(np.flatnonzero(active).tolist()), sys.stdout.isatty() and "NO_COLOR" not in os.environ,
-                     [item.name for item in items], shutil.get_terminal_size().columns if sys.stdout.isatty() else None))
+    print(rank_table(plan, kinds, order, set(np.flatnonzero(active).tolist()), tty and "NO_COLOR" not in os.environ,
+                     [item.name for item in items], columns))
     return subset(p, active)
