@@ -289,12 +289,14 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
   a crop's outline, is skipped for good. A water label pushed off its water first looks for a smaller label of the
   step overlapping it at its anchor: that one is skipped instead and the step re-solved.
 - Saturation cut: features whose label can't be laid out at all (`Unplaced`: a river shorter than its name, a bay
-  under `WATER_MIN_INSIDE`) are ranked with the labels and count as failed in their step. A step with >= `CUT_MIN_DROPS`
-  = 5 failed, >= `CUT_SHARE` = 30% of it, is undone (a `Placement.copy` snapshot, so what it nudged goes back) and its
-  kind is *cut* at that rank: no later rank of it is tried. Every kind can be cut, countries too. A label-driven
+  under `WATER_MIN_INSIDE`) are ranked with the labels and count as failed in their step. The step after which a kind's
+  failures so far reach `CUT_SHARE` = 30% of *all* its labels (every rank; and >= `CUT_MIN_DROPS` = 5) is undone (a
+  `Placement.copy` snapshot, so what it nudged goes back) and the kind is *cut* at that rank: no later rank of it is
+  tried (30% of the one rank cut too early: one crowded fifth dropped everything after it). The rank table shows
+  `(fit/)of` there: the labels placed before the cut undid them (`Outcome.cut_fit`). Every kind can be cut, countries too. A label-driven
   feature (rivers: `cli.shown_rivers`) is drawn iff its rank is before its kind's cut; one without a label ranks
-  `UNLABELED` = 6, drawn only when the kind wasn't cut. The world map with `--label countries,water` cuts seas, lakes
-  and straits from rank 2, rivers from 3. Lakes are not label-driven (`LAKE_MIN_IN2`).
+  `UNLABELED` = 6, drawn only when the kind wasn't cut. The world map with `--label countries,water` cuts lakes from
+  rank 3, seas, straits and rivers from 4. Lakes are not label-driven (`LAKE_MIN_IN2`).
 - So big labels are never pushed around by small ones (a river name once moved Czech Republic to Denmark), and in
   a crop the frame's biggest features win, whatever their kind.
 
@@ -324,7 +326,7 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
   `ESCAPE_PX` past touching): steps are too coarse for a pixel or two (Lake Michigan, as long as its lake, was
   skipped for 1 px into the United States label's box).
 - Drawing: `PathPatch` in `WATER_TEXT` (OKLCH L 0.50 in the ocean hue) with an `OCEAN`-coloured halo, under the country
-  labels. `--label countries,water` takes ~23 s (vs ~10 s); ~690 of ~2000 candidates placed (most of the rest cut).
+  labels. `--label countries,water` takes ~23 s (vs ~10 s); ~750 of ~1650 candidates placed (most of the rest cut).
 
 ## `--rivers`
 
@@ -350,7 +352,7 @@ Labels ignore them.
   however far the river wiggles above it (`height_above`). Its `geom` is a `RIVER_CORRIDOR_EM` buffer of the whole river.
 - Placement: by priority like every label (a river ranks by its whole length). Drawn in `RIVER_TEXT` with the
   country labels' white halo; capped at `RIVER_MAX_PT` and `RIVER_SCALE_MAX` x the crop's scale.
-- `--label countries,rivers` takes ~12 s; rivers are cut from rank 3, ~310 of ~1060 river names kept.
+- `--label countries,rivers` takes ~11 s; rivers are cut from rank 4, ~410 of ~1060 river names kept.
 
 ## Gotchas
 
