@@ -128,6 +128,12 @@ def test_matches_exact_first() -> None:
     assert [(m.text, m.kind) for m in matches("niger", c)] == [("Niger", "country"), ("Niger", "river"), ("Nigeria", "country")]
 
 
+def test_matches_of_a_kind_biggest_first() -> None:
+    c = [Candidate("United Arab Emirates", "country", Point(54, 24), (), 7e4), Candidate("United States", "country", Point(-98, 39), (), 9.5e6),
+         Candidate("United Kingdom", "country", Point(-2, 54), (), 2.4e5)]
+    assert [m.text for m in matches("united", c)] == ["United States", "United Kingdom", "United Arab Emirates"]
+
+
 def same_map(a: MapFrame, b: MapFrame, tolerance: float) -> bool:
     """Whether b shows what a does: the same size, and its canvas centred on a's."""
     centre = b.to_lonlat.transform((b.xmin + b.xmax) / 2, (b.ymin + b.ymax) / 2)

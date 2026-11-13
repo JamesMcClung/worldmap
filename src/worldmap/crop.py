@@ -20,7 +20,7 @@ from worldmap.frame import (ANTIMERIDIAN_EPS, OUTLINE_POINTS, PROJECT_PAD, SEGME
                             make_frame)
 from worldmap.labels.label import RENAME
 from worldmap.labels.regions import PARENT_SHORT, child_regions, polygons
-from worldmap.labels.water import kinds_from_labels, load_water_bodies
+from worldmap.labels.water import WaterBody, kinds_from_labels, load_water_bodies
 
 if TYPE_CHECKING:
     import questionary
@@ -329,13 +329,14 @@ class Candidate:
     kind: str  # one of KINDS
     geom: BaseGeometry  # lon/lat: what the label stands for
     aliases: tuple[str, ...] = ()  # other names it matches: a country's full name, a territory's parent's names
+    full_size: float = 0.0  # its label's (km2, a river's km): of one kind, the bigger is listed first
 
 
 def candidates(label: Collection[str], disputed: bool) -> list[Candidate]:
     """Every label of the `label` kinds (--label) a name crop can match, with the lon/lat geometry it stands for. A
     country's excludes the parts territories label separately (French Guiana...), whether or not they're labelled."""
     frame = make_frame()
-    found: list[tuple[str, str, BaseGeometry, tuple[str, ...]]] = []
+    found: list[tuple[str, str, BaseGeometry, tuple[str, ...], float]] = []
     if set(label) & {"countries", "territories"}:
         countries = load_countries()
         projected = frame.project(countries)
@@ -352,23 +353,23 @@ def candidates(label: Collection[str], disputed: bool) -> list[Candidate]:
                 own = [p for p in polygons(row.geometry) if p.wkb not in taken]
                 if own:
                     text = relabel.get(i) or RENAME.get(row.NAME_EN, row.NAME_EN)
-                    found.append((text, "country", shapely.union_all(own), (row.NAME_EN,)))
-            found += [(text, "disputed", poly, ()) for text, poly, _, _ in extra]
+                    found.append((text, "country", shapely.union_all(own), (row.NAME_EN,), float(row.km2)))
+            found += [(text, "disputed", poly, (), km2) for text, poly, _, km2 in extra]
         if "territories" in label:
             full = {short: name for name, short in PARENT_SHORT.items()}  # "US" -> "United States of America"
             for c in children:  # so "united" finds Alaska (US) too
                 name = full.get(c.parent_name, c.parent_name)
-                found.append((c.text, "territory", shapely.union_all(c.polys), (RENAME.get(name, name), name)))
+                found.append((c.text, "territory", shapely.union_all(c.polys), (RENAME.get(name, name), name), c.km2))
     kinds = kinds_from_labels(label)
     if kinds:
         bodies = load_water_bodies(kinds, frame.project(load_lakes()), frame)
-        oceans: dict[str, list[BaseGeometry]] = {}
+        oceans: dict[str, list[WaterBody]] = {}
         for b in bodies:  # the world map labels the Pacific twice, either side of +-180: one candidate
             if b.kind == "oceans":
-                oceans.setdefault(b.text, []).append(b.geom)
-        found += [(text, "ocean", shapely.union_all(geoms), ()) for text, geoms in oceans.items()]
-        found += [(b.text, WATER_KIND[b.kind], b.geom, ()) for b in bodies if b.kind != "oceans"]
-    return [Candidate(text, kind, to_lonlat(g, frame), aliases) for text, kind, g, aliases in found]
+                oceans.setdefault(b.text, []).append(b)
+        found += [(text, "ocean", shapely.union_all([b.geom for b in halves]), (), halves[0].full_size) for text, halves in oceans.items()]
+        found += [(b.text, WATER_KIND[b.kind], b.geom, (), b.full_size) for b in bodies if b.kind != "oceans"]
+    return [Candidate(text, kind, to_lonlat(g, frame), aliases, size) for text, kind, g, aliases, size in found]
 
 
 def to_lonlat(geom: BaseGeometry, frame: MapFrame) -> BaseGeometry:
@@ -389,11 +390,11 @@ def fold(s: str) -> str:
 
 def matches(name: str, cands: list[Candidate]) -> list[Candidate]:
     """The candidates whose text or an alias contains `name` (ignoring case and accents): exact matches first, then
-    the rest, each in KINDS order, then by text."""
+    the rest, each in KINDS order, then biggest first (full_size), then by text."""
     key = fold(name)
     names = {id(c): [fold(n) for n in (c.text, *c.aliases)] for c in cands}
     found = [c for c in cands if any(key in n for n in names[id(c)])]
-    return sorted(found, key=lambda c: (key not in names[id(c)], KINDS.index(c.kind), c.text))
+    return sorted(found, key=lambda c: (key not in names[id(c)], KINDS.index(c.kind), -c.full_size, c.text))
 
 
 def describe(c: Candidate) -> str:
