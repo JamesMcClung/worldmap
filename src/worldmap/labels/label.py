@@ -55,7 +55,6 @@ WRAP_MIN_HEIGHTS = 2.5
 @dataclass
 class Label:
     name: str
-    area: float  # of the piece it labels, map units^2; bigger labels are placed first
     color: RGB
     text: Text
     width: float  # padded text box
@@ -112,7 +111,7 @@ def new_label(ax: Axes, renderer: RendererBase, frame: MapFrame, name: str, anch
     s = frame.label_scale
     size = float(np.clip(FONT_SCALE * np.sqrt(area) * ppu / DPI * POINTS_PER_INCH / 10, MIN_PT * s, MAX_PT * s))
     text = ax.text(x, y, name, fontsize=size, ha="center", va="center", color=color, zorder=LABEL_ZORDER, path_effects=HALO, fontstyle="italic" if italic else "normal")
-    label = Label(name, area, color, text, 0.0, 0.0, (x - frame.xmin) * ppu, (y - frame.ymin) * ppu, frame.to_px(geom), kind=kind, full_size=full_size, label_scale=s)
+    label = Label(name, color, text, 0.0, 0.0, (x - frame.xmin) * ppu, (y - frame.ymin) * ppu, frame.to_px(geom), kind=kind, full_size=full_size, label_scale=s)
     measure(label, renderer)
     return label
 
