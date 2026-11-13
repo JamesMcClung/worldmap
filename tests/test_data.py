@@ -34,8 +34,8 @@ def test_load_marine() -> None:
 
 def test_load_rivers() -> None:
     rivers = load_rivers()
-    assert rivers.scalerank.max() <= RIVER_MAX_RANK
-    assert "Canal" not in set(rivers.featurecla)
+    assert (rivers.scalerank <= RIVER_MAX_RANK).sum() < len(rivers)  # canals of any rank
+    assert {"Moscow Canal", "White Sea – Baltic Canal", "Suez Canal"} <= set(rivers.name_en)
     assert {"Amazonas", "Nile", "Mississippi", "Danube"} <= set(rivers.name)
 
 
