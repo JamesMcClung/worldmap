@@ -30,7 +30,7 @@ from worldmap.frame import DPI, MapFrame, make_frame
 from worldmap.labels.label import decide_out_and_wrap, make_labels
 from worldmap.labels.placeable import Placeable
 from worldmap.labels.placement import Placement
-from worldmap.labels.priority import label_order, place_by_priority
+from worldmap.labels.priority import place_by_priority
 from worldmap.labels.regions import child_regions
 from worldmap.labels.report import progress, summary
 from worldmap.labels.water import WATER_KINDS, kinds_from_labels, load_water_bodies, make_water_labels
@@ -195,7 +195,7 @@ def main(argv: list[str] | None = None) -> None:
     labels = make_labels(shown, frame, fill_of, children, "countries" in args.label, relabel, extra)
     decide_out_and_wrap(labels)
     water = make_water_labels(load_water_bodies(kinds_from_labels(args.label), lakes_p, frame), frame) if kinds_from_labels(args.label) else []
-    placement = place([*labels, *water], frame, label_order(args.label))
+    placement = place([*labels, *water], frame, args.label)
     draw_labels(ax, placement, frame)
     draw_water_labels(ax, placement, frame)
 
@@ -245,7 +245,7 @@ def draw_topographic(args: argparse.Namespace, out: str, frame: MapFrame) -> Non
         # A crop's bars sit over the map: keep the labels off them.
         bars: list[Corner] = ["br", "tr", "bl"] if args.ocean else ["br", "bl"]
         room = frame if frame.globe else dataclasses.replace(frame, outline=label_outline(frame, bars))
-        placement = place(make_water_labels(load_water_bodies(kinds, frame.project(load_lakes()), frame), frame), room, label_order(args.label))
+        placement = place(make_water_labels(load_water_bodies(kinds, frame.project(load_lakes()), frame), frame), room, args.label)
         draw_water_labels(ax, placement, frame)
     ax.set_xlim(frame.xmin, frame.xmax)
     ax.set_ylim(frame.ymin, frame.ymax)

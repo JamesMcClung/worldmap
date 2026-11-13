@@ -8,13 +8,8 @@ from test_placement import country_label, crossing_water_labels, mid_atlantic_px
 from worldmap.frame import make_frame
 from worldmap.labels.label import Label
 from worldmap.labels.placement import Placement, clashes, overhang
-from worldmap.labels.priority import check_step, label_order, place_by_priority, ranks_by_quantile, steps
+from worldmap.labels.priority import check_step, place_by_priority, ranks_by_quantile, steps
 from worldmap.labels.water import WATER_MIN_PT, WaterLabel
-
-
-def test_label_order() -> None:
-    assert label_order(["countries", "water", "seas"]) == ["countries", "oceans", "seas", "lakes", "straits", "rivers"]
-    assert label_order(["rivers", "countries", "rivers"]) == ["rivers", "countries"]
 
 
 def test_ranks_are_fifths_of_every_kind_together() -> None:

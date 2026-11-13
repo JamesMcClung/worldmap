@@ -10,7 +10,6 @@ from worldmap.frame import MapFrame
 from worldmap.labels.geometry import coverage, on_feature
 from worldmap.labels.placeable import Placeable
 from worldmap.labels.placement import FIXED, FREE, NUDGE, OVERHANG_MAX, OVERHANG_SLICES, Placement, clash, outside_outline, overhang, place_labels, rects, subset
-from worldmap.labels.water import WATER_KINDS
 
 N_RANKS = 5
 RIVER_KM2_PER_KM = 10.0  # a river ranks as an area of this many km2 per km of its length
@@ -18,12 +17,6 @@ RIVER_KM2_PER_KM = 10.0  # a river ranks as an area of this many km2 per km of i
 NUDGE_MIN_SCALE = 0.9  # a nudged label shrinks no further than this share of the size it settled at
 
 Ranker = Callable[[Sequence[str], Sequence[float]], np.ndarray]
-
-
-def label_order(label: Sequence[str]) -> list[str]:
-    """The --label kinds in order, `water` standing for each water kind in its place, without repeats."""
-    water = [k for k in WATER_KINDS if k != "water"]
-    return list(dict.fromkeys(k for kind in label for k in (water if kind == "water" else [kind])))
 
 
 def ranks_by_quantile(kinds: Sequence[str], sizes: Sequence[float]) -> np.ndarray:
