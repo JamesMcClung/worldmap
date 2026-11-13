@@ -86,14 +86,17 @@ class Label:
         return self.height
 
     def shrink_toward(self, floor: float) -> float:
-        """Shrink text and box by SHRINK_FACTOR, or less so as to stop at `floor` (pt); return the factor (1: none)."""
-        if self.size <= floor:
-            return 1.0
-        factor = max(SHRINK_FACTOR, floor / self.size)
+        """Shrink text and box a step (shrink_step); return the factor."""
+        factor = shrink_step(self.size, floor)
         self.text.set_fontsize(self.size * factor)
         self.width *= factor
         self.height *= factor
         return factor
+
+
+def shrink_step(size: float, floor: float) -> float:
+    """The factor a label of `size` (pt) shrinks by: SHRINK_FACTOR, or less so as to stop at `floor`; 1 at or under it."""
+    return 1.0 if size <= floor else max(SHRINK_FACTOR, floor / size)
 
 
 def measure(label: Label, renderer: RendererBase) -> None:
