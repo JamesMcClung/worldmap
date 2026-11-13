@@ -4,13 +4,13 @@ import geopandas as gpd
 import pytest
 from shapely.geometry import Point
 
-from worldmap.data import CACHE, RASTER, is_labeled, load_countries, load_lakes
+from worldmap.data import CACHE, RASTER, is_labeled, load_countries
 from worldmap.earth import Fill, build_regions, fill_at
 from worldmap.frame import MapFrame, make_frame
 from worldmap.labels.label import RENAME, Label, make_labels
 import worldmap.labels.regions as regions_module
 from worldmap.labels.regions import HAND_PICKED, PARENT_SHORT, ChildRegion, child_regions
-from worldmap.render import subtract_lakes
+from worldmap.render import drawable_lakes, subtract_lakes
 
 
 @pytest.fixture(scope="module")
@@ -21,7 +21,7 @@ def countries() -> gpd.GeoDataFrame:
 @pytest.fixture(scope="module")
 def countries_projected(countries: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     """As cli.main passes it: projected, with the big lakes cut out."""
-    return subtract_lakes(make_frame().project(countries), make_frame().project(load_lakes()))
+    return subtract_lakes(make_frame().project(countries), drawable_lakes(make_frame()))
 
 
 @pytest.fixture(scope="module")

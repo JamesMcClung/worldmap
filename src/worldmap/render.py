@@ -17,7 +17,7 @@ from shapely.geometry.polygon import orient
 from shapely.ops import unary_union
 
 from worldmap.coloring import OCEAN
-from worldmap.data import RIVER_MAX_RANK
+from worldmap.data import RIVER_MAX_RANK, load_lakes
 from worldmap.disputed import Dispute, dispute_fills, stripe_parts
 from worldmap.earth import Fill, Regions
 from worldmap.frame import DPI, MapFrame
@@ -37,6 +37,7 @@ RIVER_WIDTH_MAX, RIVER_WIDTH_MIN = 1.6, 0.3  # line widths (pt) at scalerank 0 a
 BORDER_DASH = (0, (2.5, 1.5))  # --disputed: borders between a disputed area and the countries involved
 # Drawing order, bottom to top (pins are at 10, labels at 6). Borders sit below the lakes so they don't cross them.
 Z_OCEAN, Z_COUNTRY, Z_STRIPES, Z_BAIKONUR_EDGE, Z_BORDERS, Z_STATES, Z_LAKES, Z_GLOBE, Z_LEADERS = 0, 1, 1.5, 1.6, 1.7, 2, 2.5, 3, 4
+LAKE_MIN_PX = 10  # lakes covering at least this many poster pixels are drawn as water
 Z_RIVERS = 2.2  # above the state lines, below the lakes (which hide the lake centrelines)
 Z_STATES_UNDER_BORDERS = 1.65  # --disputed: state lines above the stripes, below the (dashed) borders
 LABEL_ZORDER = 6
@@ -120,6 +121,12 @@ def draw_states(ax: Axes, states_projected: gpd.GeoDataFrame, disputed: bool = F
     states_projected = states_projected[~states_projected.geometry.is_empty]  # a crop may show none
     if len(states_projected):
         states_projected.plot(ax=ax, color=STATE_LINE, linewidth=STATE_LINE_WIDTH, zorder=Z_STATES_UNDER_BORDERS if disputed else Z_STATES)
+
+
+def drawable_lakes(frame: MapFrame) -> gpd.GeoDataFrame:
+    """The lakes, projected, that cover at least LAKE_MIN_PX poster pixels of the frame."""
+    lakes = frame.project(load_lakes())
+    return lakes[lakes.area * frame.px_per_unit ** 2 >= LAKE_MIN_PX]
 
 
 def draw_lakes(ax: Axes, lakes_projected: gpd.GeoDataFrame) -> None:

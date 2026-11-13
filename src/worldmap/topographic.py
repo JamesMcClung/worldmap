@@ -13,9 +13,9 @@ from matplotlib.patches import Polygon as MplPolygon
 import shapely
 
 from worldmap.coloring import OCEAN
-from worldmap.data import CACHE, ETOPO, etopo15_tile, fetch, fetch_all, load_ice, load_lakes, load_land
+from worldmap.data import CACHE, ETOPO, etopo15_tile, fetch, fetch_all, load_ice, load_land
 from worldmap.frame import DPI, MapFrame, lon_ranges
-from worldmap.render import BORDER, BORDER_WIDTH, Z_BORDERS, Z_COUNTRY, draw_lakes
+from worldmap.render import BORDER, BORDER_WIDTH, Z_BORDERS, Z_COUNTRY, draw_lakes, drawable_lakes
 
 GRID_STEP_DEG = 0.05  # 3 arc-minutes: about one poster pixel at 200 dpi
 FINE_STEP_DEG = 1 / 60  # ETOPO's own cells, read for a crop whose 3' cells would span over FINE_ABOVE_PX pixels
@@ -406,4 +406,4 @@ def draw_topography(ax: Axes, frame: MapFrame, dpi: float, ocean: bool) -> None:
     if ocean:
         contours(sea, -np.arange(SEA_CONTOURS.step, -z.min() + 1, SEA_CONTOURS.step)[::-1], SEA_CONTOURS)
     ax.add_collection(LineCollection(coastline(land_shapes, ice_shapes), colors=BORDER, linewidths=BORDER_WIDTH, zorder=Z_BORDERS))
-    draw_lakes(ax, frame.project(load_lakes()))
+    draw_lakes(ax, drawable_lakes(frame))

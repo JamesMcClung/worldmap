@@ -13,7 +13,7 @@ from pyproj import Geod, Transformer
 from shapely.geometry import Polygon, box
 from shapely.geometry.base import BaseGeometry
 
-from worldmap.data import is_labeled, load_countries, load_disputed, load_lakes
+from worldmap.data import is_labeled, load_countries, load_disputed
 from worldmap.disputed import disputed_label_args, load_disputes
 from worldmap.earth import Fill
 from worldmap.frame import (ANTIMERIDIAN_EPS, OUTLINE_POINTS, PROJECT_PAD, SEGMENT_DEG, LonLatBox, MapFrame, lon_ranges,
@@ -21,6 +21,7 @@ from worldmap.frame import (ANTIMERIDIAN_EPS, OUTLINE_POINTS, PROJECT_PAD, SEGME
 from worldmap.labels.label import RENAME
 from worldmap.labels.regions import PARENT_SHORT, child_regions, polygons
 from worldmap.labels.water import WaterBody, kinds_from_labels, load_water_bodies
+from worldmap.render import drawable_lakes
 
 if TYPE_CHECKING:
     import questionary
@@ -362,7 +363,7 @@ def candidates(label: Collection[str], disputed: bool) -> list[Candidate]:
                 found.append((c.text, "territory", shapely.union_all(c.polys), (RENAME.get(name, name), name), c.km2))
     kinds = kinds_from_labels(label)
     if kinds:
-        bodies = load_water_bodies(kinds, frame.project(load_lakes()), frame)
+        bodies = load_water_bodies(kinds, drawable_lakes(frame), frame)
         oceans: dict[str, list[WaterBody]] = {}
         for b in bodies:  # the world map labels the Pacific twice, either side of +-180: one candidate
             if b.kind == "oceans":

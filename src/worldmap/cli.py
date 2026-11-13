@@ -21,7 +21,7 @@ from shapely.geometry import Point
 from worldmap.colorbars import Corner, draw_colorbar, label_outline
 from worldmap.coloring import Coloring, load_or_compute_coloring, make_palette, spot_check
 from worldmap.colorspace import RGB
-from worldmap.data import is_labeled, load_countries, load_disputed, load_lakes, load_rivers, load_states, parent_index
+from worldmap.data import is_labeled, load_countries, load_disputed, load_rivers, load_states, parent_index
 from worldmap.disputed import DISPUTED_GREY, STRIPE_WIDTH_IN, border_lines, dispute_edges, disputed_label_args, load_disputes
 from worldmap.crop import (CROP_MARGIN, box_region, candidates, centre_frame, centre_recipe, centre_spec, choose, crop_frame, matches,
                            parse_box, parse_centre)
@@ -35,7 +35,7 @@ from worldmap.labels.regions import child_regions
 from worldmap.labels.report import progress, summary
 from worldmap.labels.water import WATER_KINDS, kinds_from_labels, load_water_bodies, make_water_labels
 from worldmap.pins import draw_pins, load_pins, pick_pins, pin_sprite
-from worldmap.render import draw_borders, draw_countries, draw_labels, draw_lakes, draw_rivers, draw_states, draw_stripes, draw_water_labels, new_figure, subtract_lakes
+from worldmap.render import draw_borders, draw_countries, draw_labels, draw_lakes, drawable_lakes, draw_rivers, draw_states, draw_stripes, draw_water_labels, new_figure, subtract_lakes
 from worldmap.topographic import ICE, ICE_CONTOURS, LAND, LAND_CONTOURS, SEA, SEA_CONTOURS, draw_topography
 
 
@@ -163,8 +163,7 @@ def main(argv: list[str] | None = None) -> None:
     disputes = load_disputes(countries, frame.project(load_disputed()))
     fills = graph_fills(countries, load_or_compute_coloring(countries, major, args.recolor, parent_index(countries), dispute_edges(disputes)))
     disputes = [d for d in disputes if not d.geometry.is_empty]  # a crop leaves out those it doesn't show
-    states, lakes = load_states(), load_lakes()
-    countries_p, states_p, lakes_p = frame.project(countries), frame.project(states), frame.project(lakes)
+    countries_p, states_p, lakes_p = frame.project(countries), frame.project(load_states()), drawable_lakes(frame)
     regions = build_regions(countries, frame) if args.color == "earth" else None
 
     def fill_of(i: int, pt: Point | None = None) -> Fill:
@@ -244,7 +243,7 @@ def draw_topographic(args: argparse.Namespace, out: str, frame: MapFrame) -> Non
         # A crop's bars sit over the map: keep the labels off them.
         bars: list[Corner] = ["br", "tr", "bl"] if args.ocean else ["br", "bl"]
         room = frame if frame.globe else dataclasses.replace(frame, outline=label_outline(frame, bars))
-        placement = place(make_water_labels(load_water_bodies(kinds, frame.project(load_lakes()), frame), frame), room, args.label)
+        placement = place(make_water_labels(load_water_bodies(kinds, drawable_lakes(frame), frame), frame), room, args.label)
         draw_water_labels(ax, placement, frame)
     ax.set_xlim(frame.xmin, frame.xmax)
     ax.set_ylim(frame.ymin, frame.ymax)

@@ -34,7 +34,6 @@ ETOPO_URL = "https://www.ngdc.noaa.gov/mgg/global/relief/ETOPO2022/data/60s/60s_
 ETOPO15_URL = "https://www.ngdc.noaa.gov/mgg/global/relief/ETOPO2022/data/15s/15s_surface_elev_gtif/"
 ETOPO15_DIR = "etopo15"
 
-LAKE_MIN_KM2 = 2000  # lakes at least this big are drawn as water (~8 px across on the poster)
 DRY_LAKES = {"Lake Eyre North", "Lake Torrens", "Lake Gairdner", "Lake Mackay", "Lake Frome", "Lake Barlee"}  # Australian salt pans, usually dry
 RIVER_MAX_RANK = 8  # rivers of scalerank (0 = biggest) up to this are drawn; 9+ are short tributaries
 EQUAL_AREA_CRS = "+proj=eqearth"  # for every km2 (with_km2)
@@ -192,10 +191,9 @@ def load_states() -> gpd.GeoDataFrame:
 
 
 def load_lakes() -> gpd.GeoDataFrame:
-    """Lakes of at least LAKE_MIN_KM2, minus the usually-dry DRY_LAKES."""
+    """Every lake but the usually-dry DRY_LAKES (render.drawable_lakes keeps those big enough to see)."""
     lakes = with_km2(gpd.read_file(fetch(LAKES)))
-    big = lakes.km2 >= LAKE_MIN_KM2
-    return lakes[big & ~lakes.name.isin(DRY_LAKES)]
+    return lakes[~lakes.name.isin(DRY_LAKES)]
 
 
 def load_rivers() -> gpd.GeoDataFrame:

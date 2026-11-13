@@ -6,17 +6,17 @@ import shapely.affinity
 from shapely.geometry import LineString, Point
 
 from worldmap.curves import arc_lengths, bend
-from worldmap.data import load_lakes
 from worldmap.frame import MapFrame, make_frame
 from worldmap.labels.text import PX_PER_PT
 from worldmap.labels.water import (OCEAN_MIN_PT, OCEAN_PT, RIVER_MAX_PT, RIVER_MIN_PT, RIVER_SCALE_MAX, SEA_MAX_PT, WATER_MIN_INSIDE, WATER_MIN_PT,
                                    WATER_TEXT, best_stretch, classify, fit_curve, kinds_from_labels, load_water_bodies,
                                    longest_paths, make_water_labels, river_label, river_name, river_size, WaterBody)
+from worldmap.render import drawable_lakes
 
 
 @pytest.fixture(scope="module")
 def lakes_projected() -> gpd.GeoDataFrame:
-    return make_frame().project(load_lakes())
+    return drawable_lakes(make_frame())
 
 
 def test_classify() -> None:
@@ -237,13 +237,13 @@ def test_crop_without_marine_areas() -> None:
     from worldmap.crop import box_region, crop_frame
 
     f = crop_frame(box_region((10, 10, 20, 20)), 0)  # Chad and Nigeria: no sea in sight
-    bodies = load_water_bodies({"oceans", "seas", "straits", "lakes"}, f.project(load_lakes()), f)
+    bodies = load_water_bodies({"oceans", "seas", "straits", "lakes"}, drawable_lakes(f), f)
     assert all(b.kind == "lakes" for b in bodies)
 
 
 def bodies_by_text(frame: MapFrame) -> dict[str, list]:
     out: dict[str, list] = {}
-    for b in load_water_bodies({"oceans", "seas", "lakes", "straits", "rivers"}, frame.project(load_lakes()), frame):
+    for b in load_water_bodies({"oceans", "seas", "lakes", "straits", "rivers"}, drawable_lakes(frame), frame):
         out.setdefault(b.text, []).append(b)
     return out
 

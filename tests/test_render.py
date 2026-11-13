@@ -19,3 +19,25 @@ def test_draw_states_skips_a_crop_with_no_state_lines() -> None:
     import matplotlib.pyplot as plt
 
     plt.close(fig)
+
+
+def test_drawable_lakes_by_pixel_area() -> None:
+    from worldmap.crop import box_region, crop_frame, parse_box
+    from worldmap.render import LAKE_MIN_PX, drawable_lakes
+
+    world = drawable_lakes(make_frame())
+    assert (world.area * make_frame().px_per_unit ** 2 >= LAKE_MIN_PX).all() and "Lake Victoria" in set(world.name)
+    assert len(world) > 600  # 90 at the old 2000 km2
+    alps = drawable_lakes(crop_frame(box_region(parse_box("5:11,44:48")), 0))
+    assert "Lake Geneva" in set(alps.name)  # 580 km2
+
+
+def test_drawable_lakes_may_be_none() -> None:
+    from worldmap.crop import centre_frame, parse_centre
+    from worldmap.data import load_countries
+    from worldmap.render import drawable_lakes, subtract_lakes
+
+    sea = centre_frame(parse_centre("-30,0/2,2"))  # mid-Atlantic
+    lakes = drawable_lakes(sea)
+    assert lakes.empty
+    subtract_lakes(sea.project(load_countries()), lakes)
