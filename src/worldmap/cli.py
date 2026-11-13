@@ -29,8 +29,7 @@ from worldmap.earth import Fill, build_regions, fill_at
 from worldmap.frame import DPI, MapFrame, make_frame
 from worldmap.labels.label import decide_out_and_wrap, make_labels
 from worldmap.labels.placeable import Placeable
-from worldmap.labels.placement import Placement
-from worldmap.labels.priority import place_by_priority
+from worldmap.labels.priority import Outcome, Unplaced, place_by_priority
 from worldmap.labels.regions import child_regions
 from worldmap.labels.report import progress, summary
 from worldmap.labels.water import WATER_KINDS, kinds_from_labels, load_water_bodies, make_water_labels
@@ -193,7 +192,7 @@ def main(argv: list[str] | None = None) -> None:
     labels = make_labels(shown, frame, fill_of, children, "countries" in args.label, relabel, extra)
     decide_out_and_wrap(labels)
     water = make_water_labels(load_water_bodies(kinds_from_labels(args.label), lakes_p, frame), frame) if kinds_from_labels(args.label) else []
-    placement = place([*labels, *water], frame, args.label)
+    placement = place([*labels, *water], frame, args.label).placement
     draw_labels(ax, placement, frame)
     draw_water_labels(ax, placement, frame)
 
@@ -203,18 +202,18 @@ def main(argv: list[str] | None = None) -> None:
     print("wrote", out, "labels:", int((~placement.water).sum()), "leaders:", int(placement.out.sum()), "water labels:", int(placement.water.sum()))
 
 
-def place(items: Sequence[Placeable], frame: MapFrame, order: list[str]) -> Placement:
+def place(items: Sequence[Placeable], frame: MapFrame, order: list[str], unfit: Sequence[Unplaced] = ()) -> Outcome:
     """place_by_priority, showing on a terminal the rank being placed, then printing its summary."""
     tty, columns = sys.stdout.isatty(), shutil.get_terminal_size().columns
 
     def show(r: int, done: int, of: int, kind: str) -> None:
         print(f"\r\x1b[K{progress(r, done, of, kind, columns)}", end="", flush=True)
 
-    outcome = place_by_priority(items, frame, order, on_step=show if tty else None)
+    outcome = place_by_priority(items, frame, order, on_step=show if tty else None, unfit=unfit)
     if tty:
         print("\r\x1b[K", end="")
-    print(summary(items, outcome, order, tty and "NO_COLOR" not in os.environ, columns if tty else None))
-    return outcome.placement
+    print(summary(items, unfit, outcome, order, tty and "NO_COLOR" not in os.environ, columns if tty else None))
+    return outcome
 
 
 def add_pins(ax: Axes, frame: MapFrame, args: argparse.Namespace) -> None:
@@ -243,7 +242,7 @@ def draw_topographic(args: argparse.Namespace, out: str, frame: MapFrame) -> Non
         # A crop's bars sit over the map: keep the labels off them.
         bars: list[Corner] = ["br", "tr", "bl"] if args.ocean else ["br", "bl"]
         room = frame if frame.globe else dataclasses.replace(frame, outline=label_outline(frame, bars))
-        placement = place(make_water_labels(load_water_bodies(kinds, drawable_lakes(frame), frame), frame), room, args.label)
+        placement = place(make_water_labels(load_water_bodies(kinds, drawable_lakes(frame), frame), frame), room, args.label).placement
         draw_water_labels(ax, placement, frame)
     ax.set_xlim(frame.xmin, frame.xmax)
     ax.set_ylim(frame.ymin, frame.ymax)

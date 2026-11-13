@@ -1,9 +1,10 @@
+import numpy as np
 import pytest
 from test_priority import FRAME, sized
 from test_placement import crossing_water_labels
 
 from worldmap.labels import report
-from worldmap.labels.priority import place_by_priority
+from worldmap.labels.priority import Unplaced, place_by_priority
 from worldmap.labels.report import progress, rank_table, summary
 
 
@@ -74,6 +75,22 @@ def test_progress(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_summary_lists_the_skipped_then_the_rank_table() -> None:
     sea, bay = crossing_water_labels(FRAME)
     outcome = place_by_priority([sized(sea, 100), sized(bay, 10)], FRAME, ["seas"])
-    lines = summary([sea, bay], outcome, ["seas"], color=False, columns=None).split("\n")
+    lines = summary([sea, bay], [], outcome, ["seas"], color=False, columns=None).split("\n")
     assert lines[0] == "labels skipped: ['Bay']"
     assert lines[3].startswith("seas") and lines[3].endswith("│ Bay")
+
+
+def test_summary_shows_unfit_and_cuts() -> None:
+    sea, _ = crossing_water_labels(FRAME)
+    bays = [Unplaced(f"Bay {k}", "seas", 1.0) for k in range(5)]
+    outcome = place_by_priority([sized(sea, 100)], FRAME, ["seas"], rank=lambda k, s: np.ones(6, int), unfit=bays)
+    lines = summary([sea], bays, outcome, ["seas"], color=False, columns=None).split("\n")
+    assert lines[0] == "labels skipped: ['Sea', 'Bay 0', 'Bay 1', 'Bay 2', 'Bay 3', 'Bay 4']"
+    assert lines[1] == "cut: seas from rank 1"
+    assert lines[4].startswith("seas") and "0/6" in lines[4]
+
+
+def test_summary_without_cuts_has_no_cut_line() -> None:
+    sea, bay = crossing_water_labels(FRAME)
+    outcome = place_by_priority([sized(sea, 100), sized(bay, 10)], FRAME, ["seas"])
+    assert not any(line.startswith("cut:") for line in summary([sea, bay], [], outcome, ["seas"], color=False, columns=None).split("\n"))

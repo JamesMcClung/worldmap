@@ -5,7 +5,7 @@ from collections.abc import Collection, Sequence
 import numpy as np
 
 from worldmap.labels.placeable import Placeable
-from worldmap.labels.priority import N_RANKS, Outcome
+from worldmap.labels.priority import N_RANKS, Outcome, Unplaced
 
 DROPPED_WIDTH = 40  # the rank table's dropped labels of a kind fit in this many characters off a terminal
 DROPPED_MIN = 20  # on a terminal, the dropped column fills the rest of the line, left out if narrower than this
@@ -88,9 +88,13 @@ def progress(r: int, done: int, of: int, kind: str, columns: int) -> str:
     return text[:columns - 1]
 
 
-def summary(items: Sequence[Placeable], outcome: Outcome, order: Sequence[str], color: bool, columns: int | None) -> str:
-    """What place_by_priority did with `items`: the labels skipped, biggest first, then the rank_table."""
+def summary(items: Sequence[Placeable], unfit: Sequence[Unplaced], outcome: Outcome, order: Sequence[str], color: bool,
+            columns: int | None) -> str:
+    """What place_by_priority did with `items` and the `unfit`: the labels skipped (the unfit among them), biggest
+    first, the kinds cut and where, then the rank_table."""
+    everything: list[Placeable | Unplaced] = [*items, *unfit]
     placed = set(np.flatnonzero(outcome.kept).tolist())
-    skipped = [items[i].name for _, members in outcome.plan for i in members if i not in placed]
-    return f"labels skipped: {skipped}\n" + rank_table(outcome.plan, [item.kind for item in items], order, placed, color,
-                                                       [item.name for item in items], columns)
+    skipped = [everything[i].name for _, members in outcome.plan for i in members if i not in placed]
+    cut = ", ".join(f"{kind} from rank {r}" for kind, r in outcome.cut.items())
+    return (f"labels skipped: {skipped}\n" + (f"cut: {cut}\n" if cut else "")
+            + rank_table(outcome.plan, [e.kind for e in everything], order, placed, color, [e.name for e in everything], columns))
