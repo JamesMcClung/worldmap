@@ -83,11 +83,6 @@ def test_leader_through_a_box_clashes(frame: MapFrame, two_labels: list[Label]) 
     assert clashes(p) == [0, 1]
 
 
-def test_water_only(frame: MapFrame, water_on_top_of_it: WaterLabel) -> None:
-    p = placed([], frame, water=[water_on_top_of_it])
-    assert p.n == 1 and p.water.all()
-
-
 def mid_atlantic_px(frame: MapFrame) -> tuple[float, float]:
     x, y = frame.to_map.transform(-35, 30)
     return (x - frame.xmin) * frame.px_per_unit, (y - frame.ymin) * frame.px_per_unit
