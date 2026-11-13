@@ -87,7 +87,7 @@ def test_summary_shows_unfit_and_cuts() -> None:
     lines = summary([sea], bays, outcome, ["seas"], color=False, columns=None).split("\n")
     assert lines[0] == "labels skipped: []"  # what a cut drops is only counted: thousands on the world map
     assert lines[1] == "cut: seas from rank 1 (6 dropped)"
-    assert lines[4].startswith("seas") and "0/6" in lines[4]
+    assert lines[4].startswith("seas") and "(1/)6" in lines[4]  # the sea fit before the cut
 
 
 def test_summary_without_cuts_has_no_cut_line() -> None:
@@ -104,3 +104,20 @@ def test_summary_lists_neither_the_unfit_nor_the_cut() -> None:
     lines = summary([sea, bay], [*rivers, Unplaced("Cove", "seas", 1.0)], outcome, ["seas", "rivers"], color=False, columns=None).split("\n")
     assert lines[0] == "labels skipped: ['Bay']"
     assert lines[1] == "cut: rivers from rank 2 (5 dropped)"
+
+
+def test_rank_table_shows_what_fit_in_the_cut_rank() -> None:
+    """The rank a kind was cut at: '(fit/)of', fit being its labels placed before the cut undid them."""
+    rows = rank_table(PLAN, KINDS, ["rivers", "seas"], placed={0, 2}, color=False, cut={"seas": (3, 1)}).split("\n")
+    assert rows[3] == "seas         │     1/2       -   (1/)1       -       - │     1/3     33%"
+    red, end = "\x1b[31m", "\x1b[0m"
+    coloured = rank_table(PLAN, KINDS, ["rivers", "seas"], placed={0, 2}, color=True, cut={"seas": (3, 1)}).split("\n")
+    assert f"{red}   (1/)1{end}" in coloured[3]
+
+
+def test_rank_table_widens_the_ranks_for_a_long_cut_cell() -> None:
+    plan = [(1, [0]), (2, list(range(1, 1001)))]
+    rows = rank_table(plan, ["seas"] * 1001, ["seas"], placed={0}, color=False, cut={"seas": (2, 999)}).split("\n")
+    assert rows[0] == "rank         │          1          2          3          4          5 │     all       %"
+    assert rows[2] == "seas         │        1/1 (999/)1000          -          -          - │  1/1001      0%"
+    assert len(rows[1]) == len(rows[0])  # the rule spans the wider columns
