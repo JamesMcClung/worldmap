@@ -10,7 +10,6 @@ from worldmap.labels.label import Label, new_label
 from worldmap.labels.placement import FIXED, FREE, NUDGE, Placement, clashes, place_labels, rects, subset
 from worldmap.labels import placement
 from worldmap.labels.water import OCEAN_MIN_PT, WATER_MIN_PT, WaterLabel
-from worldmap.render import new_figure
 
 
 @pytest.fixture(scope="module")
@@ -20,14 +19,10 @@ def frame() -> MapFrame:
 
 def country_label(frame: MapFrame, name: str, lon: float, lat: float, half_px: float) -> Label:
     """A label for a square 'country' 2 * half_px wide around lon/lat."""
-    fig, ax = new_figure(frame)
     x, y = frame.to_map.transform(lon, lat)
     half = half_px / frame.px_per_unit
     geom = shapely.box(x - half, y - half, x + half, y + half)
-    label = new_label(ax, fig.canvas.get_renderer(), frame, name, (x, y), geom, geom.area, (0.2, 0.2, 0.2))  # type: ignore[attr-defined]
-    import matplotlib.pyplot as plt
-    plt.close(fig)  # the label keeps its text
-    return label
+    return new_label(frame, name, (x, y), geom, geom.area, (0.2, 0.2, 0.2))
 
 
 

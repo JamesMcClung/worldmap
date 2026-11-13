@@ -221,18 +221,12 @@ def test_label_scale_grows_with_zoom() -> None:
 
 
 def test_label_sizes_scale_in_a_crop() -> None:
-    import matplotlib.pyplot as plt
-
     from worldmap.labels.label import MAX_PT, MIN_PT, new_label
-    from worldmap.render import new_figure
 
     f = crop_frame(box_region((-5, 42, 9, 51)), 0.1)
-    fig, ax = new_figure(f)
-    r = fig.canvas.get_renderer()  # type: ignore[attr-defined]
     huge, tiny = f.canvas, f.canvas.centroid.buffer(1)
-    assert new_label(ax, r, f, "Big", (0, 0), huge, huge.area, (0, 0, 0)).text.get_fontsize() == pytest.approx(MAX_PT * f.label_scale)
-    assert new_label(ax, r, f, "Small", (0, 0), tiny, tiny.area, (0, 0, 0)).text.get_fontsize() == pytest.approx(MIN_PT * f.label_scale)
-    plt.close(fig)
+    assert new_label(f, "Big", (0, 0), huge, huge.area, (0, 0, 0)).size == pytest.approx(MAX_PT * f.label_scale)
+    assert new_label(f, "Small", (0, 0), tiny, tiny.area, (0, 0, 0)).size == pytest.approx(MIN_PT * f.label_scale)
 
 
 def test_wide_regions_use_equal_earth() -> None:

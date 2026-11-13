@@ -180,22 +180,15 @@ def main(argv: list[str] | None = None) -> None:
     ax.set_xlim(frame.xmin, frame.xmax)
     ax.set_ylim(frame.ymin, frame.ymax)
 
-    # Labels are measured in rendered pixels, so draw once first.
-    fig.canvas.draw()
-    renderer = fig.canvas.get_renderer()  # type: ignore[attr-defined]  # Agg canvas
     shown = frame.visible(countries_p)  # labels go on what the frame shows
     children = child_regions(countries, shown, frame) if "territories" in args.label else []
     if not frame.globe:
         disputes = [dataclasses.replace(d, geometry=d.geometry.intersection(frame.canvas)) for d in disputes]
     relabel, extra = disputed_label_args(disputes, lambda i, pt: fill_of(i, pt) if regions else DISPUTED_GREY) if args.disputed else ({}, [])
-    labels = make_labels(shown, frame, ax, renderer, fill_of, children, "countries" in args.label, relabel, extra)
-    decide_out_and_wrap(labels, renderer)
+    labels = make_labels(shown, frame, fill_of, children, "countries" in args.label, relabel, extra)
+    decide_out_and_wrap(labels)
     water = make_water_labels(load_water_bodies(kinds_from_labels(args.label), lakes_p, frame), frame) if kinds_from_labels(args.label) else []
-    placement, kept, water = place_by_priority(labels, water, frame, label_order(args.label))
-    for label in labels:
-        if label not in kept:
-            label.text.remove()
-    labels = kept
+    placement, labels, water = place_by_priority(labels, water, frame, label_order(args.label))
     draw_labels(ax, labels, placement, frame)
     draw_water_labels(ax, water, placement, frame)
 

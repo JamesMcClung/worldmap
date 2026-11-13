@@ -1,7 +1,6 @@
 from collections.abc import Callable
 
 import geopandas as gpd
-import matplotlib
 import pytest
 from shapely.geometry import Point
 
@@ -11,7 +10,7 @@ from worldmap.frame import MapFrame, make_frame
 from worldmap.labels.label import RENAME, Label, make_labels
 import worldmap.labels.regions as regions_module
 from worldmap.labels.regions import HAND_PICKED, PARENT_SHORT, ChildRegion, child_regions
-from worldmap.render import new_figure, subtract_lakes
+from worldmap.render import subtract_lakes
 
 
 @pytest.fixture(scope="module")
@@ -78,12 +77,7 @@ def test_parents_are_labeled_countries(regions: list[ChildRegion], countries: gp
 
 
 def build_labels(countries: gpd.GeoDataFrame, countries_projected: gpd.GeoDataFrame, frame: MapFrame, children: list[ChildRegion], fill_of: Callable[[int, Point | None], Fill]) -> list[Label]:
-    matplotlib.use("Agg")
-    fig, ax = new_figure(frame)
-    ax.set_xlim(frame.xmin, frame.xmax)
-    ax.set_ylim(frame.ymin, frame.ymax)
-    fig.canvas.draw()
-    return make_labels(countries_projected, frame, ax, fig.canvas.get_renderer(), fill_of, children)  # type: ignore[attr-defined]
+    return make_labels(countries_projected, frame, fill_of, children)
 
 
 def test_child_labels_are_italic(countries: gpd.GeoDataFrame, countries_projected: gpd.GeoDataFrame, frame: MapFrame, regions: list[ChildRegion]) -> None:
@@ -91,10 +85,10 @@ def test_child_labels_are_italic(countries: gpd.GeoDataFrame, countries_projecte
         return (0.5, 0.5, 0.5)
 
     with_children = build_labels(countries, countries_projected, frame, regions, grey)
-    italic = [label for label in with_children if label.text.get_fontstyle() == "italic"]
+    italic = [label for label in with_children if label.italic]
     assert len(italic) == 78
     assert {label.name for label in italic} == {r.text for r in regions}
-    assert not [label for label in build_labels(countries, countries_projected, frame, [], grey) if label.text.get_fontstyle() == "italic"]
+    assert not [label for label in build_labels(countries, countries_projected, frame, [], grey) if label.italic]
 
 
 def test_earth_child_label_uses_its_own_polygon(countries: gpd.GeoDataFrame, countries_projected: gpd.GeoDataFrame, frame: MapFrame, regions: list[ChildRegion]) -> None:
@@ -113,7 +107,7 @@ def test_scattered_child_labels_sized_by_land(countries: gpd.GeoDataFrame, count
     region = {r.text: r for r in regions}
     for name in ["French Polynesia (France)", "Saint Helena (UK)", "Cook Islands (New Zealand)"]:
         label = by[name]
-        assert label.text.get_fontsize() <= 14, name
+        assert label.size <= 14, name
         anchor = Point(label.anchor_x / frame.px_per_unit + frame.xmin, label.anchor_y / frame.px_per_unit + frame.ymin)
         assert max(region[name].polys, key=lambda p: p.area).contains(anchor), name
 
@@ -126,4 +120,4 @@ def test_hand_picked_without_polygons_is_named(countries: gpd.GeoDataFrame, coun
 
 def test_labels_keep_their_case(countries: gpd.GeoDataFrame, countries_projected: gpd.GeoDataFrame, frame: MapFrame, regions: list[ChildRegion]) -> None:
     labels = build_labels(countries, countries_projected, frame, regions, lambda i, pt: (0.5, 0.5, 0.5))
-    assert [label.name for label in labels if label.text.get_text() != label.name] == []
+    assert [label.name for label in labels if label.text != label.name] == []

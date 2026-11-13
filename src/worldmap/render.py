@@ -21,8 +21,7 @@ from worldmap.data import RIVER_MAX_RANK
 from worldmap.disputed import Dispute, dispute_fills, stripe_parts
 from worldmap.earth import Fill, Regions
 from worldmap.frame import DPI, MapFrame
-from worldmap.labels.label import Label
-from worldmap.labels.label import LABEL_ZORDER
+from worldmap.labels.label import HALO, LABEL_ZORDER, Label
 from worldmap.labels.placement import Placement, leader_ends
 from worldmap.labels.water import RIVER_HALO, RIVER_TEXT, WATER_HALO, WATER_HALO_PX, WATER_TEXT, WaterLabel
 
@@ -152,13 +151,20 @@ def subtract_lakes(countries_projected: gpd.GeoDataFrame, lakes_projected: gpd.G
     return out
 
 
+def glyph_patch(glyphs: Path, scale: float, x: float, y: float, frame: MapFrame, **style: object) -> PathPatch:
+    """A label's glyphs (px, relative to its position) scaled by `scale` (shrunk in placing), at (x, y) px. Round
+    joins: the halo stroke (path_effects) would grow spikes at the glyphs' sharp corners."""
+    vertices = np.asarray(glyphs.vertices) * scale + [x, y]
+    mx, my = frame.px_to_map(vertices[:, 0], vertices[:, 1])
+    return PathPatch(Path(np.stack([mx, my], -1), glyphs.codes), ec="none", lw=0, joinstyle="round", **style)  # type: ignore[arg-type]
+
+
 def draw_labels(ax: Axes, labels: list[Label], placement: Placement, frame: MapFrame) -> None:
-    """Move each label's text to its placed position and size, and draw leader lines and dots for 'out' labels."""
+    """Each label's glyphs at its placed position and size, and leader lines and dots for 'out' labels."""
     end_x, end_y = leader_ends(placement)
     for i, label in enumerate(labels):
-        x, y = frame.px_to_map(placement.x[i], placement.y[i])
-        label.text.set_position((float(x), float(y)))
-        label.text.set_fontsize(float(placement.size[i]))
+        ax.add_patch(glyph_patch(label.glyphs, placement.size[i] / label.size, placement.x[i], placement.y[i], frame,
+                                 fc=label.color, zorder=LABEL_ZORDER, path_effects=HALO))
         if placement.out[i]:
             x0, y0 = frame.px_to_map(placement.anchor_x[i], placement.anchor_y[i])
             x1, y1 = frame.px_to_map(end_x[i], end_y[i])
@@ -175,9 +181,5 @@ def draw_water_labels(ax: Axes, water: list[WaterLabel], placement: Placement, f
     river_halo = [pe.withStroke(linewidth=WATER_HALO_PX * 72 / DPI, foreground=RIVER_HALO)]
     for k, label in enumerate(water):
         river = label.kind == "rivers"
-        scale = placement.size[first + k] / label.size  # shrunk in placing
-        vertices = np.asarray(label.glyphs.vertices) * scale + [placement.x[first + k], placement.y[first + k]]
-        x, y = frame.px_to_map(vertices[:, 0], vertices[:, 1])
-        path = Path(np.stack([x, y], -1), label.glyphs.codes)
-        ax.add_patch(PathPatch(path, fc=RIVER_TEXT if river else WATER_TEXT, ec="none", lw=0, zorder=LABEL_ZORDER - 0.1,
-                               path_effects=river_halo if river else halo))
+        ax.add_patch(glyph_patch(label.glyphs, placement.size[first + k] / label.size, placement.x[first + k], placement.y[first + k], frame,
+                                 fc=RIVER_TEXT if river else WATER_TEXT, zorder=LABEL_ZORDER - 0.1, path_effects=river_halo if river else halo))

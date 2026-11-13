@@ -1,5 +1,4 @@
 import geopandas as gpd
-import matplotlib
 import pytest
 
 from worldmap.crop import box_region, crop_frame
@@ -8,7 +7,6 @@ from worldmap.disputed import disputed_label_args, load_disputes
 from worldmap.frame import MapFrame, make_frame
 from worldmap.labels.label import Label, make_labels
 from worldmap.labels.regions import child_regions
-from worldmap.render import new_figure
 
 
 @pytest.fixture(scope="module")
@@ -18,16 +16,10 @@ def countries() -> gpd.GeoDataFrame:
 
 def labels_in(frame: MapFrame, countries: gpd.GeoDataFrame, territories: bool = False, disputed: bool = False) -> list[Label]:
     """make_labels as cli.main calls it, with every label grey."""
-    matplotlib.use("Agg")
-    fig, ax = new_figure(frame)
-    fig.canvas.draw()
     shown = frame.visible(frame.project(countries))
     children = child_regions(countries, shown, frame) if territories else []
     relabel, extra = disputed_label_args(load_disputes(countries, frame.project(load_disputed())), lambda i, pt: (0.5, 0.5, 0.5)) if disputed else ({}, [])
-    labels = make_labels(shown, frame, ax, fig.canvas.get_renderer(), lambda i, pt: (0.5, 0.5, 0.5), children, True, relabel, extra)  # type: ignore[attr-defined]
-    import matplotlib.pyplot as plt
-    plt.close(fig)
-    return labels
+    return make_labels(shown, frame, lambda i, pt: (0.5, 0.5, 0.5), children, True, relabel, extra)
 
 
 def by_name(labels: list[Label]) -> dict[str, Label]:
