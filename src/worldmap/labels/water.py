@@ -85,7 +85,7 @@ class WaterBody:
     kind: Kind
     rank: int  # Natural Earth scalerank: 0 = oceans, 1 = major seas, ... lower is more important
     geom: Polygon | LineString  # the piece the label goes on (a river's line), in map units
-    full_size: float = 0.0  # km2 of the whole body, or km of the whole river, however much the frame shows: its priority
+    full_size: float  # km2 of the whole body, or km of the whole river, however much the frame shows: its priority
 
 
 def largest(geom: BaseGeometry) -> Polygon:
