@@ -55,7 +55,7 @@ Importing any module has no side effects; only `cli.main` (after choosing the ba
 
 | Module | Contents |
 |---|---|
-| `cli.py` | `parse_args` (`--label`: `label_kinds`, an ordered list (the order kinds are placed in within a rank) that replaces the default `countries`; `none` = no labels), `graph_fills` (palette + Baikonur), `main()`: the pipeline as a sequence of stage calls, `place` (`place_by_priority` with the progress line and `summary` on a terminal) |
+| `cli.py` | `parse_args` (`--label`: `label_kinds`, an ordered list (the order kinds are placed in within a rank) that replaces the default `countries`; `water` is expanded into the water kinds in its place, so nothing past the parser sees it; `none` = no labels), `graph_fills` (palette + Baikonur), `main()`: the pipeline as a sequence of stage calls, `place` (`place_by_priority` with the progress line and `summary` on a terminal) |
 | `data.py` | `fetch`, `fetch_all`, `confirm_download`, `etopo15_tile`, file names (`MARINE`: the marine label areas; `RIVERS`), `CRS`, `STATE_COUNTRIES`, lakes filter, `is_dependency`, `parent_index`, `is_labeled`, `load_*` (`load_rivers`: scalerank <= `RIVER_MAX_RANK`, no canals) |
 | `frame.py` | `MapFrame` (transformers, outline, extent, `crs`, `globe`, `clip`, `label_scale`, `width_in`/`height_in`, `px_per_unit`, `units_per_in`, `canvas`, `project`, `visible`, `to_px`, `px_to_map`), `make_frame`, `cut`, `join_at_antimeridian`, `lon_ranges`, `DPI`, `POSTER_WIDTH_IN` |
 | `crop.py` | `--crop`: `parse_box`, `box_region`, `extent`, `sphere_centre`, `sample_lonlat`, `clip_boxes`, `canvas_centre`, `reach`, `seam_boxes`, `globe_outline`, `crop_frame`, `round_pole`, `fit_frame`, `canvas_frame`, `with_label_scale`, `parse_centre`, `centre_frame`, `centre_recipe`, `centre_spec`, `Candidate`, `candidates`, `matches`, `describe`, `checklist`, `choose` |
@@ -73,7 +73,7 @@ Importing any module has no side effects; only `cli.main` (after choosing the ba
 | `labels/placement.py` | `CostWeights`, `Placement` (per-label arrays, `size`; `parts`: every label's rects, a country label's box its one part; `items`: the labels, any order, `each`/`labels`/`water_labels`; `Placement.of`), `rects`, `unit_px`, `shrink_step`, `FIXED`/`NUDGE`/`FREE`, `OVERHANG_SLICES`, `overhang`, `cost_batch`, `candidates`, `clash`/`clashes`, `place_labels` (moves a `Placement` in place: `active`, `freedom`, `home`, `floors`), `subset`, `outline_coverage`, `outside_outline`, `leader_ends` |
 | `labels/placeable.py` | `Placeable`: what the solvers ask of a country or water label (`name`, `kind`, `full_size`, anchor, `size`, `min_size`, `parts`, `width`/`height`, `out`, `water`, `geom`/`cover`) |
 | `labels/kernels.py` | numba (`@njit(cache=True)`) loops behind `cost_batch` (`label_cost`: one kernel for every label, as its rects; `on_feature`: `by_area` measures a country's box by area, a water label's glyphs by centre), `clash`, `candidates` and `escapes`; weights passed as an array in `CostWeights` field order (`weight_array`) |
-| `labels/priority.py` | `label_order`, `ranks_by_quantile` (fifths by area, a river's length x `RIVER_KM2_PER_KM`), `steps`, `overhang_of`, `check_step` (-> `Verdict`: out, rival, skip), `place_by_priority` (step by step, biggest rank first; prints nothing, `on_step` before each step; returns the kept labels' `Placement`) |
+| `labels/priority.py` | `ranks_by_quantile` (fifths by area, a river's length x `RIVER_KM2_PER_KM`), `steps`, `overhang_of`, `check_step` (-> `Verdict`: out, rival, skip), `place_by_priority` (step by step, biggest rank first; prints nothing, `on_step` before each step; returns an `Outcome`: the kept labels' `Placement`, the plan and the kept mask, which `report.summary` reads) |
 | `labels/report.py` | `progress` (on a terminal, a bar of the rank being placed), `rank_table` (placed/total per kind and rank, coloured on a tty unless `NO_COLOR`, and each kind's dropped labels, biggest first), `summary` (the skipped labels, then the table) |
 | `labels/geometry.py` | `nearest_point_on_rect`, `two_line`, `Coverage` (summed-area table of a shape: `area` of boxes, `contains` of points), `coverage` (a label's, cached), `on_feature` (a label's pieces on its feature, judged by the solver's kernel: `overhang_of`, `inside_share`) |
 | `disjoint.py` | `DisjointSets` (union-find: `find`, `union`, `groups`): pieces joined at the seam, river networks, same-named rivers |
@@ -279,8 +279,7 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
 - Every label has a `full_size` (km2 of the whole country, region or water body, km of the whole river, however
   much the frame shows). `ranks_by_quantile` cuts all labels together, biggest first, into `N_RANKS` = 5 equal
   fifths; a river counts as `RIVER_KM2_PER_KM` = 10 km2 per km. `steps`: rank by rank, then the `--label` kinds in
-  order (`label_order`; `water` expands in place), each step's labels biggest first. The ranker is a parameter
-  (`rank=`), so tests pin ranks.
+  order, each step's labels biggest first. The ranker is a parameter (`rank=`), so tests pin ranks.
 - One `Placement` holds every label; each step solves it over the active ones (kept so far, and the step's), the step's labels `FREE`, the kept labels of this rank and the one before `NUDGE`d
   (they pay `CostWeights.nudge` per height/em from where they settled, at most `nudge_max`, and shrink to no less
   than `NUDGE_MIN_SCALE` of their settled size), older ones `FIXED`. Then `check_step` checks the step's labels smallest
