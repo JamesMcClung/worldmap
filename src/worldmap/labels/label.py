@@ -7,7 +7,6 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import geopandas as gpd
-import matplotlib.patheffects as pe
 import numpy as np
 from matplotlib.path import Path
 from matplotlib.textpath import TextPath, TextToPath
@@ -30,8 +29,6 @@ RENAME = {"People's Republic of China": "China", "United States of America": "Un
 MIN_PT, MAX_PT = 6, 30
 FONT_SCALE = 1.6  # font size (pt) = FONT_SCALE / 10 x sqrt(area), with the area measured in points^2
 POINTS_PER_INCH = 72
-LABEL_ZORDER = 6
-HALO = [pe.withStroke(linewidth=2.2, foreground=(1, 1, 1, 0.55))]
 SHRINK_MIN_PT = 5  # a label shrinks (placement.shrink_step) down to no less than this (scaled by the frame's label_scale)
 BOX_PAD_X, BOX_PAD_Y = 1.06, 1.15  # label box = the lines' advance width and line height scaled by these
 

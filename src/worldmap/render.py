@@ -21,7 +21,7 @@ from worldmap.data import RIVER_MAX_RANK
 from worldmap.disputed import Dispute, dispute_fills, stripe_parts
 from worldmap.earth import Fill, Regions
 from worldmap.frame import DPI, MapFrame
-from worldmap.labels.label import HALO, LABEL_ZORDER, Label
+from worldmap.labels.label import Label
 from worldmap.labels.placement import Placement, leader_ends
 from worldmap.labels.water import RIVER_HALO, RIVER_TEXT, WATER_HALO, WATER_HALO_PX, WATER_TEXT, WaterLabel
 
@@ -39,6 +39,8 @@ BORDER_DASH = (0, (2.5, 1.5))  # --disputed: borders between a disputed area and
 Z_OCEAN, Z_COUNTRY, Z_STRIPES, Z_BAIKONUR_EDGE, Z_BORDERS, Z_STATES, Z_LAKES, Z_GLOBE, Z_LEADERS = 0, 1, 1.5, 1.6, 1.7, 2, 2.5, 3, 4
 Z_RIVERS = 2.2  # above the state lines, below the lakes (which hide the lake centrelines)
 Z_STATES_UNDER_BORDERS = 1.65  # --disputed: state lines above the stripes, below the (dashed) borders
+LABEL_ZORDER = 6
+HALO = [pe.withStroke(linewidth=2.2, foreground=(1, 1, 1, 0.55))]  # the country labels'
 
 
 def patches(geom: BaseGeometry) -> Iterator[MplPolygon]:
