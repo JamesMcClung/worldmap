@@ -21,7 +21,7 @@ from shapely.geometry import Point
 from worldmap.colorbars import Corner, draw_colorbar, label_outline
 from worldmap.coloring import Coloring, load_or_compute_coloring, make_palette, spot_check
 from worldmap.colorspace import RGB
-from worldmap.data import is_labeled, load_countries, load_disputed, load_rivers, load_states, parent_index
+from worldmap.data import is_labeled, load_countries, load_disputed, load_states, parent_index
 from worldmap.disputed import DISPUTED_GREY, STRIPE_WIDTH_IN, border_lines, dispute_edges, disputed_label_args, load_disputes
 from worldmap.crop import (CROP_MARGIN, box_region, candidates, centre_frame, centre_recipe, centre_spec, choose, crop_frame, matches,
                            parse_box, parse_centre)
@@ -35,6 +35,7 @@ from worldmap.labels.report import progress, summary
 from worldmap.labels.water import WATER_KINDS, Kind, WaterBody, WaterLabel, kinds_from_labels, load_water_bodies, make_water_labels, river_ranks
 from worldmap.pins import draw_pins, load_pins, pick_pins, pin_sprite
 from worldmap.render import draw_borders, draw_countries, draw_labels, draw_lakes, drawable_lakes, draw_rivers, draw_states, draw_stripes, draw_water_labels, new_figure, subtract_lakes
+from worldmap.rivers import river_flow
 from worldmap.topographic import ICE, ICE_CONTOURS, LAND, LAND_CONTOURS, SEA, SEA_CONTOURS, draw_topography
 
 
@@ -211,14 +212,16 @@ def water_labels(kinds: set[Kind], lakes_projected: gpd.GeoDataFrame, frame: Map
 
 
 def shown_rivers(frame: MapFrame, bodies: list[WaterBody], outcome: Outcome | None, first: int) -> gpd.GeoDataFrame:
-    """The river lines to draw, projected: those whose rank (water.river_ranks; the bodies' are `outcome`'s ranks
-    from entry `first` on) rivers weren't cut at; every one if no labels were placed at all (`outcome` None)."""
-    rivers = frame.project(load_rivers())
+    """The river pieces to draw, projected: those whose rank (water.river_ranks; the bodies' are `outcome`'s ranks
+    from entry `first` on), or that of a piece upstream (RiverFlow.downstream), rivers weren't cut at; every one if
+    no labels were placed at all (`outcome` None)."""
+    flow = river_flow()
+    rivers = frame.project(flow.pieces)
     if outcome is None:
         return rivers
     ranks = outcome.ranks[first:first + len(bodies)]
     named = [k for k, b in enumerate(bodies) if b.kind == "rivers"]
-    return rivers[outcome.shown("rivers", river_ranks(rivers, [bodies[k] for k in named], ranks[named]))]
+    return rivers[outcome.shown("rivers", flow.downstream(river_ranks(rivers, [bodies[k] for k in named], ranks[named])))]
 
 
 def place(entries: Sequence[Placeable | Unplaced], frame: MapFrame, order: list[str]) -> Outcome:

@@ -25,6 +25,7 @@
       "geopandas": "1.2.0",
       "geos": "3.14.1",
       "lakes": "2349685",
+      "land": "3269070",
       "marine": "940563",
       "matplotlib": "3.11.2",
       "numpy": "2.5.4",
@@ -45,6 +46,7 @@
       "geopandas": "1.2.0",
       "geos": "3.14.1",
       "lakes": "2349685",
+      "land": "3269070",
       "marine": "940563",
       "matplotlib": "3.11.2",
       "numpy": "2.5.4",
@@ -55,7 +57,7 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "34b0a5a7fa9c1979b0b2e23321ee370f00a8658839d83202d7977165b65b67ee"
+    "sha256": "ddf105d07c3853f2eb4f3bb60ab76eca84efe794daab16f13f3484938db177f5"
   },
   "disputed": {
     "env": {
@@ -206,7 +208,7 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "046ad04ee4d4b32a08a5a2ac3f29f828d33e1ca24171e7ca29d3e507e9a64e39"
+    "sha256": "ecbebe3c2c3639bf5f61271f3039da835bd52c9c7483a58d55a95c8a1ddfb65f"
   },
   "water": {
     "env": {
@@ -216,6 +218,7 @@
       "geopandas": "1.2.0",
       "geos": "3.14.1",
       "lakes": "2349685",
+      "land": "3269070",
       "marine": "940563",
       "matplotlib": "3.11.2",
       "numpy": "2.5.4",
@@ -226,6 +229,6 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "037056ea7b6ce800029f3f5fb0e9a555813a69e71aae6817a997f8adf2100244"
+    "sha256": "d8215e5fa687985a16f2ed187113db6e81142096f9e6c86d917b8f940c67be61"
   }
 }
