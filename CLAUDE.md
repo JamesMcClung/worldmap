@@ -56,7 +56,7 @@ Importing any module has no side effects; only `cli.main` (after choosing the ba
 | Module | Contents |
 |---|---|
 | `cli.py` | `parse_args` (`--label`: `label_kinds`, an ordered list (kinds are placed in its order within a rank) replacing the default `countries`; `water` is expanded into the water kinds in its place; `none` = no labels), `graph_fills` (palette + Baikonur), `main()`: the pipeline as a sequence of stage calls, `place` (`place_by_priority` with the progress line and `summary` on a terminal) |
-| `data.py` | `fetch`, `fetch_all`, `confirm_download`, `etopo15_tile`, file names (`MARINE`: the marine label areas; `RIVERS`), `CRS`, `STATE_COUNTRIES`, lakes filter, `is_dependency`, `parent_index`, `is_labeled`, `load_*` (`load_rivers`: scalerank <= `RIVER_MAX_RANK`, no canals) |
+| `data.py` | `fetch`, `fetch_all`, `confirm_download`, `etopo15_tile`, file names (`MARINE`: the marine label areas; `RIVERS`), `CRS`, `STATE_COUNTRIES`, lakes filter, `is_dependency`, `parent_index`, `is_labeled`, `load_*` (`load_rivers`: scalerank <= `RIVER_MAX_RANK`, canals included) |
 | `frame.py` | `MapFrame` (transformers, outline, extent, `crs`, `globe`, `clip`, `label_scale`, `width_in`/`height_in`, `px_per_unit`, `units_per_in`, `canvas`, `project`, `visible`, `to_px`, `px_to_map`), `make_frame`, `cut`, `join_at_antimeridian`, `lon_ranges`, `DPI`, `POSTER_WIDTH_IN` |
 | `crop.py` | `--crop`: `parse_box`, `box_region`, `extent`, `sphere_centre`, `sample_lonlat`, `clip_boxes`, `canvas_centre`, `reach`, `seam_boxes`, `globe_outline`, `crop_frame`, `round_pole`, `fit_frame`, `canvas_frame`, `with_label_scale`, `parse_centre`, `centre_frame`, `centre_recipe`, `centre_spec`, `Candidate`, `candidates`, `matches`, `describe`, `checklist`, `choose` |
 | `colorspace.py` | OKLab/OKLCH conversions, `fit_gamut`, `darken` |
@@ -322,7 +322,7 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
 ## `--rivers`
 
 Natural Earth `ne_10m_rivers_lake_centerlines` (`data.RIVERS`), scalerank 0 (biggest) to `RIVER_MAX_RANK` = 8;
-9+ are short tributaries, canals are dropped. `render.draw_rivers` draws them in `RIVER` (OKLCH 0.54/0.10/240, darker
+9+ are short tributaries; canals count as rivers. `render.draw_rivers` draws them in `RIVER` (OKLCH 0.54/0.10/240, darker
 than the ocean so it shows on every fill), `river_width` thinning linearly from `RIVER_WIDTH_MAX` to `RIVER_WIDTH_MIN`,
 thin ones first. `Z_RIVERS` = 2.2: above the state lines, below the lakes, which hide the centrelines through them.
 Labels ignore them.
@@ -334,7 +334,7 @@ Labels ignore them.
 - `rivers` is a water kind; `water` = all kinds (oceans, seas, lakes, straits, rivers). `--label rivers` or `water`
   also draws the rivers (`cli.draws_rivers`).
 - Bodies (`load_river_bodies`): the drawn rivers grouped by `river_name(name_en)` (English, merges Rhein/Rhin; drops
-  " River", `NOT_RIVERS` delta channels and canals, `RIVER_NAMES` fixes), every drawn river (`RIVER_SIZE_MAX_RANK` only caps the size ramp). Natural
+  " River", `RIVER_NAMES` fixes; canals and delta channels are named too, though too short to fit on the world map), every drawn river (`RIVER_SIZE_MAX_RANK` only caps the size ramp). Natural
   Earth breaks rivers at lakes, reservoirs and junctions, so `longest_paths` joins ends within `RIVER_JOIN_M` and takes
   the longest path through each network's maximum spanning tree (an exhaustive search blew up on deltas). Same-named
   networks `RIVER_REPEAT_M` apart are labelled separately (Colorado US/Argentina). `WaterBody.geom` is the line.
