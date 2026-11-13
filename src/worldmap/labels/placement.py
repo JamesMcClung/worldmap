@@ -3,7 +3,7 @@ leader-line clutter, drifting off the country and leaving the globe. All units a
 
 import functools
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import numpy as np
 from shapely.geometry import Polygon
@@ -79,9 +79,9 @@ class Placement:
     anchor_x: np.ndarray
     anchor_y: np.ndarray
     out: np.ndarray  # bool
-    water: np.ndarray = field(default_factory=lambda: np.zeros(0, bool))
-    parts: np.ndarray = field(default_factory=lambda: np.zeros((0, 4)))
-    owner: np.ndarray = field(default_factory=lambda: np.zeros(0, int))
+    water: np.ndarray
+    parts: np.ndarray
+    owner: np.ndarray
 
     @property
     def n(self) -> int:
