@@ -8,7 +8,7 @@ from test_placement import country_label, crossing_water_labels, mid_atlantic_px
 from worldmap.frame import make_frame
 from worldmap.labels.label import Label
 from worldmap.labels.placement import Placement, clashes, overhang
-from worldmap.labels.priority import check_step, place_by_priority, ranks_by_quantile, steps
+from worldmap.labels.priority import UNLABELED, Unplaced, check_step, place_by_priority, ranks_by_quantile, saturated, steps
 from worldmap.labels.water import WATER_MIN_PT, WaterLabel
 
 
@@ -170,3 +170,53 @@ def test_check_step_names_the_smaller_label_at_a_water_label_s_anchor() -> None:
     p.x[0] += 500  # the sea, off its water
     verdict = check_step(p, [0, 1], np.array([True, True]), FRAME)
     assert verdict.rival == 1 and verdict.out == []
+
+
+# The saturation cut.
+
+def unfit(n: int, kind: str = "seas") -> list[Unplaced]:
+    return [Unplaced(f"Bay {k}", kind, 1.0) for k in range(n)]
+
+
+def test_saturated() -> None:
+    assert saturated(5, 16) and not saturated(5, 17)  # 31% and 29%
+    assert not saturated(4, 4) and saturated(5, 5)  # CUT_MIN_DROPS
+
+
+def test_cut_drops_the_whole_group_and_later_ranks() -> None:
+    sea, bay = crossing_water_labels(FRAME)
+    out = place_by_priority([sized(sea, 100), sized(bay, 10)], FRAME, ["seas"], rank=lambda k, s: np.array([1, 2] + [1] * 5), unfit=unfit(5))
+    assert out.cut == {"seas": 1} and not out.kept.any() and out.placement.n == 0
+    assert list(out.shown("seas", np.array([1, 2, UNLABELED]))) == [False, False, False]
+
+
+def test_no_cut_below_the_minimum_drops() -> None:
+    sea, _ = crossing_water_labels(FRAME)
+    out = place_by_priority([sized(sea, 100)], FRAME, ["seas"], rank=lambda k, s: np.ones(5, int), unfit=unfit(4))
+    assert out.cut == {} and out.kept[0] and list(out.shown("seas", np.array([5, UNLABELED]))) == [True, True]
+
+
+def test_unfit_only_group_cuts() -> None:
+    sea, _ = crossing_water_labels(FRAME)
+    out = place_by_priority([sized(sea, 1)], FRAME, ["seas"], rank=lambda k, s: np.array([2] + [1] * 5), unfit=unfit(5))
+    assert out.cut == {"seas": 1} and not out.kept[0]
+
+
+def test_countries_are_cut_too() -> None:
+    out = place_by_priority([atlantis(1)], FRAME, ["countries"], rank=lambda k, s: np.ones(6, int), unfit=unfit(5, "countries"))
+    assert out.cut == {"countries": 1} and not out.kept[0]
+
+
+def sea_on(label: Label) -> WaterLabel:
+    """A sea wanting to sit right on `label`, its body a wide box round it."""
+    x, y = label.anchor_x, label.anchor_y
+    return water_label("Sea", (x, y), shapely.box(x - 400, y - 400, x + 400, y + 400), np.array([[-60.0, -10, 60, 10]]), WATER_MIN_PT)
+
+
+def test_cut_rolls_back_what_the_group_nudged() -> None:
+    nudged = place_by_priority([atlantis(1), sized(sea_on(atlantis(1)), 1)], FRAME, ["countries", "seas"], rank=lambda k, s: np.array([1, 2])).placement
+    alone = place_by_priority([atlantis(1)], FRAME, ["countries"], rank=lambda k, s: np.array([1])).placement
+    assert (nudged.x[0], nudged.y[0]) != (alone.x[0], alone.y[0])  # the sea moves Atlantis, so the test means something
+    p = place_by_priority([atlantis(1), sized(sea_on(atlantis(1)), 1)], FRAME, ["countries", "seas"],
+                          rank=lambda k, s: np.array([1, 2] + [2] * 5), unfit=unfit(5)).placement
+    assert p.n == 1 and (p.x[0], p.y[0], p.size[0]) == (alone.x[0], alone.y[0], alone.size[0])

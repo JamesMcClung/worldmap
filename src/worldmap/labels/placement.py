@@ -3,7 +3,7 @@ leader-line clutter, drifting off the country and leaving the globe. All units a
 
 import functools
 from collections.abc import Iterator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, fields, replace
 from typing import TypeVar
 
 import numpy as np
@@ -94,6 +94,10 @@ class Placement:
     def each(self, kind: type[T]) -> Iterator[tuple[int, T]]:
         """The index and label of each of its labels of `kind` (label.Label, water.WaterLabel)."""
         return ((i, item) for i, item in enumerate(self.items) if isinstance(item, kind))
+
+    def copy(self) -> "Placement":
+        """Another placement of the same labels, its arrays copied."""
+        return replace(self, **{f.name: getattr(self, f.name).copy() for f in fields(self) if f.name != "items"})
 
     @classmethod
     def of(cls, items: Sequence[Placeable]) -> "Placement":
