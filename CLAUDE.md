@@ -66,17 +66,17 @@ Importing any module has no side effects; only `cli.main` (after choosing the ba
 | `colorbars.py` | `--type topographic`: `bar_region`, `globe_side`, `inner_side`, `curved_title`, `draw_colorbar` (right-triangle bars in the canvas corners; rectangles in a crop) |
 | `earth.py` | `--color earth`: `earth_values` (raster sampling, cache), `earth_fill`, `build_regions`, `share_across_seam`, `join_touching`, `fill_at` |
 | `pins.py` | `load_pins`, `PinStyle` (every sprite shading constant), `pin_sprite`, `draw_pins`, `pick_pins` |
-| `labels/label.py` | `Label` dataclass, `make_labels` (anchors, sizes, exclaves), `decide_out_and_wrap` |
+| `labels/label.py` | `Label` dataclass (`glyphs`: its outlines), `lay_out` (TextPath, no figure needed), `make_labels` (anchors, sizes, exclaves; biggest `full_size` first), `decide_out_and_wrap` |
 | `labels/regions.py` | `--label territories`: `ChildRegion`, `HAND_PICKED` (parent + lon/lat boxes), `child_regions` |
 | `labels/water.py` | `--label oceans,seas,lakes,straits,rivers,water`: `kinds_from_labels`, `classify`, `WaterBody`, `load_water_bodies`, `river_name`, `longest_paths`, `load_river_bodies`, `best_stretch`, `river_label`, `fit_curve`, `body_curve`, `WaterLabel`, `make_water_labels`, style constants |
-| `labels/placement.py` | `CostWeights`, `Placement` (per-label arrays, `size`; `parts`: every label's rects, a country label's box its one part; `Placement.of`), `rects`, `unit_px`, `shrink_step`, `FIXED`/`NUDGE`/`FREE`, `OVERHANG_SLICES`, `overhang`, `cost_batch`, `candidates`, `clash`/`clashes`, `place_labels` (moves a `Placement` in place: `active`, `freedom`, `home`, `floors`), `subset`, `outline_coverage`, `outside_outline`, `leader_ends` |
+| `labels/placement.py` | `CostWeights`, `Placement` (per-label arrays, `size`; `parts`: every label's rects, a country label's box its one part; `items`: the labels, `each`/`labels`/`water_labels`; `Placement.of`), `rects`, `unit_px`, `shrink_step`, `FIXED`/`NUDGE`/`FREE`, `OVERHANG_SLICES`, `overhang`, `cost_batch`, `candidates`, `clash`/`clashes`, `place_labels` (moves a `Placement` in place: `active`, `freedom`, `home`, `floors`), `subset`, `outline_coverage`, `outside_outline`, `leader_ends` |
 | `labels/placeable.py` | `Placeable`: what the solvers ask of a country or water label (`name`, `kind`, `full_size`, anchor, `min_size`, `geom`/`cover`) |
 | `labels/kernels.py` | numba (`@njit(cache=True)`) loops behind `cost_batch` (`label_cost`: one kernel for every label, as its rects; `by_area` measures a country's box by area, a water label's glyphs by centre), `clash` and `candidates`; weights passed as an array in `CostWeights` field order (`weight_array`) |
-| `labels/priority.py` | `label_order`, `ranks_by_quantile` (fifths by area, a river's length x `RIVER_KM2_PER_KM`), `steps`, `overhang_of`, `place_by_priority` (step by step, biggest rank first), `rank_table` (printed after placement: placed/total per kind and rank, coloured on a tty unless `NO_COLOR`, and each kind's dropped labels biggest first, cut to `DROPPED_WIDTH`) |
-| `labels/geometry.py` | `rect`, `nearest_point_on_rect`, `two_line`, `Coverage` (summed-area table of a shape: `area` of boxes, `contains` of points), `coverage` (a label's, cached) |
+| `labels/priority.py` | `label_order`, `ranks_by_quantile` (fifths by area, a river's length x `RIVER_KM2_PER_KM`), `steps`, `overhang_of`, `check_step` (-> `Verdict`: out, rival, skip), `place_by_priority` (step by step, biggest rank first; returns the kept labels' `Placement`), `rank_table` (printed after placement: placed/total per kind and rank, coloured on a tty unless `NO_COLOR`, and each kind's dropped labels biggest first, cut to `DROPPED_WIDTH`) |
+| `labels/geometry.py` | `nearest_point_on_rect`, `two_line`, `Coverage` (summed-area table of a shape: `area` of boxes, `contains` of points), `coverage` (a label's, cached) |
 | `disjoint.py` | `DisjointSets` (union-find: `find`, `union`, `groups`): pieces joined at the seam, river networks, same-named rivers |
 | `curves.py` | `arc_lengths`, `along`, `bend` (points along a polyline + its left normal): text bending for `colorbars.curved_title` and water labels |
-| `render.py` | `new_figure`, `draw_countries`, `draw_stripes`, `draw_borders`, `draw_states`, `draw_rivers`, `draw_lakes`, `subtract_lakes`, `draw_labels`, `draw_water_labels`, line widths and z-orders |
+| `render.py` | `new_figure`, `draw_countries`, `draw_stripes`, `draw_borders`, `draw_states`, `draw_rivers`, `draw_lakes`, `subtract_lakes`, `glyph_patch`, `draw_labels`, `draw_water_labels` (both from the `Placement` alone), `HALO`, line widths and z-orders |
 
 Pipeline (`cli.main`):
 1. **Colouring** of all country features. Dependencies (`is_dependency`: `SOVEREIGNT != ADMIN`, not a lease or
@@ -264,6 +264,8 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
 - Font size scales with sqrt(area), clamped to 6-30 pt. A label covering >= 60% of its country (or much wider than a
   short narrow one) becomes an "out" label with a leader line. Long names wrap onto 2 lines when much wider than their
   country; stuck labels shrink (floor `SHRINK_MIN_PT` x `label_scale`) before being skipped.
+- Country labels are outlines like water labels (`lay_out`: `TextPath`, box = advance width x line height, padded),
+  drawn as `PathPatch`es (`render.glyph_patch`, round joins or the halo spikes at sharp corners) for the kept labels only.
 - Cost terms: label must lie inside the globe outline, label-label overlap, covering another leader's dot, leader/label and leader/leader crossings,
   drifting outside the country (`off_feature`, `drift`), hanging off it by over `OVERHANG_MAX` (`overhang`, in
   `OVERHANG_SLICES` upright slices), leader length, a nudged label's distance from where it settled; weights in `CostWeights`.
@@ -279,7 +281,7 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
   (`rank=`), so tests pin ranks.
 - One `Placement` holds every label; each step solves it over the active ones (kept so far, and the step's), the step's labels `FREE`, the kept labels of this rank and the one before `NUDGE`d
   (they pay `CostWeights.nudge` per height/em from where they settled, at most `nudge_max`, and shrink to no less
-  than `NUDGE_MIN_SCALE` of their settled size), older ones `FIXED`. Then the step's labels are checked smallest
+  than `NUDGE_MIN_SCALE` of their settled size), older ones `FIXED`. Then `check_step` checks the step's labels smallest
   first: a country label clashing (`clash`, symmetric for every kind) with a label still kept, or hanging off its
   country by over `OVERHANG_MAX`, becomes 'out' (leader) and the step is re-solved; one already out and clashing, or a water label clashing or hanging off its
   water by over `OVERHANG_MAX` = 30% at either end (`overhang_of`: per glyph; a gap in the middle is fine) or out of
@@ -294,7 +296,7 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
   `classify`: ocean -> oceans; sea/gulf/bay/sound/fjord/lagoon/inlet -> seas; strait/channel -> straits;
   reefs, rivers, unnamed `generic` areas and names ending " River" (Saint Lawrence is a 'channel') never. North + South
   Atlantic are one ATLANTIC; the Pacific is split at x = 0 into two bodies. Each body is labelled once, on its largest
-  polygon (bodies are listed oceans, then scalerank, then area; placement order is by `full_size`, see above).
+  polygon; bodies are listed biggest `full_size` first (of two with one name, the bigger is kept).
 - Curve (`fit_curve`): principal axis of interior sample points, tilt clamped, quadratic fit with the bend clamped
   (`MAX_BEND_DEG`, `MAX_TILT_DEG`), read left to right (bottom to top within 1 degree of vertical). Oceans too, fitted on
   the whole ocean, so ATLANTIC and the left PACIFIC run pole to pole (a level label at the widest water put them in the
