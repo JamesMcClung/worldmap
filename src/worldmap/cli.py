@@ -193,7 +193,7 @@ def main(argv: list[str] | None = None) -> None:
     bodies, water = water_labels(kinds_from_labels(args.label), lakes_p, frame)
     outcome = place([*labels, *water], frame, args.label)
     if draws_rivers(args):
-        draw_rivers(ax, shown_rivers(frame, bodies, outcome, len(labels)))
+        draw_rivers(ax, shown_rivers(frame, bodies, water, outcome))
     placement = outcome.placement
     draw_labels(ax, placement, frame)
     draw_water_labels(ax, placement, frame)
@@ -211,15 +211,15 @@ def water_labels(kinds: set[Kind], lakes_projected: gpd.GeoDataFrame, frame: Map
     return bodies, make_water_labels(bodies, frame)
 
 
-def shown_rivers(frame: MapFrame, bodies: list[WaterBody], outcome: Outcome | None, first: int) -> gpd.GeoDataFrame:
-    """The river pieces to draw, projected: those whose rank (water.river_ranks; the bodies' are `outcome`'s ranks
-    from entry `first` on), or that of a piece upstream (RiverFlow.downstream), rivers weren't cut at; every one if
-    no labels were placed at all (`outcome` None)."""
+def shown_rivers(frame: MapFrame, bodies: list[WaterBody], water: list[WaterLabel | Unplaced], outcome: Outcome | None) -> gpd.GeoDataFrame:
+    """The river pieces to draw, projected: those whose rank (water.river_ranks; the bodies' are those of their
+    labels, `water`, in `outcome`), or that of a piece upstream (RiverFlow.downstream), rivers weren't cut at;
+    every one if no labels were placed at all (`outcome` None)."""
     flow = river_flow()
     rivers = frame.project(flow.pieces)
     if outcome is None:
         return rivers
-    ranks = outcome.ranks[first:first + len(bodies)]
+    ranks = outcome.ranks_of(water)
     named = [k for k, b in enumerate(bodies) if b.kind == "rivers"]
     return rivers[outcome.shown("rivers", flow.downstream(river_ranks(rivers, [bodies[k] for k in named], ranks[named])))]
 
@@ -268,7 +268,7 @@ def draw_topographic(args: argparse.Namespace, out: str, frame: MapFrame) -> Non
         outcome = place(water, room, args.label)
         draw_water_labels(ax, outcome.placement, frame)
     if draws_rivers(args):
-        draw_rivers(ax, shown_rivers(frame, bodies, outcome, 0))
+        draw_rivers(ax, shown_rivers(frame, bodies, water, outcome))
     ax.set_xlim(frame.xmin, frame.xmax)
     ax.set_ylim(frame.ymin, frame.ymax)
     add_pins(ax, frame, args)
