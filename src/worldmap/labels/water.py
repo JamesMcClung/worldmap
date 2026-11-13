@@ -48,6 +48,8 @@ _ocean_hue = srgb_to_oklch(to_rgb(OCEAN))[2]
 _fitted = fit_gamut(0.50, 0.08, _ocean_hue)
 assert _fitted is not None
 WATER_TEXT: RGB = _fitted[0]  # a deeper blue in the ocean's hue
+RIVER_WIDTH_MAX, RIVER_WIDTH_MIN = 1.6, 0.3  # line widths (pt) at scalerank 0 and RIVER_THIN_RANK
+RIVER_THIN_RANK = 8  # rivers of this scalerank and beyond are drawn thinnest
 RIVER_SIZE_MAX_RANK = 6  # river names shrink with Natural Earth scalerank down to this, then stay at RIVER_MIN_PT
 RIVER_MAX_PT, RIVER_MIN_PT = 8.5, 7  # river names: italic, this size at scalerank <= 1 down to RIVER_SIZE_MAX_RANK
 RIVER_SCALE_MAX = 1.2  # river names grow with a crop's label_scale up to this, no more: they stay small
@@ -424,6 +426,12 @@ def lay_out(body: WaterBody, curve: np.ndarray, size: float, geom_px: BaseGeomet
 def body_curve(body: WaterBody) -> np.ndarray:
     """The curve a body's name follows (map units): along its long direction, so the Atlantic's runs pole to pole."""
     return fit_curve(body.geom, MAX_TILT_DEG)
+
+
+def river_width(rank: int) -> float:
+    """Line width (pt) of a river of Natural Earth scalerank `rank`, thinning linearly to RIVER_THIN_RANK."""
+    t = min(max(rank, 0), RIVER_THIN_RANK) / RIVER_THIN_RANK
+    return RIVER_WIDTH_MAX + t * (RIVER_WIDTH_MIN - RIVER_WIDTH_MAX)
 
 
 def river_size(rank: int) -> float:

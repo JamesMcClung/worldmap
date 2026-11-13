@@ -23,7 +23,7 @@ from worldmap.earth import Fill, Regions
 from worldmap.frame import DPI, MapFrame
 from worldmap.labels.label import Label
 from worldmap.labels.placement import Placement, leader_ends
-from worldmap.labels.water import RIVER_HALO, RIVER_TEXT, WATER_HALO, WATER_HALO_PX, WATER_TEXT, WaterLabel
+from worldmap.labels.water import RIVER_HALO, RIVER_TEXT, river_width, WATER_HALO, WATER_HALO_PX, WATER_TEXT, WaterLabel
 
 BORDER, STATE_LINE = "#3a3a3a", "#7d7d7d"
 ANTARCTICA_FILL = "#ffffff"  # Antarctica is drawn white and left unlabelled
@@ -33,8 +33,6 @@ STATE_LINE_WIDTH = 0.35
 LEADER_WIDTH = 0.7
 LEADER_DOT_SIZE = 1.3
 RIVER = "#2d76a3"  # OKLCH (0.54, 0.10, 240): near the ocean's hue, dark enough to show on every fill
-RIVER_WIDTH_MAX, RIVER_WIDTH_MIN = 1.6, 0.3  # line widths (pt) at scalerank 0 and RIVER_THIN_RANK
-RIVER_THIN_RANK = 8  # rivers of this scalerank and beyond are drawn thinnest
 BORDER_DASH = (0, (2.5, 1.5))  # --disputed: borders between a disputed area and the countries involved
 # Drawing order, bottom to top (pins are at 10, labels at 6). Borders sit below the lakes so they don't cross them.
 Z_OCEAN, Z_COUNTRY, Z_STRIPES, Z_BAIKONUR_EDGE, Z_BORDERS, Z_STATES, Z_LAKES, Z_GLOBE, Z_LEADERS = 0, 1, 1.5, 1.6, 1.7, 2, 2.5, 3, 4
@@ -135,12 +133,6 @@ def draw_lakes(ax: Axes, lakes_projected: gpd.GeoDataFrame) -> None:
     the shore), above the state lines, which also cross them."""
     for g in lakes_projected.geometry:
         ax.add_collection(PatchCollection(list(holed_patches(g)), fc=OCEAN, ec=BORDER, lw=BORDER_WIDTH, zorder=Z_LAKES))
-
-
-def river_width(rank: int) -> float:
-    """Line width (pt) of a river of Natural Earth scalerank `rank`, thinning linearly to RIVER_THIN_RANK."""
-    t = min(max(rank, 0), RIVER_THIN_RANK) / RIVER_THIN_RANK
-    return RIVER_WIDTH_MAX + t * (RIVER_WIDTH_MIN - RIVER_WIDTH_MAX)
 
 
 def draw_rivers(ax: Axes, rivers_projected: gpd.GeoDataFrame) -> None:
