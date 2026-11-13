@@ -91,8 +91,8 @@ def progress(r: int, done: int, of: int, kind: str, columns: int) -> str:
 
 def summary(items: Sequence[Placeable], placement: Placement, order: Sequence[str], color: bool, columns: int | None,
             rank: Ranker = ranks_by_quantile) -> str:
-    """What place_by_priority did with `items` (its labels, then its water labels), placing them in `placement`:
-    the labels skipped, biggest first, then the rank_table."""
+    """What place_by_priority did with `items`, placing them in `placement`: the labels skipped, biggest first,
+    then the rank_table."""
     kinds = [item.kind for item in items]
     plan = steps(kinds, [item.full_size for item in items], order, rank)
     kept = {id(item) for item in placement.items}
