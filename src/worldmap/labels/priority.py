@@ -4,7 +4,7 @@ the first rank by which too many of all its labels have failed (saturated): that
 of the kind are dropped."""
 
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import NamedTuple
 
 import numpy as np
@@ -132,16 +132,84 @@ class Outcome:
         return np.asarray(ranks) < self.cut.get(kind, UNLABELED + 1)
 
 
+@dataclass
+class Settled:
+    """What placing has decided so far: one placement of every label, solved step by step over the `active` ones
+    (kept so far, and the step's), and where (home_x/y) and at what `size` each kept one settled."""
+    p: Placement
+    active: np.ndarray
+    settled: np.ndarray
+    home_x: np.ndarray
+    home_y: np.ndarray
+    size: np.ndarray
+
+    @classmethod
+    def of(cls, items: Sequence[Placeable]) -> "Settled":
+        p = Placement.of(items)
+        return cls(p, np.zeros(p.n, bool), np.zeros(p.n, bool), p.x.copy(), p.y.copy(), np.zeros(p.n))
+
+    def copy(self) -> "Settled":
+        return Settled(self.p.copy(), self.active.copy(), self.settled.copy(), self.home_x.copy(), self.home_y.copy(), self.size.copy())
+
+
+@dataclass
+class Cuts:
+    """Each kind's labels failed so far, of all its labels (`of_kind`, every rank), and the kinds cut: at which rank,
+    and how many of that rank's labels had placed (`fit`)."""
+    of_kind: dict[str, int]
+    failed: dict[str, int]
+    at: dict[str, int] = field(default_factory=dict)
+    fit: dict[str, int] = field(default_factory=dict)
+
+    @classmethod
+    def of(cls, plan: list[tuple[int, list[int]]], kinds: Sequence[str]) -> "Cuts":
+        of_kind: dict[str, int] = {}
+        for _, step in plan:
+            of_kind[kinds[step[0]]] = of_kind.get(kinds[step[0]], 0) + len(step)
+        return cls(of_kind, dict.fromkeys(of_kind, 0))
+
+    def tally(self, kind: str, r: int, total: int, kept: int) -> bool:
+        """Count a step of `kind`, rank r, that kept `kept` of its `total`; whether that cuts the kind (saturated)."""
+        self.failed[kind] += total - kept
+        if not saturated(self.failed[kind], self.of_kind[kind]):
+            return False
+        self.at[kind], self.fit[kind] = r, kept
+        return True
+
+
+def place_step(s: Settled, r: int, new: list[int], ranks: np.ndarray, min_size: np.ndarray, frame: MapFrame) -> None:
+    """Place a step's labels (`new`, of rank r) among those settled: they are free, the settled ones of `ranks` r
+    and r - 1 nudged (paying for leaving home, shrinking to no less than NUDGE_MIN_SCALE of their size), the rest
+    fixed. Then check_step decides which go 'out' or are skipped, and the step is solved again until it puts none
+    out and finds no rival to skip. Those kept settle where they are."""
+    new = list(new)
+    while new:
+        s.active[new] = True
+        freedom = np.where(ranks >= r - 1, NUDGE, FIXED)
+        freedom[new] = FREE
+        home = (np.where(s.settled, s.home_x, s.p.x), np.where(s.settled, s.home_y, s.p.y))
+        floors = np.where(s.settled, np.maximum(min_size, NUDGE_MIN_SCALE * s.size), min_size)
+        place_labels(s.p, frame, active=s.active, freedom=freedom, home=home, floors=floors)
+        verdict = check_step(s.p, new, s.active, frame)
+        s.p.out[verdict.out] = True
+        if verdict.rival is not None:
+            new.remove(verdict.rival)
+            s.active[verdict.rival] = False
+        elif not verdict.out:
+            s.active[verdict.skip] = False
+            break
+    kept = [i for i in new if s.active[i]]
+    s.settled[kept] = True
+    s.home_x[kept], s.home_y[kept], s.size[kept] = s.p.x[kept], s.p.y[kept], s.p.size[kept]
+
+
 def place_by_priority(items: Sequence[Placeable], frame: MapFrame, order: Sequence[str],
                       rank: Ranker = ranks_by_quantile, on_step: Callable[[int, int, int, str], None] | None = None,
                       unfit: Sequence[Unplaced] = ()) -> Outcome:
-    """Place the labels (`items`) step by step (steps, with `rank`), returning the Outcome. Before each
-    step, on_step(rank, labels of the rank's steps done so far, of all its steps, the step's kind). In each step the step's labels are free,
-    the labels already placed of its rank and the rank before are nudged (they pay for leaving where they settled
-    and shrink to no less than NUDGE_MIN_SCALE of their settled size), and the rest stay put. Then check_step
-    decides which labels go 'out' or are skipped, and the step is solved again until it puts none out and finds
-    no rival to skip. The `unfit` are ranked with the labels and count as failed in their step. A step after which
-    its kind's failures so far saturate all its labels is undone, and the kind cut there."""
+    """Place the labels (`items`) step by step (steps, with `rank`; place_step), returning the Outcome. Before
+    each step, on_step(rank, labels of the rank's steps done so far, of all its steps, the step's kind). The
+    `unfit` are ranked with the labels and count as failed in their step. A step after which its kind's failures
+    so far saturate all its labels (Cuts.tally) is undone, and the kind cut there: its later steps are skipped."""
     n = len(items)
     everything: list[Placeable | Unplaced] = [*items, *unfit]
     kinds = [e.kind for e in everything]
@@ -149,54 +217,21 @@ def place_by_priority(items: Sequence[Placeable], frame: MapFrame, order: Sequen
     ranks = np.full(len(everything), UNLABELED)
     for r, members in plan:
         ranks[members] = r
-    p = Placement.of(items)  # one placement of every label, solved step by step over the active ones
-    active = np.zeros(p.n, bool)  # the labels kept so far, and the step's
-    settled = np.zeros(p.n, bool)  # kept, and where (home) and at what size each settled
-    home_x, home_y, settled_size = p.x.copy(), p.y.copy(), np.zeros(p.n)
+    s = Settled.of(items)
     min_size = np.array([item.min_size for item in items])
-
-    def solve(r: int, new: list[int]) -> None:
-        freedom = np.where(ranks[:n] >= r - 1, NUDGE, FIXED)
-        freedom[new] = FREE
-        home = (np.where(settled, home_x, p.x), np.where(settled, home_y, p.y))
-        floors = np.where(settled, np.maximum(min_size, NUDGE_MIN_SCALE * settled_size), min_size)
-        place_labels(p, frame, active=active, freedom=freedom, home=home, floors=floors)
-
+    cuts = Cuts.of(plan, kinds)
     in_rank = {r: sum(len(step) for q, step in plan if q == r) for r, _ in plan}
-    done = {r: 0 for r in in_rank}
-    cut: dict[str, int] = {}
-    of_kind = {kind: sum(len(step) for _, step in plan if kinds[step[0]] == kind) for kind in set(kinds)}
-    failed = dict.fromkeys(of_kind, 0)  # per kind, its labels failed so far
-    cut_fit: dict[str, int] = {}
+    done = dict.fromkeys(in_rank, 0)
     for r, step in plan:
         kind = kinds[step[0]]
-        if kind in cut:
-            done[r] += len(step)  # skipped, but done: else the rank's progress never fills
-            continue
-        if on_step is not None:
+        if on_step is not None and kind not in cuts.at:
             on_step(r, done[r], in_rank[r], kind)
-        done[r] += len(step)
-        before = (p.copy(), active.copy(), settled.copy(), home_x.copy(), home_y.copy(), settled_size.copy())
+        done[r] += len(step)  # a step a cut skips is done too: else the rank's progress never fills
+        if kind in cuts.at:
+            continue
+        before = s.copy()
         members = [i for i in step if i < n]
-        new = list(members)
-        while new:
-            active[new] = True
-            solve(r, new)
-            verdict = check_step(p, new, active, frame)
-            p.out[verdict.out] = True
-            if verdict.rival is not None:
-                new.remove(verdict.rival)
-                active[verdict.rival] = False
-            elif not verdict.out:
-                active[verdict.skip] = False
-                break
-        for i in new:
-            if active[i]:
-                settled[i] = True
-                home_x[i], home_y[i], settled_size[i] = p.x[i], p.y[i], p.size[i]
-        failed[kind] += len(step) - int(active[members].sum())
-        if saturated(failed[kind], of_kind[kind]):
-            cut[kind], cut_fit[kind] = r, int(active[members].sum())
-            p, active, settled, home_x, home_y, settled_size = before
-    return Outcome(subset(p, active), plan, np.concatenate([active, np.zeros(len(unfit), bool)]), ranks, cut, cut_fit)
-
+        place_step(s, r, members, ranks[:n], min_size, frame)
+        if cuts.tally(kind, r, len(step), int(s.active[members].sum())):
+            s = before
+    return Outcome(subset(s.p, s.active), plan, np.concatenate([s.active, np.zeros(len(unfit), bool)]), ranks, cuts.at, cuts.fit)
