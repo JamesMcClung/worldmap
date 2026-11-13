@@ -52,8 +52,9 @@ def ramp(name: str, start: float, end: float, stops: list[tuple[float, str]]) ->
 
 
 LAND_BELOW_SEA = "#3f7d55"  # the Dead Sea shore, Qattara, Death Valley
+LAND_TOP = "#e2d3f2"  # light purple, not white, to stand apart from the ice
 LAND = Scale(ramp("land", -500, 6000, [(-500, LAND_BELOW_SEA), (0, "#5f9e5a"), (480, "#a8c97f"), (1200, "#e8dc95"),
-                                       (2400, "#c9a26b"), (3900, "#9a6b4a"), (5100, "#d8cfc8"), (6000, "#ffffff")]), -500, 6000)
+                                       (2400, "#c9a26b"), (3900, "#9a6b4a"), (5100, "#d8cfc8"), (6000, LAND_TOP)]), -500, 6000)
 # Water above 0 m: ETOPO's 3' averages along coasts. With --ocean it is a shade lighter than the sea surface.
 SEA = Scale(ramp("sea", 500, -8000, [(500, "#f7fbfd"), (0, OCEAN), (-8000, "#2f5f8c")]), 500, -8000)
 ICE = Scale(ramp("ice", 0, 4000, [(0, "#ffffff"), (4000, "#cfe3f2")]), 0, 4000)
