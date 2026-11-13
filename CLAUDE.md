@@ -339,7 +339,7 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
 ## `--rivers`
 
 Natural Earth `ne_10m_rivers_lake_centerlines` (`data.RIVERS`), every scalerank 0 (biggest) to 12; canals count as
-rivers. With river labels, only the lines whose rank isn't cut are drawn (`cli.shown_rivers`), plus everything
+rivers. Drawn on both map types. With river labels, only the lines whose rank isn't cut are drawn (`cli.shown_rivers`), plus everything
 downstream of them (deltas, a river's last stretch below a junction); without, every line.
 - Flow (`rivers.py`): Natural Earth's lines run either way, so `river_flow` cuts them at every junction (an end on a
   line's middle within `FLOW_JOIN_M` = 2 km), joins ends within 2 km (wider joined neighbouring sources: the Danube
@@ -352,8 +352,6 @@ downstream of them (deltas, a river's last stretch below a junction); without, e
 than the ocean so it shows on every fill), `river_width` thinning linearly from `RIVER_WIDTH_MAX` to `RIVER_WIDTH_MIN` at `RIVER_THIN_RANK` = 8,
 thin ones first. `Z_RIVERS` = 2.2: above the state lines, below the lakes, which hide the centrelines through them.
 Labels ignore them.
-
-`--type topographic` draws them too.
 
 ## River labels (`--label rivers`)
 
