@@ -293,3 +293,21 @@ def test_inside_share_counts_glyphs_by_their_centres() -> None:
     lake = water_label("Lake", (0, 0), shapely.box(-52, -2.5, 52, 2.5), parts, WATER_MIN_PT, kind="lakes")
     assert lake.inside_share(0, 0) == pytest.approx(1.0)
     assert lake.inside_share(30, 0) == pytest.approx(0.7)  # the right 3 glyphs' centres are past x = 52
+
+
+def test_river_ranks_by_name_and_nearest_body() -> None:
+    from worldmap.data import load_rivers
+    from worldmap.labels.priority import UNLABELED
+    from worldmap.labels.water import load_river_bodies, river_ranks
+
+    f = make_frame()
+    rivers = f.project(load_rivers())
+    bodies = [b for b in load_river_bodies(f) if b.text in ("Colorado", "Nile")]
+    assert len([b for b in bodies if b.text == "Colorado"]) == 2  # the US's and Argentina's
+    ranks = river_ranks(rivers, bodies, [2 if b.geom.centroid.y < 0 else 3 for b in bodies])
+    named = rivers.name_en.map(river_name)
+    colorado = (named == "Colorado").values
+    south = rivers.geometry.centroid.y.values < 0
+    assert (ranks[colorado & south] == 2).all() and (ranks[colorado & ~south] == 3).all()
+    assert (ranks[(named == "Nile").values] == 3).all()
+    assert (ranks[named.isna().values] == UNLABELED).all() and (ranks[(named == "Danube").values] == UNLABELED).all()

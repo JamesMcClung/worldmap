@@ -2,7 +2,7 @@
 follows, and its glyphs laid out along it. Bodies are in projected map units; labels are in poster pixels."""
 
 import functools
-from collections.abc import Collection
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -23,7 +23,7 @@ from worldmap.data import EQUAL_AREA_CRS, load_marine, load_rivers
 from worldmap.disjoint import DisjointSets
 from worldmap.frame import MapFrame
 from worldmap.labels.geometry import Coverage, coverage, on_feature
-from worldmap.labels.priority import Unplaced
+from worldmap.labels.priority import UNLABELED, Unplaced
 from worldmap.labels.text import PX_PER_PT, bent, font, text_width
 
 Kind = Literal["oceans", "seas", "lakes", "straits", "rivers"]
@@ -238,6 +238,21 @@ def load_river_bodies(frame: MapFrame) -> list[WaterBody]:
             rank = int(group.scalerank[shapely.dwithin(group.geometry.values, part, 1.0)].min())
             bodies.append(WaterBody(str(text), "rivers", rank, part, river_length(str(text), part, frame)))
     return bodies
+
+
+def river_ranks(rivers_projected: gpd.GeoDataFrame, bodies: list[WaterBody], ranks: Sequence[int] | np.ndarray) -> np.ndarray:
+    """Each river line's rank: that of the nearest of the `bodies` (with their `ranks`) of its name (river_name),
+    or UNLABELED if none has it (unnamed, or rivers not labelled)."""
+    out = np.full(len(rivers_projected), UNLABELED)
+    names = rivers_projected.name_en.map(river_name).to_numpy()
+    lines = rivers_projected.geometry.to_numpy()
+    for text in {b.text for b in bodies}:
+        mine = [k for k, b in enumerate(bodies) if b.text == text]
+        rows = np.flatnonzero((names == text) & ~shapely.is_empty(lines))
+        if len(rows):
+            gap = shapely.distance(lines[rows][:, None], np.array([bodies[k].geom for k in mine])[None, :])
+            out[rows] = np.asarray(ranks)[mine][gap.argmin(axis=1)]
+    return out
 
 
 def interior_points(geom: Polygon) -> np.ndarray:

@@ -8,7 +8,7 @@ from test_placement import country_label, crossing_water_labels, mid_atlantic_px
 from worldmap.frame import make_frame
 from worldmap.labels.label import Label
 from worldmap.labels.placement import Placement, clashes, overhang
-from worldmap.labels.priority import UNLABELED, Unplaced, check_step, place_by_priority, ranks_by_quantile, saturated, steps
+from worldmap.labels.priority import UNLABELED, Outcome, Unplaced, check_step, place_by_priority, ranks_by_quantile, saturated, steps
 from worldmap.labels.water import WATER_MIN_PT, WaterLabel
 
 
@@ -220,3 +220,14 @@ def test_cut_rolls_back_what_the_group_nudged() -> None:
     p = place_by_priority([atlantis(1), sized(sea_on(atlantis(1)), 1)], FRAME, ["countries", "seas"],
                           rank=lambda k, s: np.array([1, 2] + [2] * 5), unfit=unfit(5)).placement
     assert p.n == 1 and (p.x[0], p.y[0], p.size[0]) == (alone.x[0], alone.y[0], alone.size[0])
+
+
+def test_cut_rivers_are_not_drawn() -> None:
+    cut = Outcome(Placement.of([]), [], np.zeros(0, bool), np.zeros(0, int), {"rivers": 2})
+    assert list(cut.shown("rivers", np.array([1, 2, UNLABELED]))) == [True, False, False]
+    assert cut.shown("seas", np.array([5, UNLABELED])).all()
+
+
+def test_draws_all_rivers_without_labels() -> None:
+    uncut = Outcome(Placement.of([]), [], np.zeros(0, bool), np.zeros(0, int), {})
+    assert uncut.shown("rivers", np.array([1, 5, UNLABELED])).all()

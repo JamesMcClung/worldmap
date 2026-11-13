@@ -2,9 +2,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+import numpy as np
 import pytest
 
-from worldmap.cli import draws_rivers, parse_args
+from worldmap.cli import body_ranks, draws_rivers, parse_args
 from worldmap.frame import DPI
 
 
@@ -81,3 +82,9 @@ def test_centre_crop_from_the_command_line() -> None:
     assert make_map_frame(parse_args(["--crop", "-70,-30/1000km,800km"])).crs == centre_frame((-70, -30, 1000 / 111.19508, 800 / 111.19508)).crs
     with pytest.raises(SystemExit):
         make_map_frame(parse_args(["--crop", "10,50/20"]))
+
+
+def test_body_ranks_follow_the_fit_then_the_unfit() -> None:
+    """place ranks [*country labels, *water labels, *unfit]: back to body order."""
+    fits = [object(), None, object(), None]
+    assert list(body_ranks(fits, np.array([9, 9, 1, 2, 3, 4]), 2)) == [1, 3, 2, 4]  # type: ignore[arg-type]
