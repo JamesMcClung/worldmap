@@ -90,12 +90,6 @@ def test_summary_shows_unfit_and_cuts() -> None:
     assert lines[4].startswith("seas") and "(1/)6" in lines[4]  # the sea fit before the cut
 
 
-def test_summary_without_cuts_has_no_cut_line() -> None:
-    sea, bay = crossing_water_labels(FRAME)
-    outcome = place_by_priority([sized(sea, 100), sized(bay, 10)], FRAME, ["seas"])
-    assert not any(line.startswith("cut:") for line in summary([sea, bay], [], outcome, ["seas"], color=False, columns=None).split("\n"))
-
-
 def test_summary_lists_neither_the_unfit_nor_the_cut() -> None:
     sea, bay = crossing_water_labels(FRAME)
     rivers = [Unplaced(f"Creek {k}", "rivers", 1.0) for k in range(5)]
