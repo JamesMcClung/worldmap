@@ -1,4 +1,5 @@
 from dataclasses import replace
+from typing import TypeVar
 
 import numpy as np
 import shapely
@@ -47,17 +48,16 @@ def test_overhang_is_the_longer_end_off() -> None:
 # place_by_priority: the solver on small made-up maps (helpers from test_placement).
 
 FRAME = make_frame()
+T = TypeVar("T", Label, WaterLabel)
 
 
-def sized(label: Label | WaterLabel, full_size: float) -> Label | WaterLabel:
+def sized(label: T, full_size: float) -> T:
     label.full_size = full_size
     return label
 
 
 def atlantis(full_size: float) -> Label:
-    label = country_label(FRAME, "Atlantis", -35, 30, 500)
-    label.full_size = full_size
-    return label
+    return sized(country_label(FRAME, "Atlantis", -35, 30, 500), full_size)
 
 
 def boxed_in() -> tuple[WaterLabel, object]:
@@ -131,8 +131,7 @@ def test_water_label_mostly_off_its_water_is_skipped() -> None:
 def test_country_with_no_room_gets_a_leader() -> None:
     """A sea fixed over all of a small country and just round it: its name goes beside it, with a leader to it
     (whether the solver keeps it on the country, clashing, or pushes it off)."""
-    country = country_label(FRAME, "Atlantis", -35, 30, 120)
-    country.full_size = 1
+    country = sized(country_label(FRAME, "Atlantis", -35, 30, 120), 1)
     x, y = country.anchor_x, country.anchor_y
     sea = water_label("Sea", (x, y), shapely.box(x - 130, y - 130, x + 130, y + 130), np.array([[-130.0, -130, 130, 130]]), WATER_MIN_PT)
     p = place_by_priority([country, sized(sea, 1e6)], FRAME, ["countries", "seas"], rank=lambda kinds, sizes: np.array([3, 1]))
