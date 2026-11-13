@@ -187,9 +187,8 @@ def place_step(s: Settled, r: int, new: list[int], ranks: np.ndarray, min_size: 
         s.active[new] = True
         freedom = np.where(ranks >= r - 1, NUDGE, FIXED)
         freedom[new] = FREE
-        home = (np.where(s.settled, s.home_x, s.p.x), np.where(s.settled, s.home_y, s.p.y))
         floors = np.where(s.settled, np.maximum(min_size, NUDGE_MIN_SCALE * s.size), min_size)
-        place_labels(s.p, frame, active=s.active, freedom=freedom, home=home, floors=floors)
+        place_labels(s.p, frame, active=s.active, freedom=freedom, home=(s.home_x, s.home_y), floors=floors)  # only settled labels are nudged
         verdict = check_step(s.p, new, s.active, frame)
         s.p.out[verdict.out] = True
         if verdict.rival is not None:
