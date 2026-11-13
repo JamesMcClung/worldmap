@@ -1,9 +1,6 @@
 """Priority: labels are placed in steps, most important first. Labels are ranked by full size (area, or a river's
 length) into fifths of all those in the frame; rank by rank, the kinds follow the --label order."""
 
-import os
-import shutil
-import sys
 from collections.abc import Callable, Collection, Sequence
 from dataclasses import dataclass, replace
 
@@ -191,8 +188,9 @@ def check_step(p: Placement, new: list[int], active: np.ndarray, frame: MapFrame
 
 
 def place_by_priority(labels: list[Label], water: list[WaterLabel], frame: MapFrame, order: Sequence[str],
-                      rank: Ranker = ranks_by_quantile) -> Placement:
-    """Place the labels step by step (steps, with `rank`), returning the placement of those kept. In each step the step's labels are free,
+                      rank: Ranker = ranks_by_quantile, on_step: Callable[[int, int, int, str], None] | None = None) -> Placement:
+    """Place the labels step by step (steps, with `rank`), returning the placement of those kept. Before each
+    step, on_step(rank, labels of the rank's steps done so far, of all its steps, the step's kind). In each step the step's labels are free,
     the labels already placed of its rank and the rank before are nudged (they pay for leaving where they settled
     and shrink to no less than NUDGE_MIN_SCALE of their settled size), and the rest stay put. Then check_step
     decides which labels go 'out' or are skipped, and the step is solved again until it puts none out and finds
@@ -208,7 +206,6 @@ def place_by_priority(labels: list[Label], water: list[WaterLabel], frame: MapFr
     settled = np.zeros(p.n, bool)  # kept, and where (home) and at what size each settled
     home_x, home_y, settled_size = p.x.copy(), p.y.copy(), np.zeros(p.n)
     min_size = np.array([item.min_size for item in items])
-    skipped: list[str] = []
 
     def solve(r: int, new: list[int]) -> None:
         freedom = np.where(ranks >= r - 1, NUDGE, FIXED)
@@ -217,13 +214,11 @@ def place_by_priority(labels: list[Label], water: list[WaterLabel], frame: MapFr
         floors = np.where(settled, np.maximum(min_size, NUDGE_MIN_SCALE * settled_size), min_size)
         place_labels(p, frame, active=active, freedom=freedom, home=home, floors=floors)
 
-    tty = sys.stdout.isatty()
-    columns = shutil.get_terminal_size().columns if tty else None
     in_rank = {r: sum(len(step) for q, step in plan if q == r) for r, _ in plan}
     done = {r: 0 for r in in_rank}
     for r, step in plan:
-        if columns is not None:
-            print(f"\r\x1b[K{progress(r, done[r], in_rank[r], kinds[step[0]], columns)}", end="", flush=True)
+        if on_step is not None:
+            on_step(r, done[r], in_rank[r], kinds[step[0]])
         done[r] += len(step)
         new = list(step)
         while True:
@@ -232,20 +227,25 @@ def place_by_priority(labels: list[Label], water: list[WaterLabel], frame: MapFr
             verdict = check_step(p, new, active, frame)
             p.out[verdict.out] = True
             if verdict.rival is not None:
-                skipped.append(items[verdict.rival].name)
                 new.remove(verdict.rival)
                 active[verdict.rival] = False
             elif not verdict.out:
                 active[verdict.skip] = False
-                skipped.extend(items[i].name for i in verdict.skip)
                 break
         for i in new:
             if active[i]:
                 settled[i] = True
                 home_x[i], home_y[i], settled_size[i] = p.x[i], p.y[i], p.size[i]
-    if columns is not None:
-        print("\r\x1b[K", end="")
-    print("labels skipped:", skipped)
-    print(rank_table(plan, kinds, order, set(np.flatnonzero(active).tolist()), tty and "NO_COLOR" not in os.environ,
-                     [item.name for item in items], columns))
     return subset(p, active)
+
+
+def summary(items: Sequence[Placeable], placement: Placement, order: Sequence[str], color: bool, columns: int | None,
+            rank: Ranker = ranks_by_quantile) -> str:
+    """What place_by_priority did with `items` (its labels, then its water labels), placing them in `placement`:
+    the labels skipped, biggest first, then the rank_table."""
+    kinds = [item.kind for item in items]
+    plan = steps(kinds, [item.full_size for item in items], order, rank)
+    kept = {id(item) for item in placement.items}
+    placed = {i for i, item in enumerate(items) if id(item) in kept}
+    skipped = [items[i].name for _, members in plan for i in members if i not in placed]
+    return f"labels skipped: {skipped}\n" + rank_table(plan, kinds, order, placed, color, [item.name for item in items], columns)

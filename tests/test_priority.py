@@ -9,7 +9,7 @@ from worldmap.frame import make_frame
 from worldmap.labels import priority
 from worldmap.labels.label import Label
 from worldmap.labels.placement import Placement, clashes, overhang
-from worldmap.labels.priority import check_step, label_order, place_by_priority, progress, rank_table, ranks_by_quantile, steps
+from worldmap.labels.priority import check_step, label_order, place_by_priority, progress, rank_table, ranks_by_quantile, steps, summary
 from worldmap.labels.water import WATER_MIN_PT, WaterLabel
 
 
@@ -142,6 +142,14 @@ def test_smaller_of_a_clashing_pair_is_skipped() -> None:
     p = place_by_priority([], [sized(sea, 100), sized(bay, 10)], FRAME, ["seas"])
     assert [w.text for w in p.water_labels] == ["Sea"] and p.labels == []
     assert clashes(p) == []
+
+
+def test_summary_lists_the_skipped_then_the_rank_table() -> None:
+    sea, bay = crossing_water_labels(FRAME)
+    p = place_by_priority([], [sized(sea, 100), sized(bay, 10)], FRAME, ["seas"])
+    lines = summary([sea, bay], p, ["seas"], color=False, columns=None).split("\n")
+    assert lines[0] == "labels skipped: ['Bay']"
+    assert lines[3].startswith("seas") and lines[3].endswith("│ Bay")
 
 
 def test_country_can_lose_to_a_bigger_sea() -> None:
