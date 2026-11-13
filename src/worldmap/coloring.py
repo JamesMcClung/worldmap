@@ -21,6 +21,7 @@ Edge = tuple[int, int]  # (i, j) feature indices, i < j
 
 N_COLORS = 5  # country colour classes
 MAX_GAP = 600_000  # metres: countries closer than this across water count as neighbours
+CLOSE_GAP = 100_000  # metres: those closer than this are linked first, whatever their size (the Bahamas and the US)
 MIN_DEG = 3  # every feature gets at least this many real-country neighbours
 OCEAN = "#e3f0f7"  # fixed ocean colour; its hue is pinned as the (N_COLORS + 1)th hue
 EQUAL_AREA_CRS = "EPSG:6933"
@@ -28,8 +29,8 @@ UNWEIGHTED_LARGEST = 10  # the biggest countries don't count towards colour bala
 WORLD_WIDTH_M = 2 * np.pi * 6378137.0  # width of EPSG:6933 in metres (shift for wrap-around at the antimeridian)
 SIMPLIFY_M = 10_000  # outline simplification for the distance queries
 TOP_UP_SEARCH_M = 5_000_000  # how far to look for top-up neighbours
-COLORING_RULE = "top10-exempt-count-balance/v5-dispute-edges-first"  # bump when the colouring logic changes, to invalidate the cache
-SPOT_CHECK_PAIRS = [("South Korea", "Japan"), ("Russia", "United States of America"), ("Malaysia", "Philippines"), ("Italy", "Greece"), ("France", "United Kingdom"), ("United Kingdom", "Norway"), ("India", "Sri Lanka")]
+COLORING_RULE = "top10-exempt-count-balance/v6-close-first"  # bump when the colouring logic changes, to invalidate the cache
+SPOT_CHECK_PAIRS = [("South Korea", "Japan"), ("Russia", "United States of America"), ("Malaysia", "Philippines"), ("Italy", "Greece"), ("France", "United Kingdom"), ("United Kingdom", "Norway"), ("India", "Sri Lanka"), ("The Bahamas", "United States of America")]
 
 
 def adjacency(gdf: gpd.GeoDataFrame) -> set[Edge]:
@@ -54,9 +55,9 @@ def neighbour_sets(n: int, edges: Iterable[Edge]) -> list[set[int]]:
 
 def add_proximity_edges(gdf: gpd.GeoDataFrame, edges: set[Edge], major: list[bool], k: int, max_gap: float = MAX_GAP, min_deg: int = MIN_DEG) -> set[Edge]:
     """Link countries separated by water so they don't share a colour, without exceeding k colours.
-    Candidate links (major countries within `max_gap` metres of each other) are tried largest-country-first and
-    kept only if the graph stays k-colourable; then each feature is topped up to `min_deg` major-country
-    neighbours via its nearest ones under the same feasibility rule."""
+    Candidate links (major countries within `max_gap` metres of each other) are tried those within CLOSE_GAP
+    first, then largest-country-first, and kept only if the graph stays k-colourable; then each feature is topped
+    up to `min_deg` major-country neighbours via its nearest ones under the same feasibility rule."""
     start_time = time.time()
     geoms = gdf.to_crs(EQUAL_AREA_CRS).geometry
     simplified = [g.simplify(SIMPLIFY_M) for g in geoms]
@@ -106,7 +107,8 @@ def add_proximity_edges(gdf: gpd.GeoDataFrame, edges: set[Edge], major: list[boo
                 if edge not in linked:
                     candidates[edge] = dist
     added = 0
-    for edge in sorted(candidates, key=lambda e: -min(area[e[0]], area[e[1]])):  # biggest countries first
+    # Close ones first: tried after the big ones, a small country's nearest neighbour could find no colour left.
+    for edge in sorted(candidates, key=lambda e: (candidates[e] > CLOSE_GAP, -min(area[e[0]], area[e[1]]))):
         if try_add(edge):
             added += 1
     major_degree = [0] * n
@@ -244,7 +246,7 @@ def merge_into_parents(gdf: gpd.GeoDataFrame, major: list[bool], parent_of: dict
 def cache_key(countries: gpd.GeoDataFrame, major: list[bool], parent_of: dict[int, int], extra_edges: set[Edge]) -> dict:
     """Everything the colouring depends on, so a change to any of it rebuilds coloring.json."""
     names = list(countries.NAME_EN)
-    return {"n_colors": N_COLORS, "max_gap": MAX_GAP, "min_deg": MIN_DEG, "rule": COLORING_RULE, "files": {COUNTRIES: os.path.getsize(fetch(COUNTRIES))},
+    return {"n_colors": N_COLORS, "max_gap": MAX_GAP, "close_gap": CLOSE_GAP, "min_deg": MIN_DEG, "rule": COLORING_RULE, "files": {COUNTRIES: os.path.getsize(fetch(COUNTRIES))},
             "major": [name for name, m in zip(names, major) if m],
             "parents": sorted([countries.NAME_EN[d], countries.NAME_EN[p]] for d, p in parent_of.items()),
             "extra_edges": sorted([countries.NAME_EN[a], countries.NAME_EN[b]] for a, b in extra_edges)}
