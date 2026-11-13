@@ -4,7 +4,7 @@ import shapely
 from matplotlib.colors import to_rgb
 
 from worldmap.coloring import OCEAN
-from worldmap.data import load_ice, load_lakes, load_land
+from worldmap.data import load_ice, load_land
 from worldmap.frame import make_frame
 from worldmap.topographic import (LAND_BELOW_SEA, Grid, PosterGrid, coastline, colorize, draw_topography, elevation_grid,
                                   polygon_mask, poster_grid, relief, sample, shade)
@@ -208,13 +208,14 @@ def test_draw_topography_holds_little_memory() -> None:
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    from worldmap.render import new_figure
+    from worldmap.render import drawable_lakes, new_figure
 
     frame = make_frame()
-    elevation_grid(), load_ice(), load_lakes()  # warm the caches outside the measurement
+    elevation_grid(), load_ice()  # warm the caches outside the measurement
+    lakes = drawable_lakes(frame)
     fig, ax = new_figure(frame)
     tracemalloc.start()
-    draw_topography(ax, frame, 50, True)
+    draw_topography(ax, frame, 50, True, lakes)
     held = tracemalloc.get_traced_memory()[0]
     tracemalloc.stop()
     plt.close(fig)

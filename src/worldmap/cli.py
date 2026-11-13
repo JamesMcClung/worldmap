@@ -249,13 +249,14 @@ def draw_topographic(args: argparse.Namespace, out: str, frame: MapFrame) -> Non
     """--type topographic: heights (and sea depths with --ocean), colour bars in the corners, pins; nothing political."""
     start = time.perf_counter()
     fig, ax = new_figure(frame)
-    draw_topography(ax, frame, args.dpi, args.ocean)
+    lakes_p = drawable_lakes(frame)
+    draw_topography(ax, frame, args.dpi, args.ocean, lakes_p)
     draw_colorbar(ax, frame, "br", LAND, "Height", LAND_CONTOURS)
     if args.ocean:
         draw_colorbar(ax, frame, "tr", SEA, "Depth", SEA_CONTOURS)
     draw_colorbar(ax, frame, "bl", ICE, "Ice", ICE_CONTOURS)
     kinds = kinds_from_labels(args.label)
-    bodies, water = water_labels(kinds, drawable_lakes(frame), frame)
+    bodies, water = water_labels(kinds, lakes_p, frame)
     outcome = None
     if kinds:  # without water kinds no label stage runs
         # A crop's bars sit over the map: keep the labels off them.
