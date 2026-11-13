@@ -20,7 +20,7 @@ from worldmap.colorspace import RGB, darken
 from worldmap.data import is_labeled
 from worldmap.earth import Fill
 from worldmap.frame import DPI, MapFrame
-from worldmap.labels.geometry import Coverage, rect, two_line
+from worldmap.labels.geometry import Coverage, coverage, two_line
 
 if TYPE_CHECKING:  # regions.py imports RENAME from here
     from worldmap.labels.regions import ChildRegion
@@ -158,8 +158,8 @@ def decide_out_and_wrap(labels: list[Label], renderer: RendererBase) -> None:
     lines when an 'in' label is wider than its country."""
     for label in labels:
         x0, y0, x1, y1 = label.geom.bounds
-        box = rect(label.anchor_x, label.anchor_y, label.width, label.height)
-        covers = box.intersection(label.geom).area / label.geom.area if label.geom.area > 0 else 1.0
+        box = np.array([label.anchor_x - label.width / 2, label.anchor_y - label.height / 2, label.anchor_x + label.width / 2, label.anchor_y + label.height / 2])
+        covers = float(coverage(label).area(box)) / label.geom.area if label.geom.area > 0 else 1.0
         too_wide = label.width > OUT_WIDTH_RATIO * (x1 - x0) and (y1 - y0) < OUT_SHORT_HEIGHTS * label.height
         label.out = covers >= OUT_COVER or too_wide
     for label in labels:
