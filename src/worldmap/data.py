@@ -170,7 +170,7 @@ def km2(geoms: Sequence[BaseGeometry]) -> np.ndarray:
 
 def with_km2(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     """`gdf` (lon/lat) with a `km2` column: each row's whole area, which projecting and clipping leave as it is."""
-    gdf["km2"] = gdf.to_crs(EQUAL_AREA_CRS).area / 1e6
+    gdf["km2"] = km2(gdf.geometry.values)
     return gdf
 
 
