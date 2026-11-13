@@ -159,11 +159,11 @@ def rects_of(p: Placement) -> tuple[np.ndarray, np.ndarray]:
     return np.vstack([boxes_of(p, ~p.water), glyph_boxes(p)]), np.concatenate([country, p.owner])
 
 
-def clash(p: Placement, i: int, among: np.ndarray, rects: tuple[np.ndarray, np.ndarray] | None = None) -> bool:
+def clash(p: Placement, i: int, among: np.ndarray) -> bool:
     """Whether label i clashes with another label of `among` (a mask), whatever their kinds: their boxes or glyph
-    boxes overlap, or a leader line of one crosses the other (not a box covering that leader's own dot). `rects`:
-    rects_of(p), if already at hand. Compiled: kernels.clash."""
-    every, owner = rects_of(p) if rects is None else rects
+    boxes overlap, or a leader line of one crosses the other (not a box covering that leader's own dot). Compiled:
+    kernels.clash."""
+    every, owner = rects_of(p)
     end_x, end_y = leader_ends(p)
     return bool(kernels.clash(i, every, owner, among, p.out, p.water, p.anchor_x, p.anchor_y, end_x, end_y))
 
