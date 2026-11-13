@@ -253,7 +253,6 @@ def place_labels(labels: list[Label], frame: MapFrame, seed: int = SEED, weights
                 p.parts[first[i]:first[i + 1]] = water[i - len(labels)].parts
                 place_glyphs(i)
         optimize(SHRINK_PASSES)
-    print("passes done; unresolved overlaps:", [items[i].name for i in clashes(p)])
     return p
 
 
