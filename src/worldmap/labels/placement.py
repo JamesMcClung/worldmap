@@ -54,12 +54,10 @@ class CostWeights:
     leader_target: float = 1.3  # ...in label heights
     leader_too_short: float = 10  # leader shorter than leader_min heights
     leader_min: float = 0.9
-    outside_country: float = 20  # fraction of an 'in' label's box off its country
-    drift: float = 0.15  # an 'in' label's distance from its anchor, in heights
+    off_feature: float = 20  # share of a label (not 'out') off its feature: box area, or glyph boxes by their centres
+    drift: float = 0.15  # a label's (not 'out') distance from its anchor, in units (unit_px: heights, or ems)
     outside_globe: float = 1000  # any part of the label outside the globe outline
-    outside_water: float = 20  # share of a water label's glyph boxes off its water body
     overhang: float = 100  # a water label hanging off its water by over OVERHANG_MAX (overhang): it would be skipped
-    water_drift: float = 0.15  # a water label's distance from its anchor, in ems
     nudge: float = 2.0  # a nudged label's distance from its home, in heights (water labels: ems; 'out' labels: none)...
     nudge_max: float = 2.0  # ...which can't be more than this
 
@@ -143,35 +141,28 @@ def rects(p: Placement) -> np.ndarray:
 def weight_array(weights: CostWeights) -> np.ndarray:
     """The weights the cost kernels take, in their order (kernels.OVERLAP...)."""
     return np.array([weights.overlap, weights.dot_cover, weights.dot_radius, weights.leader_hits_label, weights.leader_crosses_leader,
-                     weights.leader_length, weights.leader_target, weights.leader_too_short, weights.leader_min, weights.outside_country,
-                     weights.drift, weights.outside_globe, weights.outside_water, weights.overhang, weights.water_drift], float)
+                     weights.leader_length, weights.leader_target, weights.leader_too_short, weights.leader_min, weights.off_feature,
+                     weights.drift, weights.outside_globe, weights.overhang], float)
 
 
 def cost_batch(p: Placement, labels: Sequence[Placeable], i: int, cx: np.ndarray, cy: np.ndarray, weights: CostWeights, outline: Coverage,
                placed: np.ndarray | None = None, active: np.ndarray | None = None) -> np.ndarray:
     """Cost of placing label i at each candidate (cx[k], cy[k]): a country label's box centre, a water label's anchor.
-
-    Country labels: overlap with other boxes and water glyph boxes; covering another 'out' label's dot, or its
-    leader crossing our box; for an 'out' label, its leader's length, and its leader crossing other boxes (unless
-    one covers its dot), glyph boxes and leaders; for an 'in' label, the share of its box off its country
-    (geometry.Coverage) and its drift from its anchor; any corner outside the outline.
-    Water labels: their glyph boxes' overlap with every box and other glyph box; covering a dot, or a leader
-    crossing them; the share of glyph boxes whose centres are off their water, hanging off it by over
-    OVERHANG_MAX; drift from the anchor in ems; any glyph corner outside the outline. Compiled: kernels.
-    `placed`: rects(p), if the caller keeps them up to date (place_labels does). `active` (a mask, default all):
-    the labels it sees."""
-    label = labels[i]
+    Every label is its rects (parts: a country label's box, a water label's glyph boxes), in units of unit_px:
+    their overlap with other labels' rects; covering another 'out' label's dot, or its leader crossing them; any
+    corner outside the outline. An 'out' label: its leader's length, and its leader crossing other rects (unless
+    one covers its dot) and leaders. Any other: its share off its feature (geometry.Coverage: a country label's box
+    area; a water label's glyph boxes whose centres are off, and hanging off it by over OVERHANG_MAX) and its
+    drift from its anchor. Compiled: kernels.label_cost. `placed`: rects(p), if the caller keeps them up to date
+    (place_labels does). `active` (a mask, default all): the labels it sees."""
     placed = rects(p) if placed is None else placed
     active = np.ones(p.n, bool) if active is None else active
-    cover = coverage(label)
-    o = (outline.table, outline.x0, outline.y0, outline.step)
-    cx, cy = np.asarray(cx, float), np.asarray(cy, float)
-    if p.water[i]:
-        return kernels.water_cost(i, cx, cy, p.parts[p.owner == i], unit_px(p, i), (float(label.anchor_x), float(label.anchor_y)),
-                                  p.x, p.y, p.width, p.height, p.anchor_x, p.anchor_y, p.out, p.water, active, placed, p.owner,
-                                  cover.table, cover.x0, cover.y0, cover.step, *o, OVERHANG_MAX, weight_array(weights))
-    return kernels.country_cost(i, cx, cy, p.x, p.y, p.width, p.height, p.anchor_x, p.anchor_y, p.out, p.water, active, placed, p.owner,
-                                cover.table, cover.x0, cover.y0, cover.step, *o, weight_array(weights))
+    cover = coverage(labels[i])
+    first, end = np.searchsorted(p.owner, [i, i + 1])  # its rects' rows (owner ascends)
+    return kernels.label_cost(i, np.asarray(cx, float), np.asarray(cy, float), p.parts[first:end], unit_px(p, i), not p.water[i],
+                              p.x, p.y, p.width, p.height, p.anchor_x, p.anchor_y, p.out, active, placed, p.owner,
+                              cover.table, cover.x0, cover.y0, cover.step, outline.table, outline.x0, outline.y0, outline.step,
+                              OVERHANG_MAX, weight_array(weights))
 
 
 def candidates(p: Placement, labels: Sequence[Placeable], i: int, grid: bool = False) -> tuple[np.ndarray, np.ndarray]:

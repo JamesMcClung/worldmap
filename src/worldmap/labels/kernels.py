@@ -1,5 +1,5 @@
 """Compiled (numba) cost of a label at each of its candidate positions: the solver's inner loop, as plain loops.
-placement.cost_batch calls these; the rules (and CostWeights' meanings) are documented there."""
+placement.cost_batch calls label_cost; the rules (and CostWeights' meanings) are documented there."""
 
 import math
 
@@ -10,7 +10,7 @@ PARALLEL_EPS = 1e-9  # segment direction components below this count as parallel
 
 # Indices into the weights array (placement.weight_array, in CostWeights' field order).
 OVERLAP, DOT_COVER, DOT_RADIUS, LEADER_HITS_LABEL, LEADER_CROSSES_LEADER, LEADER_LENGTH, LEADER_TARGET, LEADER_TOO_SHORT, LEADER_MIN, \
-    OUTSIDE_COUNTRY, DRIFT, OUTSIDE_GLOBE, OUTSIDE_WATER, OVERHANG, WATER_DRIFT = range(15)
+    OFF_FEATURE, DRIFT, OUTSIDE_GLOBE, OVERHANG = range(13)
 
 
 @njit(cache=True)
@@ -81,144 +81,89 @@ def overlap(a0: float, a1: float, a2: float, a3: float, b0: float, b1: float, b2
 
 
 @njit(cache=True)
-def envelope(i: int, cx: np.ndarray, cy: np.ndarray, width: np.ndarray, height: np.ndarray, anchor_x: np.ndarray, anchor_y: np.ndarray,
-             out: np.ndarray) -> tuple[float, float, float, float]:
-    """The box round country label i's candidate boxes (centres cx, cy) and, if it is 'out', its dot: its leaders
-    too lie within it. Nothing beyond it can touch them."""
-    w, h = width[i], height[i]
-    ex0, ey0, ex1, ey1 = cx.min() - w / 2, cy.min() - h / 2, cx.max() + w / 2, cy.max() + h / 2
-    if out[i]:
-        ex0, ey0, ex1, ey1 = min(ex0, anchor_x[i]), min(ey0, anchor_y[i]), max(ex1, anchor_x[i]), max(ey1, anchor_y[i])
+def envelope(cx: np.ndarray, cy: np.ndarray, parts: np.ndarray, out: bool, ax: float, ay: float) -> tuple[float, float, float, float]:
+    """The box round a label's rects (`parts`, relative) at every candidate (cx, cy) and, if it is 'out', its dot
+    (ax, ay): its leaders too lie within it. Nothing beyond it can touch them."""
+    ex0, ey0 = cx.min() + parts[:, 0].min(), cy.min() + parts[:, 1].min()
+    ex1, ey1 = cx.max() + parts[:, 2].max(), cy.max() + parts[:, 3].max()
+    if out:
+        ex0, ey0, ex1, ey1 = min(ex0, ax), min(ey0, ay), max(ex1, ax), max(ey1, ay)
     return ex0, ey0, ex1, ey1
 
 
 @njit(cache=True)
-def near_labels(i: int, ex0: float, ey0: float, ex1: float, ey1: float, x: np.ndarray, y: np.ndarray, width: np.ndarray,
-                height: np.ndarray, anchor_x: np.ndarray, anchor_y: np.ndarray, out: np.ndarray, water: np.ndarray,
-                active: np.ndarray, dot_radius: float) -> np.ndarray:
-    """The active country labels but i whose box, or ('out') dot with its keep-clear radius, meets the envelope (its
-    leader runs from the dot to its box, so lies within those): only these add to i's cost there."""
-    near = np.empty(len(x), np.int64)
-    n_near = 0
-    for j in range(len(x)):
-        if j == i or water[j] or not active[j]:
-            continue
-        o0, o1, o2, o3 = x[j] - width[j] / 2, y[j] - height[j] / 2, x[j] + width[j] / 2, y[j] + height[j] / 2
-        if out[j]:
-            r = dot_radius * height[j]
-            o0, o1, o2, o3 = min(o0, anchor_x[j] - r), min(o1, anchor_y[j] - r), max(o2, anchor_x[j] + r), max(o3, anchor_y[j] + r)
-        if o0 <= ex1 and o2 >= ex0 and o1 <= ey1 and o3 >= ey0:
-            near[n_near] = j
-            n_near += 1
-    return near[:n_near]
-
-
-@njit(cache=True)
-def country_cost(i: int, cx: np.ndarray, cy: np.ndarray, x: np.ndarray, y: np.ndarray, width: np.ndarray, height: np.ndarray,
-                 anchor_x: np.ndarray, anchor_y: np.ndarray, out: np.ndarray, water: np.ndarray, active: np.ndarray,
-                 rects: np.ndarray, owner: np.ndarray, table: np.ndarray, tx0: float, ty0: float, tstep: float,
-                 outline: np.ndarray, ox0: float, oy0: float, ostep: float, wt: np.ndarray) -> np.ndarray:
-    """placement.cost_batch for country label i at each candidate centre (cx[k], cy[k]). rects/owner: every label's
-    rects where it is now, and whose (placement.rects; only water glyphs are read: country boxes come from x, y,
-    width, height); active: the labels being placed (the rest are ignored); table...: its country's Coverage;
-    outline...: the frame's."""
-    n = len(cx)
-    w, h = width[i], height[i]
-    ax, ay = anchor_x[i], anchor_y[i]
-    cost = np.zeros(n)
-    ex0, ey0, ex1, ey1 = envelope(i, cx, cy, width, height, anchor_x, anchor_y, out)
-    others = near_labels(i, ex0, ey0, ex1, ey1, x, y, width, height, anchor_x, anchor_y, out, water, active, wt[DOT_RADIUS])
-    near = np.empty(len(rects), np.int64)
-    n_near = 0
-    for g in range(len(rects)):
-        if water[owner[g]] and active[owner[g]] and rects[g, 0] <= ex1 and rects[g, 2] >= ex0 and rects[g, 1] <= ey1 and rects[g, 3] >= ey0:
-            near[n_near] = g
-            n_near += 1
-    for k in range(n):
-        b0, b1, b2, b3 = cx[k] - w / 2, cy[k] - h / 2, cx[k] + w / 2, cy[k] + h / 2
-        c = 0.0
-        if out[i]:
-            nx, ny = min(max(ax, b0), b2), min(max(ay, b1), b3)  # our leader's end
-            length = math.hypot(nx - ax, ny - ay)
-            c += wt[LEADER_LENGTH] * ((length - wt[LEADER_TARGET] * h) / h) ** 2 + wt[LEADER_TOO_SHORT] * max(wt[LEADER_MIN] * h - length, 0.0) / h
-        for j in others:
-            o0, o1, o2, o3 = x[j] - width[j] / 2, y[j] - height[j] / 2, x[j] + width[j] / 2, y[j] + height[j] / 2
-            c += wt[OVERLAP] * overlap(b0, b1, b2, b3, o0, o1, o2, o3) / (h * h)
-            if out[j]:  # its dot under our box, its leader through it
-                dx, dy = anchor_x[j], anchor_y[j]
-                r = wt[DOT_RADIUS] * height[j]
-                gap = math.hypot(max(abs(cx[k] - dx) - w / 2, 0.0), max(abs(cy[k] - dy) - h / 2, 0.0))
-                c += wt[DOT_COVER] * max(r - gap, 0.0) / r
-                lx, ly = min(max(dx, o0), o2), min(max(dy, o1), o3)
-                if segment_hits_rect(dx, dy, lx, ly, b0, b1, b2, b3):
-                    c += wt[LEADER_HITS_LABEL]
-                if out[i] and segments_cross(ax, ay, nx, ny, dx, dy, lx, ly):
-                    c += wt[LEADER_CROSSES_LEADER]
-            if out[i] and not (o0 <= ax <= o2 and o1 <= ay <= o3) and segment_hits_rect(ax, ay, nx, ny, o0, o1, o2, o3):
-                c += wt[LEADER_HITS_LABEL]  # our leader through its box (unless that covers our dot: unavoidable)
-        if not out[i]:
-            inside = covered_area(table, tx0, ty0, tstep, b0, b1, b2, b3) / (w * h)
-            c += wt[OUTSIDE_COUNTRY] * (1 - inside) + wt[DRIFT] * math.hypot(cx[k] - ax, cy[k] - ay) / h
-        if not holds(outline, ox0, oy0, ostep, b0, b1, b2, b3):
-            c += wt[OUTSIDE_GLOBE]
-        for gi in range(n_near):
-            g = near[gi]
-            g0, g1, g2, g3 = rects[g, 0], rects[g, 1], rects[g, 2], rects[g, 3]
-            c += wt[OVERLAP] * overlap(b0, b1, b2, b3, g0, g1, g2, g3) / (h * h)
-            if out[i] and not (g0 <= ax <= g2 and g1 <= ay <= g3) and segment_hits_rect(ax, ay, nx, ny, g0, g1, g2, g3):
-                c += wt[LEADER_HITS_LABEL]
-        cost[k] = c
-    return cost
-
-
-@njit(cache=True)
-def water_cost(i: int, cx: np.ndarray, cy: np.ndarray, parts: np.ndarray, em: float, anchor: tuple[float, float],
-               x: np.ndarray, y: np.ndarray, width: np.ndarray, height: np.ndarray, anchor_x: np.ndarray, anchor_y: np.ndarray,
-               out: np.ndarray, water: np.ndarray, active: np.ndarray, rects: np.ndarray, owner: np.ndarray,
-               table: np.ndarray, tx0: float, ty0: float, tstep: float,
-               outline: np.ndarray, ox0: float, oy0: float, ostep: float, overhang_max: float, wt: np.ndarray) -> np.ndarray:
-    """placement.cost_batch for water label i (its glyph boxes `parts`, relative) with its anchor at each candidate
-    (cx[k], cy[k]). rects/owner: every label's rects where it is now, and whose (placement.rects); active: the
-    labels being placed (the rest are ignored); table...: its water's Coverage; outline...: the frame's."""
-    n, q = len(cx), len(parts)
-    cost = np.zeros(n)
-    ex0, ey0 = cx.min() + parts[:, 0].min(), cy.min() + parts[:, 1].min()
-    ex1, ey1 = cx.max() + parts[:, 2].max(), cy.max() + parts[:, 3].max()
-    # Obstacles near our glyphs' envelope: every other label's rects.
-    obstacles = np.empty((len(rects), 4))
+def nearby(i: int, ex0: float, ey0: float, ex1: float, ey1: float, rects: np.ndarray, owner: np.ndarray, active: np.ndarray,
+           x: np.ndarray, y: np.ndarray, width: np.ndarray, height: np.ndarray, anchor_x: np.ndarray, anchor_y: np.ndarray,
+           out: np.ndarray, dot_radius: float, obstacles: np.ndarray, leaders: np.ndarray) -> tuple[int, int]:
+    """What can add to label i's cost within the envelope: into `obstacles` (len(rects), 4) the rects of other
+    active labels that meet it, into `leaders` (len(x)) the other active 'out' labels whose dot (with its keep-clear
+    radius) or leader meets it; returns how many of each. (The caller allocates them: the cost loops ran half as
+    fast again over arrays this returned.)"""
     n_obs = 0
     for g in range(len(rects)):
-        if owner[g] != i and active[owner[g]] and rects[g, 0] < ex1 and rects[g, 2] > ex0 and rects[g, 1] < ey1 and rects[g, 3] > ey0:
+        if owner[g] != i and active[owner[g]] and rects[g, 0] <= ex1 and rects[g, 2] >= ex0 and rects[g, 1] <= ey1 and rects[g, 3] >= ey0:
             obstacles[n_obs] = rects[g]
             n_obs += 1
-    leaders = np.empty(len(x), np.int64)  # 'out' country labels whose dot (with its radius) or leader nears our envelope
     n_lead = 0
     for j in range(len(x)):
-        if water[j] or not out[j] or not active[j]:
+        if j == i or not out[j] or not active[j]:
             continue
         dx, dy = anchor_x[j], anchor_y[j]
         lx = min(max(dx, x[j] - width[j] / 2), x[j] + width[j] / 2)
         ly = min(max(dy, y[j] - height[j] / 2), y[j] + height[j] / 2)
-        r = wt[DOT_RADIUS] * height[j]
+        r = dot_radius * height[j]
         if min(dx - r, lx) <= ex1 and max(dx + r, lx) >= ex0 and min(dy - r, ly) <= ey1 and max(dy + r, ly) >= ey0:
             leaders[n_lead] = j
             n_lead += 1
+    return n_obs, n_lead
+
+
+@njit(cache=True)
+def label_cost(i: int, cx: np.ndarray, cy: np.ndarray, parts: np.ndarray, unit: float, by_area: bool,
+               x: np.ndarray, y: np.ndarray, width: np.ndarray, height: np.ndarray, anchor_x: np.ndarray, anchor_y: np.ndarray,
+               out: np.ndarray, active: np.ndarray, rects: np.ndarray, owner: np.ndarray,
+               table: np.ndarray, tx0: float, ty0: float, tstep: float,
+               outline: np.ndarray, ox0: float, oy0: float, ostep: float, overhang_max: float, wt: np.ndarray) -> np.ndarray:
+    """placement.cost_batch for label i (its rects `parts`, relative to its position; distances in `unit` px) at
+    each candidate position (cx[k], cy[k]). by_area: how much of it is on its feature is the area of its rects
+    over it (a country), else the area of the rects whose centres are, with its overhang (a water label).
+    rects/owner: every label's rects where it is now, and whose (placement.rects); active: the labels being
+    placed (the rest are ignored); table...: its feature's Coverage; outline...: the frame's."""
+    n, q = len(cx), len(parts)
+    ax, ay = anchor_x[i], anchor_y[i]
+    cost = np.zeros(n)
+    ex0, ey0, ex1, ey1 = envelope(cx, cy, parts, out[i], ax, ay)
+    obstacles, leaders = np.empty((len(rects), 4)), np.empty(len(x), np.int64)
+    n_obs, n_lead = nearby(i, ex0, ey0, ex1, ey1, rects, owner, active, x, y, width, height, anchor_x, anchor_y, out, wt[DOT_RADIUS], obstacles, leaders)
+    p0, p1, p2, p3 = parts[:, 0].min(), parts[:, 1].min(), parts[:, 2].max(), parts[:, 3].max()  # the box round its rects
     on = np.zeros(q, np.bool_)
     for k in range(n):
         c, inside, total = 0.0, 0.0, 0.0
         all_in = True
+        nx, ny = min(max(ax, cx[k] + p0), cx[k] + p2), min(max(ay, cy[k] + p1), cy[k] + p3)  # its leader's end
+        if out[i]:
+            length = math.hypot(nx - ax, ny - ay)
+            c += wt[LEADER_LENGTH] * ((length - wt[LEADER_TARGET] * unit) / unit) ** 2 + wt[LEADER_TOO_SHORT] * max(wt[LEADER_MIN] * unit - length, 0.0) / unit
         for p in range(q):
             g0, g1, g2, g3 = parts[p, 0] + cx[k], parts[p, 1] + cy[k], parts[p, 2] + cx[k], parts[p, 3] + cy[k]
             for o in range(n_obs):
-                c += wt[OVERLAP] * overlap(g0, g1, g2, g3, obstacles[o, 0], obstacles[o, 1], obstacles[o, 2], obstacles[o, 3]) / (em * em)
+                c += wt[OVERLAP] * overlap(g0, g1, g2, g3, obstacles[o, 0], obstacles[o, 1], obstacles[o, 2], obstacles[o, 3]) / (unit * unit)
             area = (g2 - g0) * (g3 - g1)
-            on[p] = covered(table, tx0, ty0, tstep, (g0 + g2) / 2, (g1 + g3) / 2)
             total += area
-            if on[p]:
-                inside += area
+            if by_area:
+                inside += covered_area(table, tx0, ty0, tstep, g0, g1, g2, g3)
+            else:
+                on[p] = covered(table, tx0, ty0, tstep, (g0 + g2) / 2, (g1 + g3) / 2)
+                if on[p]:
+                    inside += area
             if all_in and not holds(outline, ox0, oy0, ostep, g0, g1, g2, g3):
                 all_in = False
-        for li in range(n_lead):  # 'out' country labels: their dots under our glyphs, their leaders through them
+        if out[i]:  # our leader through another's rect (unless that covers our dot: unavoidable)
+            for o in range(n_obs):
+                r0, r1, r2, r3 = obstacles[o, 0], obstacles[o, 1], obstacles[o, 2], obstacles[o, 3]
+                if not (r0 <= ax <= r2 and r1 <= ay <= r3) and segment_hits_rect(ax, ay, nx, ny, r0, r1, r2, r3):
+                    c += wt[LEADER_HITS_LABEL]
+        for li in range(n_lead):  # other 'out' labels: their dots under our rects, their leaders through them or ours
             j = leaders[li]
             dx, dy = anchor_x[j], anchor_y[j]
             lx = min(max(dx, x[j] - width[j] / 2), x[j] + width[j] / 2)
@@ -233,16 +178,19 @@ def water_cost(i: int, cx: np.ndarray, cy: np.ndarray, parts: np.ndarray, em: fl
             c += wt[DOT_COVER] * max(r - gap, 0.0) / r
             if hit:
                 c += wt[LEADER_HITS_LABEL]
-        first, last = -1, -1
-        for p in range(q):
-            if on[p]:
-                if first < 0:
-                    first = p
-                last = p
-        hang = 1.0 if first < 0 else max(first, q - 1 - last) / q
-        if hang > overhang_max:
-            c += wt[OVERHANG]
-        c += wt[OUTSIDE_WATER] * (1 - inside / total) + wt[WATER_DRIFT] * math.hypot(cx[k] - anchor[0], cy[k] - anchor[1]) / em
+            if out[i] and segments_cross(ax, ay, nx, ny, dx, dy, lx, ly):
+                c += wt[LEADER_CROSSES_LEADER]
+        if not out[i]:  # an 'out' label is beside its feature by design
+            c += wt[OFF_FEATURE] * (1 - inside / total) + wt[DRIFT] * math.hypot(cx[k] - ax, cy[k] - ay) / unit
+            if not by_area:
+                first, last = -1, -1
+                for p in range(q):
+                    if on[p]:
+                        if first < 0:
+                            first = p
+                        last = p
+                if (1.0 if first < 0 else max(first, q - 1 - last) / q) > overhang_max:
+                    c += wt[OVERHANG]
         if not all_in:
             c += wt[OUTSIDE_GLOBE]
         cost[k] = c

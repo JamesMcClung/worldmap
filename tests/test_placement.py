@@ -236,34 +236,42 @@ def test_water_labels_try_fine_steps(frame: MapFrame) -> None:
     assert np.isclose(np.abs(cy - p.y[0]), 0.1 * p.height[0]).any()
 
 
-def test_near_labels_holds_every_label_that_costs(frame: MapFrame) -> None:
-    """Every country label that adds to label i's cost at any of its candidates is one near_labels gathers for
-    them, and it gathers fewer than all: for an 'in' label, and for an 'out' one with a leader running past others."""
+def test_nearby_holds_every_label_that_costs(frame: MapFrame) -> None:
+    """Every label that adds to label i's cost at any of its candidates is one nearby gathers for them (its rects,
+    or its leader), and it gathers fewer than all: for an 'in' label, an 'out' one with a leader running past
+    others, and a water label."""
     from worldmap.labels import kernels
     from worldmap.labels.placement import candidates, cost_batch, outline_coverage
 
     labels = [country_label(frame, f"L{a}{b}", -60 + 8 * a, -20 + 8 * b, 60) for a in range(7) for b in range(6)]
-    p = placed(labels, frame, freedom=np.full(len(labels), FIXED))
+    x, y = frame.to_px(shapely.Point(*frame.to_map.transform(-36, 0))).coords[0]
+    sea = water_label("Sea", (x, y), shapely.box(x - 150, y - 30, x + 150, y + 30), np.array([[-40.0 + 10 * k, -7, -30 + 10 * k, 7] for k in range(8)]), 10)
+    items = [*labels, sea]
+    p = placed(labels, frame, water=[sea], freedom=np.full(len(items), FIXED))
     for j, by in ((41, 0), (3, 21)):  # 'out' labels with their dots far from their boxes, beside labels 0 and 21
-        p.out[j] = labels[j].out = True
+        p.out[j] = True
         p.anchor_x[j], p.anchor_y[j] = p.x[by] + 0.6 * p.width[by], p.y[by]
     outline, weights = outline_coverage(frame), placement.CostWeights()
-    for i in (0, 3, 21):
-        cx, cy = candidates(p, labels, i)
+    for i in (0, 3, 21, len(labels)):
+        cx, cy = candidates(p, items, i)
         n = len(cx)
         costs = set()
         for j in range(p.n):
             if j != i:
-                # The reference: one more candidate, on j's box and dot, so the kernel's own filter takes j in;
+                # The reference: more candidates, on j's position and dot, so the kernel's own filter takes j in;
                 # only the real candidates' costs are compared.
                 ex, ey = np.append(cx, [p.x[j], p.anchor_x[j]]), np.append(cy, [p.y[j], p.anchor_y[j]])
-                alone = cost_batch(subset(p, np.arange(p.n) == i), [labels[i]], 0, ex, ey, weights, outline)[:n]
+                alone = cost_batch(subset(p, np.arange(p.n) == i), [items[i]], 0, ex, ey, weights, outline)[:n]
                 pair = subset(p, np.isin(np.arange(p.n), [i, j]))
-                with_j = cost_batch(pair, [labels[min(i, j)], labels[max(i, j)]], int(i > j), ex, ey, weights, outline)[:n]
+                with_j = cost_batch(pair, [items[min(i, j)], items[max(i, j)]], int(i > j), ex, ey, weights, outline)[:n]
                 if not np.array_equal(with_j, alone):
                     costs.add(j)
-        env = kernels.envelope(i, cx, cy, p.width, p.height, p.anchor_x, p.anchor_y, p.out)
-        near = set(kernels.near_labels(i, *env, p.x, p.y, p.width, p.height, p.anchor_x, p.anchor_y, p.out, p.water, np.ones(p.n, bool), weights.dot_radius).tolist())
+        env = kernels.envelope(cx, cy, p.parts[p.owner == i], bool(p.out[i]), p.anchor_x[i], p.anchor_y[i])
+        placed_rects, obstacles, leaders = rects(p), np.empty((len(p.parts), 4)), np.empty(p.n, np.int64)
+        n_obs, n_lead = kernels.nearby(i, *env, placed_rects, p.owner, np.ones(p.n, bool), p.x, p.y, p.width, p.height,
+                                       p.anchor_x, p.anchor_y, p.out, weights.dot_radius, obstacles, leaders)
+        whose = {int(p.owner[g]) for o in obstacles[:n_obs] for g in np.flatnonzero((placed_rects == o).all(1))}
+        near = whose | set(leaders[:n_lead].tolist())
         assert costs and costs <= near and len(near) < p.n - 1, (i, costs - near)
 
 
