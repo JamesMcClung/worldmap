@@ -27,9 +27,14 @@ tiles: the crop falls back to 1'). `coloring.json`, `earth.json` and `etopo_3min
 
 `.venv/bin/pytest` (~55 s on 4 pytest-xdist workers, `addopts` in `pyproject.toml`; `-n0` for serial, ~200 s). Unit tests cover the pure pieces (colour maths, `color_graph`, pin parsing and sprite, label geometry,
 CLI errors), and `test_import_has_no_pyplot` guards that importing any module doesn't pick a matplotlib backend (`--pick` needs to).
-`test_regression.py` renders `--pins` (the default map under the pins), `--color earth`, `--label countries,territories`, `--label countries,water` (`water`; draws the rivers too), `--disputed`, `--type topographic --ocean`, `--type topographic --label water` (`topographic_water`; also checks the outside is transparent), `--crop France` (`crop`), a Bering Strait box crop with territories, water and `--disputed` (`crop_water`) an Alps box crop with `--type topographic --ocean` (`topographic_crop`; reads four 15" tiles, recorded in its
-environment, so it skips where they aren't downloaded) and `--crop pacific --label countries,oceans,seas` (`crop_pacific_water`, Equal Earth) maps in a subprocess and compares a SHA-256 of the decoded pixels
-with `tests/fingerprints.json`:
+`test_regression.py` renders these maps (fingerprint name: options) in a subprocess and compares a SHA-256 of the
+decoded pixels with `tests/fingerprints.json`:
+`pins`: `--pins` (the default map under the pins); `earth`: `--color earth`; `regions`: `--label countries,territories`;
+`water`: `--label countries,water` (draws the rivers too); `disputed`: `--disputed`; `topographic_ocean`:
+`--type topographic --ocean`; `topographic_water`: `--type topographic --label water` (also checks the outside is
+transparent); `crop`: `--crop France`; `crop_water`: a Bering Strait box crop with territories, water and `--disputed`;
+`topographic_crop`: an Alps box crop with `--type topographic --ocean` (reads four 15" tiles, recorded in its
+environment, so it skips where they aren't downloaded); `crop_pacific_water`: `--crop pacific --label countries,oceans,seas` (Equal Earth).
 - A commit that changes the output on purpose re-records with `UPDATE_REFERENCE=1 .venv/bin/pytest` and commits `fingerprints.json`
   in the same commit, saying in the body what changed visually. Refactors must leave the fingerprints unchanged.
 - Each fingerprint records the library versions it was made with (matplotlib, freetype, numpy, shapely, GEOS, ...). With other
