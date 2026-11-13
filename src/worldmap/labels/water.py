@@ -22,7 +22,7 @@ from worldmap.curves import along, arc_lengths, bend
 from worldmap.data import EQUAL_AREA_CRS, load_marine, load_rivers
 from worldmap.disjoint import DisjointSets
 from worldmap.frame import MapFrame
-from worldmap.labels.geometry import Coverage, coverage
+from worldmap.labels.geometry import Coverage, coverage, on_feature
 from worldmap.labels.text import PX_PER_PT, bent, font, text_width
 
 WATER_KINDS = ("oceans", "seas", "lakes", "straits", "rivers", "water")  # the --label values; water = all the others
@@ -356,12 +356,9 @@ class WaterLabel:
         return self.text
 
     def inside_share(self, x: float, y: float) -> float:
-        """The share of the glyph boxes' area on the body when the label is at (x, y), a box being on it if its
-        centre is, as the solver has it (placement.cost_batch)."""
-        g = self.parts
-        area = (g[:, 2] - g[:, 0]) * (g[:, 3] - g[:, 1])
-        on = coverage(self).contains(x + (g[:, 0] + g[:, 2]) / 2, y + (g[:, 1] + g[:, 3]) / 2)
-        return float(area[on].sum() / area.sum()) if area.sum() > 0 else 0.0
+        """The share of the glyph boxes' area on the body when the label is at (x, y), as the solver has it
+        (geometry.on_feature: a box is on it if its centre is)."""
+        return on_feature(coverage(self), self.parts, x, y, False, 0)[0]
 
 
 def extend(curve: np.ndarray, length: float) -> np.ndarray:

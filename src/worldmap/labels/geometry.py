@@ -7,6 +7,8 @@ from typing import Protocol
 import numpy as np
 from shapely.geometry.base import BaseGeometry
 
+from worldmap.labels import kernels
+
 COVERAGE_MAX_CELLS = 1_000_000  # a Coverage's cells are 1 px, or bigger where its shape would need more than this
 
 
@@ -87,3 +89,12 @@ def coverage(item: Covered) -> Coverage:
     if item.cover is None:
         item.cover = Coverage.of(item.geom)
     return item.cover
+
+
+def on_feature(cover: Coverage, parts: np.ndarray, x: float, y: float, by_area: bool, slices: int) -> tuple[float, np.ndarray]:
+    """The share of a label's rects (`parts`, relative to (x, y)) on its feature (`cover`), and which of its pieces
+    are on it (in reading order), as the solver judges them (kernels.on_feature): by_area, `slices` slices of the
+    box round them; else each rect, by its centre."""
+    on = np.zeros(slices if by_area else len(parts), bool)
+    share = kernels.on_feature(np.asarray(parts, float), float(x), float(y), by_area, cover.table, cover.x0, cover.y0, cover.step, on)
+    return float(share), on

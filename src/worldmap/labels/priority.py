@@ -10,7 +10,7 @@ from dataclasses import dataclass, replace
 import numpy as np
 
 from worldmap.frame import MapFrame
-from worldmap.labels.geometry import coverage
+from worldmap.labels.geometry import coverage, on_feature
 from worldmap.labels.label import Label
 from worldmap.labels.placeable import Placeable
 from worldmap.labels.placement import FIXED, FREE, NUDGE, OVERHANG_MAX, OVERHANG_SLICES, Placement, clash, outside_outline, overhang, place_labels, rects, subset
@@ -137,15 +137,9 @@ def progress(r: int, done: int, of: int, kind: str, columns: int) -> str:
 
 
 def overhang_of(p: Placement, k: int) -> float:
-    """overhang of label k: of its glyphs (a water label), each on its water if its box's centre is, as the solver
-    has it (cost_batch); or of OVERHANG_SLICES slices of its box (a country), each on it if at least half over it."""
-    if p.water[k]:
-        g = rects(p)[p.owner == k]
-        return overhang(coverage(p.items[k]).contains((g[:, 0] + g[:, 2]) / 2, (g[:, 1] + g[:, 3]) / 2))
-    x0, y0, w, h = p.x[k] - p.width[k] / 2, p.y[k] - p.height[k] / 2, p.width[k], p.height[k]
-    edges = x0 + w * np.arange(OVERHANG_SLICES + 1) / OVERHANG_SLICES
-    slices = np.column_stack([edges[:-1], np.full(OVERHANG_SLICES, y0), edges[1:], np.full(OVERHANG_SLICES, y0 + h)])
-    return overhang(coverage(p.items[k]).area(slices) >= w * h / OVERHANG_SLICES / 2)
+    """overhang of label k where it is, its pieces judged as the solver does (geometry.on_feature)."""
+    _, on = on_feature(coverage(p.items[k]), p.parts[p.owner == k], p.x[k], p.y[k], not p.water[k], OVERHANG_SLICES)
+    return overhang(on)
 
 
 def rival(p: Placement, k: int, smaller: list[int]) -> int | None:
