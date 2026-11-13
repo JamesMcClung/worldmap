@@ -28,7 +28,7 @@ def country_label(frame: MapFrame, name: str, lon: float, lat: float, half_px: f
 def placed(labels: list[Label], frame: MapFrame, water: Sequence[WaterLabel] = (), start: tuple[np.ndarray, np.ndarray] | None = None,
            **solve: object) -> Placement:
     """A Placement of the labels, from `start` (default: their anchors), placed (place_labels)."""
-    p = Placement.of(labels, water)
+    p = Placement.of([*labels, *water])
     if start is not None:
         p.x, p.y = start[0].copy(), start[1].copy()
     place_labels(p, frame, **solve)  # type: ignore[arg-type]
@@ -151,6 +151,14 @@ def test_floors_hold(frame: MapFrame, monkeypatch: pytest.MonkeyPatch) -> None:
     assert p.size[0] == pytest.approx(12.0)
 
 
+def test_of_takes_labels_in_any_order(frame: MapFrame, one_label: list[Label]) -> None:
+    sea, _ = crossing_water_labels(frame)
+    p = Placement.of([sea, *one_label])
+    assert p.items == [sea, *one_label] and p.water.tolist() == [True, False]
+    assert p.owner.tolist() == [0] * len(sea.parts) + [1] and np.array_equal(rects(p)[-1], rects(Placement.of(one_label))[0])
+    assert (p.width[0], p.height[0]) == (sea.width, sea.height)
+
+
 def test_subset(frame: MapFrame, one_label: list[Label]) -> None:
     sea, bay = crossing_water_labels(frame)
     p = placed(one_label, frame, water=[sea, bay])
@@ -170,7 +178,7 @@ def test_shrink_step_stops_at_the_floor() -> None:
 
 def test_shrinking_scales_a_labels_extent_and_rects(frame: MapFrame, monkeypatch: pytest.MonkeyPatch, one_label: list[Label]) -> None:
     sea, _ = crossing_water_labels(frame)
-    before = Placement.of(one_label, [sea])
+    before = Placement.of([*one_label, sea])
     monkeypatch.setattr(placement, "clashes", lambda p, among=None: [0, 1])  # every shrink round shrinks both
     p = placed(one_label, frame, water=[sea], freedom=np.array([FIXED, FIXED]))
     assert (p.size == before.size).all()  # fixed: no shrinking

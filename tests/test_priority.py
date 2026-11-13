@@ -160,7 +160,7 @@ def test_check_step_puts_a_clashing_country_out_without_touching_the_placement()
     country = atlantis(1)
     x, y, w, h = country.anchor_x, country.anchor_y, country.width, country.height
     sea = water_label("Sea", (x, y), country.geom, np.array([[-w / 2, -h / 2, w / 2, h / 2]]), WATER_MIN_PT)
-    p = Placement.of([country], [sea])
+    p = Placement.of([country, sea])
     verdict = check_step(p, [0], np.array([True, True]), FRAME)
     assert verdict.out == [0] and verdict.rival is None and verdict.skip == []
     assert not p.out.any()
@@ -172,7 +172,7 @@ def test_check_step_names_the_smaller_label_at_a_water_label_s_anchor() -> None:
     glyphs = np.array([[-30.0, -7, 30, 7]])
     sea = water_label("Sea", (x, y), shapely.box(x - 40, y - 10, x + 40, y + 10), glyphs, WATER_MIN_PT)
     bay = water_label("Bay", (x, y), shapely.box(x - 40, y - 10, x + 40, y + 10), glyphs.copy(), WATER_MIN_PT)
-    p = Placement.of([], [sea, bay])
+    p = Placement.of([sea, bay])
     p.x[0] += 500  # the sea, off its water
     verdict = check_step(p, [0, 1], np.array([True, True]), FRAME)
     assert verdict.rival == 1 and verdict.out == []

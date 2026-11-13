@@ -73,6 +73,15 @@ class Label:
         """The smallest it may shrink to (pt)."""
         return SHRINK_MIN_PT * self.label_scale
 
+    @property
+    def parts(self) -> np.ndarray:
+        """Its box, its one rect."""
+        return np.array([[-self.width / 2, -self.height / 2, self.width / 2, self.height / 2]])
+
+    @property
+    def water(self) -> bool:
+        return False
+
 
 def lay_out(text: str, size: float, italic: bool) -> tuple[Path, float, float]:
     """`text` at `size` pt as outlines (text.lines), and its box's width and height, padded by BOX_PAD_X/Y."""

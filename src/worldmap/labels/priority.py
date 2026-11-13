@@ -120,7 +120,7 @@ def place_by_priority(labels: list[Label], water: list[WaterLabel], frame: MapFr
     ranks = np.zeros(len(items), int)
     for r, members in plan:
         ranks[members] = r
-    p = Placement.of(labels, water)  # one placement of every label, solved step by step over the active ones
+    p = Placement.of(items)  # one placement of every label, solved step by step over the active ones
     active = np.zeros(p.n, bool)  # the labels kept so far, and the step's
     settled = np.zeros(p.n, bool)  # kept, and where (home) and at what size each settled
     home_x, home_y, settled_size = p.x.copy(), p.y.copy(), np.zeros(p.n)

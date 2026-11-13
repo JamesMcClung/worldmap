@@ -70,11 +70,11 @@ class CostWeights:
 
 @dataclass
 class Placement:
-    """Per-label arrays: the country labels in their order, then the water labels. x/y are box centres for country
-    labels; for a water label they are where its anchor goes, and width/height are its glyph boxes' extent (only
-    used to scale its moves). Every label's rects are in `parts` (offsets from x/y), `owner` their label
-    (ascending): a country label's box, a water label's glyph boxes. The labels themselves (`items`) stay as laid
-    out: shrinking changes only `size` (pt) and the extents here, which the draw functions read."""
+    """Per-label arrays, the labels (`items`) in any order. x/y are box centres for country labels; for a water
+    label they are where its anchor goes, and width/height are its glyph boxes' extent (only used to scale its
+    moves). Every label's rects are in `parts` (offsets from x/y), `owner` their label (ascending): a country
+    label's box, a water label's glyph boxes. The labels themselves stay as laid out: shrinking changes only
+    `size` (pt) and the extents here, which the draw functions read."""
 
     x: np.ndarray
     y: np.ndarray
@@ -106,23 +106,18 @@ class Placement:
         return [label for _, label in self.each(WaterLabel)]
 
     @classmethod
-    def of(cls, labels: Sequence[Label], water: Sequence[WaterLabel] = ()) -> "Placement":
-        """The labels at their anchors, at their sizes: the country labels in their order, then the water labels."""
-        items: list[Placeable] = [*labels, *water]
-        anchor_x = np.array([label.anchor_x for label in items], float)
-        anchor_y = np.array([label.anchor_y for label in items], float)
-        extent = [(w.parts[:, 2].max() - w.parts[:, 0].min(), w.parts[:, 3].max() - w.parts[:, 1].min()) for w in water]
-        boxes = [np.array([[-label.width / 2, -label.height / 2, label.width / 2, label.height / 2]]) for label in labels]
+    def of(cls, items: Sequence[Placeable]) -> "Placement":
+        """The labels at their anchors, at their sizes, in this order."""
+        anchor_x = np.array([item.anchor_x for item in items], float)
+        anchor_y = np.array([item.anchor_y for item in items], float)
+        parts = [item.parts for item in items]
         return cls(
-            anchor_x.copy(), anchor_y.copy(),
-            np.array([label.width for label in labels] + [e[0] for e in extent], float),
-            np.array([label.height for label in labels] + [e[1] for e in extent], float),
-            np.array([label.size for label in labels] + [w.size for w in water], float),
-            anchor_x, anchor_y, np.array([label.out for label in labels] + [False] * len(water), bool),
-            np.array([False] * len(labels) + [True] * len(water), bool),
-            np.vstack([np.zeros((0, 4)), *boxes, *[w.parts for w in water]]),
-            np.concatenate([np.arange(len(labels)), *[np.full(len(w.parts), len(labels) + k) for k, w in enumerate(water)]]),
-            items,
+            anchor_x.copy(), anchor_y.copy(), np.array([item.width for item in items], float), np.array([item.height for item in items], float),
+            np.array([item.size for item in items], float), anchor_x, anchor_y,
+            np.array([item.out for item in items], bool), np.array([item.water for item in items], bool),
+            np.vstack([np.zeros((0, 4)), *parts]),
+            np.concatenate([np.zeros(0, int), *[np.full(len(rows), k) for k, rows in enumerate(parts)]]),
+            list(items),
         )
 
 

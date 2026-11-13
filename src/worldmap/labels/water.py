@@ -355,6 +355,22 @@ class WaterLabel:
     def name(self) -> str:
         return self.text
 
+    @property
+    def width(self) -> float:
+        return float(self.parts[:, 2].max() - self.parts[:, 0].min())
+
+    @property
+    def height(self) -> float:
+        return float(self.parts[:, 3].max() - self.parts[:, 1].min())
+
+    @property
+    def out(self) -> bool:
+        return False
+
+    @property
+    def water(self) -> bool:
+        return True
+
     def inside_share(self, x: float, y: float) -> float:
         """The share of the glyph boxes' area on the body when the label is at (x, y), as the solver has it
         (geometry.on_feature: a box is on it if its centre is)."""
