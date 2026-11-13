@@ -218,7 +218,7 @@ def test_cut_rolls_back_what_the_group_nudged() -> None:
 
 
 def test_cut_rivers_are_not_drawn() -> None:
-    cut = Outcome(Placement.of([]), [], np.zeros(0, bool), np.zeros(0, int), {"rivers": 2}, {"rivers": 0})
+    cut = Outcome([], Placement.of([]), [], np.zeros(0, bool), np.zeros(0, int), {"rivers": 2}, {"rivers": 0})
     assert list(cut.shown("rivers", np.array([1, 2, UNLABELED]))) == [True, False, False]
     assert cut.shown("seas", np.array([5, UNLABELED])).all()
 
@@ -251,4 +251,5 @@ def test_entries_keep_the_callers_order() -> None:
     out = place_by_priority([Unplaced("Cove", "seas", 1.0), sized(sea, 100), Unplaced("Creek", "rivers", 1.0)], FRAME, ["seas", "rivers"],
                             rank=lambda k, s: np.array([2, 1, 3]))
     assert list(out.kept) == [False, True, False] and list(out.ranks) == [2, 1, 3]
+    assert list(out.ranks_of([out.entries[2], out.entries[0]])) == [3, 2] and len(out.ranks_of([])) == 0
     assert [w.text for w in of_kind(out.placement, WaterLabel)] == ["Sea"]

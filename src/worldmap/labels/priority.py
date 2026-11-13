@@ -125,6 +125,7 @@ def check_step(p: Placement, new: list[int], active: np.ndarray, frame: MapFrame
 @dataclass
 class Outcome:
     """What place_by_priority did with its entries."""
+    entries: Sequence[Placeable | Unplaced]  # as given
     placement: Placement  # the kept labels'
     plan: list[tuple[int, list[int]]]  # its steps (steps), indices into its entries
     kept: np.ndarray  # bool, per entry (an Unplaced never is)
@@ -135,6 +136,11 @@ class Outcome:
     def shown(self, kind: str, ranks: np.ndarray) -> np.ndarray:
         """Which features of `kind`, of these `ranks`, are drawn: those ranked before its cut, if it was cut."""
         return np.asarray(ranks) < self.cut.get(kind, UNLABELED + 1)
+
+    def ranks_of(self, some: Sequence[Placeable | Unplaced]) -> np.ndarray:
+        """The ranks of `some` of its entries (the same objects, in any order)."""
+        at = {id(e): k for k, e in enumerate(self.entries)}
+        return self.ranks[[at[id(e)] for e in some]]
 
 
 @dataclass
@@ -240,4 +246,4 @@ def place_by_priority(entries: Sequence[Placeable | Unplaced], frame: MapFrame, 
             s = before
     kept = np.zeros(len(entries), bool)
     kept[labelled] = s.active
-    return Outcome(subset(s.p, s.active), plan, kept, ranks, cuts.at, cuts.fit)
+    return Outcome(entries, subset(s.p, s.active), plan, kept, ranks, cuts.at, cuts.fit)
