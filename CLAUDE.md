@@ -69,8 +69,8 @@ Importing any module has no side effects; only `cli.main` (after choosing the ba
 | `labels/label.py` | `Label` dataclass, `make_labels` (anchors, sizes, exclaves), `decide_out_and_wrap` |
 | `labels/regions.py` | `--label territories`: `ChildRegion`, `HAND_PICKED` (parent + lon/lat boxes), `child_regions` |
 | `labels/water.py` | `--label oceans,seas,lakes,straits,rivers,water`: `kinds_from_labels`, `classify`, `WaterBody`, `load_water_bodies`, `river_name`, `longest_paths`, `load_river_bodies`, `best_stretch`, `river_label`, `fit_curve`, `body_curve`, `WaterLabel`, `make_water_labels`, style constants |
-| `labels/placement.py` | `CostWeights`, `Placement` (per-label arrays, water glyph boxes), `FIXED`/`NUDGE`/`FREE`, `overhang`, `cost_batch`, `candidates`, `clash`/`clashes`, `place_labels` (`freedom`, `home`, `floors`), `subset`, `outline_coverage`, `outside_outline`, `leader_ends` |
-| `labels/placeable.py` | `Placeable`: what the solvers ask of a country or water label (`name`, `kind`, `full_size`, anchor, `size`, `min_size`, `unit_px`, `shrink_toward`) |
+| `labels/placement.py` | `CostWeights`, `Placement` (per-label arrays, `size`; `parts`: every label's rects, a country label's box its one part; `Placement.of`), `rects`, `unit_px`, `shrink_step`, `FIXED`/`NUDGE`/`FREE`, `overhang`, `cost_batch`, `candidates`, `clash`/`clashes`, `place_labels` (moves a `Placement` in place: `active`, `freedom`, `home`, `floors`), `subset`, `outline_coverage`, `outside_outline`, `leader_ends` |
+| `labels/placeable.py` | `Placeable`: what the solvers ask of a country or water label (`name`, `kind`, `full_size`, anchor, `min_size`, `geom`/`cover`) |
 | `labels/kernels.py` | numba (`@njit(cache=True)`) loops behind `cost_batch`, `clash` and `candidates`; weights passed as an array in `CostWeights` field order (`weight_array`) |
 | `labels/priority.py` | `label_order`, `ranks_by_quantile` (fifths by area, a river's length x `RIVER_KM2_PER_KM`), `steps`, `overhang_of`, `place_by_priority` (step by step, biggest rank first), `rank_table` (printed after placement: placed/total per kind and rank, coloured on a tty unless `NO_COLOR`, and each kind's dropped labels biggest first, cut to `DROPPED_WIDTH`) |
 | `labels/geometry.py` | `rect`, `nearest_point_on_rect`, `two_line`, `Coverage` (summed-area table of a shape: `area` of boxes, `contains` of points), `coverage` (a label's, cached) |
@@ -82,8 +82,9 @@ Pipeline (`cli.main`):
 1. **Colouring** of all country features. Dependencies (`is_dependency`: `SOVEREIGNT != ADMIN`, not a lease or
    "Indeterminate"; 46 of them, e.g. Greenland, Puerto Rico, Hong Kong) are first dissolved into their parent
    (`merge_into_parents`), so they always share its colour. Then border adjacency (`adjacency`), plus across-water links
-   (`add_proximity_edges`: major countries within `MAX_GAP` = 600 km, biggest first, kept only while the graph stays 5-colourable;
-   then each feature topped up to >= 3 major-country neighbours), then exact DSATUR backtracking (`color_graph`).
+   (`add_proximity_edges`: major countries within `MAX_GAP` = 600 km, those within `CLOSE_GAP` = 100 km first (else
+   the Bahamas lost its link to the US), then biggest first, kept only while the graph, dispute edges included, stays
+   5-colourable; then each feature topped up to >= 3 major-country neighbours), then exact DSATUR backtracking (`color_graph`).
    Usage is balanced by country *count*, with the largest countries given weight 0 so their colours aren't penalised
    (`UNWEIGHTED_LARGEST = 10`, but the test is `rank < 10`, so 9 are exempt; kept for output stability).
 2. **Drawing**: full Robinson globe outline (poles included; the canvas is its bounding box plus a small pad; Antarctica is drawn in
@@ -110,11 +111,11 @@ Pipeline (`cli.main`):
 ## Caching
 
 `coloring.json` (in `.cache/`) stores each country's colour class and which classes touch. It is rebuilt when the
-country file, country list, the major-country, dependency or dispute-edge lists (`cache_key`), `N_COLORS`, `MAX_GAP`, `MIN_DEG` or
+country file, country list, the major-country, dependency or dispute-edge lists (`cache_key`), `N_COLORS`, `MAX_GAP`, `CLOSE_GAP`, `MIN_DEG` or
 `COLORING_RULE` change, or with `--recolor`.
 Palette tweaks never change which countries share a class. If you change the colouring *logic*, bump `COLORING_RULE`.
 The script prints a spot-check of same-coloured pairs (Korea/Japan, Malaysia/Philippines, Italy/Greece, France/UK,
-UK/Norway, India/Sri Lanka, Russia/US) on every run; it should be empty.
+UK/Norway, India/Sri Lanka, Russia/US, Bahamas/US) on every run; it should be empty.
 
 ## `--color earth` colouring mode
 
@@ -139,7 +140,8 @@ it first; `ALIASES` maps the note's short names (`U.K.`, `China`...) to `NAME_EN
 (Kosovo, Gaza...), and an unknown name is an error. Features without a claim (DMZ, Ceuta, Isla Aves "multiple") are skipped.
 Today: 72 two-country areas, 11 with 3+ countries, 6 breakaways (self-governing, no countries-file feature: Abkhazia, Donetsk...).
 - Colouring: `dispute_edges` adds an edge between the two countries of every 2-country dispute, with or without the flag,
-  so their stripes always differ (only the US / Marshall Islands, Wake Island, needed it).
+  so their stripes always differ (only the US / Marshall Islands, Wake Island, needed it). They go in before the
+  links across water (added after, they once left no 5-colouring).
 - Stripes (`stripe_parts`): 45-degree '/' bands `STRIPE_WIDTH_IN` wide, counted from the map origin. 3+ countries: plain
   `DISPUTED_GREY`; breakaways: the parent's colour and grey. Disputed polygons are drawn untrimmed (a few islets exist only in this file).
 - Borders: with `--disputed`, fills have no edges and `draw_borders` draws `border_lines`: a disputed outline is dashed
@@ -274,7 +276,7 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
   fifths; a river counts as `RIVER_KM2_PER_KM` = 10 km2 per km. `steps`: rank by rank, then the `--label` kinds in
   order (`label_order`; `water` expands in place), each step's labels biggest first. The ranker is a parameter
   (`rank=`), so tests pin ranks.
-- Each step re-solves with the step's labels `FREE`, the kept labels of this rank and the one before `NUDGE`d
+- One `Placement` holds every label; each step solves it over the active ones (kept so far, and the step's), the step's labels `FREE`, the kept labels of this rank and the one before `NUDGE`d
   (they pay `CostWeights.nudge` per height/em from where they settled, at most `nudge_max`, and shrink to no less
   than `NUDGE_MIN_SCALE` of their settled size), older ones `FIXED`. Then the step's labels are checked smallest
   first: one clashing (`clash`, symmetric for every kind) with a label still kept, or a water label hanging off its
@@ -306,7 +308,8 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
   water labels' boxes (so with no water every array is as before), plus overlap with water glyph boxes and their own
   leader crossing them. Water labels: glyph-box overlap with everything, other leaders/dots, `outside_water` (glyph
   centres over the body, approximate), `water_drift`, outside globe. A label still clashing (`clashes`, any kind)
-  after descent shrinks a step (`shrink_step`).
+  after descent shrinks a step (`shrink_step`): in the `Placement` only (`size`, extents, rects); the labels stay as
+  laid out and the draw functions take the size from the placement.
 - Water labels also try steps of a tenth and a fifth of their extent (`WATER_STEP_SCALES`: big steps leave narrow
   water); `CostWeights.overhang` keeps them within `OVERHANG_MAX` of their water.
 - Drawing: `PathPatch` in `WATER_TEXT` (OKLCH L 0.50 in the ocean hue) with an `OCEAN`-coloured halo, under the country
