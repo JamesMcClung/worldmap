@@ -120,7 +120,7 @@ def new_label(ax: Axes, renderer: RendererBase, frame: MapFrame, name: str, anch
 def make_labels(countries_projected: gpd.GeoDataFrame, frame: MapFrame, ax: Axes, renderer: RendererBase, fill_of: Callable[[int, Point | None], Fill], children: Sequence["ChildRegion"] = (), countries: bool = True,
                 relabel: dict[int, str] | None = None, extra: Sequence[tuple[str, Polygon, Fill, float]] = ()) -> list[Label]:
     """One label per labelled country (if `countries`), plus an italic one per child region (--label territories),
-    largest first (see anchor_piece for where each goes). With `countries`, --disputed adds the self-governing areas:
+    biggest first (full_size; see anchor_piece for where each goes). With `countries`, --disputed adds the self-governing areas:
     `relabel` labels these rows with this text even if they aren't is_labeled (Somaliland), and `extra` adds
     (text, polygon, fill, km2) labels for breakaway areas with no row of their own. Each label's full_size is the
     km2 of the whole row (countries_projected.km2), area or region."""
@@ -149,7 +149,7 @@ def make_labels(countries_projected: gpd.GeoDataFrame, frame: MapFrame, ax: Axes
         anchor = maximum_inscribed_circle(largest, tolerance=tolerance).coords[0]
         color = darken(fill_of(child.feature, largest.representative_point()))
         labels.append(new_label(ax, renderer, frame, child.text, anchor, largest, largest.area, color, italic=True, kind="territories", full_size=child.km2))
-    labels.sort(key=lambda label: -label.area)
+    labels.sort(key=lambda label: -label.full_size)
     print("island-heavy (hull-centred):", island_names)
     return labels
 
