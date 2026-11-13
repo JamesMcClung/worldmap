@@ -211,11 +211,11 @@ def place(items: Sequence[Placeable], frame: MapFrame, order: list[str]) -> Plac
     def show(r: int, done: int, of: int, kind: str) -> None:
         print(f"\r\x1b[K{progress(r, done, of, kind, columns)}", end="", flush=True)
 
-    placement = place_by_priority(items, frame, order, on_step=show if tty else None)
+    outcome = place_by_priority(items, frame, order, on_step=show if tty else None)
     if tty:
         print("\r\x1b[K", end="")
-    print(summary(items, placement, order, tty and "NO_COLOR" not in os.environ, columns if tty else None))
-    return placement
+    print(summary(items, outcome, order, tty and "NO_COLOR" not in os.environ, columns if tty else None))
+    return outcome.placement
 
 
 def add_pins(ax: Axes, frame: MapFrame, args: argparse.Namespace) -> None:

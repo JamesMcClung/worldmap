@@ -5,8 +5,7 @@ from collections.abc import Collection, Sequence
 import numpy as np
 
 from worldmap.labels.placeable import Placeable
-from worldmap.labels.placement import Placement
-from worldmap.labels.priority import N_RANKS, Ranker, ranks_by_quantile, steps
+from worldmap.labels.priority import N_RANKS, Outcome
 
 DROPPED_WIDTH = 40  # the rank table's dropped labels of a kind fit in this many characters off a terminal
 DROPPED_MIN = 20  # on a terminal, the dropped column fills the rest of the line, left out if narrower than this
@@ -89,13 +88,9 @@ def progress(r: int, done: int, of: int, kind: str, columns: int) -> str:
     return text[:columns - 1]
 
 
-def summary(items: Sequence[Placeable], placement: Placement, order: Sequence[str], color: bool, columns: int | None,
-            rank: Ranker = ranks_by_quantile) -> str:
-    """What place_by_priority did with `items`, placing them in `placement`: the labels skipped, biggest first,
-    then the rank_table."""
-    kinds = [item.kind for item in items]
-    plan = steps(kinds, [item.full_size for item in items], order, rank)
-    kept = {id(item) for item in placement.items}
-    placed = {i for i, item in enumerate(items) if id(item) in kept}
-    skipped = [items[i].name for _, members in plan for i in members if i not in placed]
-    return f"labels skipped: {skipped}\n" + rank_table(plan, kinds, order, placed, color, [item.name for item in items], columns)
+def summary(items: Sequence[Placeable], outcome: Outcome, order: Sequence[str], color: bool, columns: int | None) -> str:
+    """What place_by_priority did with `items`: the labels skipped, biggest first, then the rank_table."""
+    placed = set(np.flatnonzero(outcome.kept).tolist())
+    skipped = [items[i].name for _, members in outcome.plan for i in members if i not in placed]
+    return f"labels skipped: {skipped}\n" + rank_table(outcome.plan, [item.kind for item in items], order, placed, color,
+                                                       [item.name for item in items], columns)

@@ -98,9 +98,17 @@ def check_step(p: Placement, new: list[int], active: np.ndarray, frame: MapFrame
     return verdict
 
 
+@dataclass
+class Outcome:
+    """What place_by_priority did with its labels."""
+    placement: Placement  # the kept labels'
+    plan: list[tuple[int, list[int]]]  # its steps (steps), indices into its labels
+    kept: np.ndarray  # bool, per label
+
+
 def place_by_priority(items: Sequence[Placeable], frame: MapFrame, order: Sequence[str],
-                      rank: Ranker = ranks_by_quantile, on_step: Callable[[int, int, int, str], None] | None = None) -> Placement:
-    """Place the labels (`items`) step by step (steps, with `rank`), returning the placement of those kept. Before each
+                      rank: Ranker = ranks_by_quantile, on_step: Callable[[int, int, int, str], None] | None = None) -> Outcome:
+    """Place the labels (`items`) step by step (steps, with `rank`), returning the Outcome. Before each
     step, on_step(rank, labels of the rank's steps done so far, of all its steps, the step's kind). In each step the step's labels are free,
     the labels already placed of its rank and the rank before are nudged (they pay for leaving where they settled
     and shrink to no less than NUDGE_MIN_SCALE of their settled size), and the rest stay put. Then check_step
@@ -146,5 +154,5 @@ def place_by_priority(items: Sequence[Placeable], frame: MapFrame, order: Sequen
             if active[i]:
                 settled[i] = True
                 home_x[i], home_y[i], settled_size[i] = p.x[i], p.y[i], p.size[i]
-    return subset(p, active)
+    return Outcome(subset(p, active), plan, active)
 
