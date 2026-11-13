@@ -55,8 +55,8 @@ def neighbour_sets(n: int, edges: Iterable[Edge]) -> list[set[int]]:
 
 def add_proximity_edges(gdf: gpd.GeoDataFrame, edges: set[Edge], major: list[bool], k: int, max_gap: float = MAX_GAP, min_deg: int = MIN_DEG) -> set[Edge]:
     """Link countries separated by water so they don't share a colour, without exceeding k colours.
-    Candidate links (major countries within `max_gap` metres of each other) are tried those within CLOSE_GAP
-    first, then largest-country-first, and kept only if the graph stays k-colourable; then each feature is topped
+    Candidate links (major countries within `max_gap` metres of each other) are tried, those within CLOSE_GAP
+    first, then the rest largest-country-first, and kept only if the graph stays k-colourable; then each feature is topped
     up to `min_deg` major-country neighbours via its nearest ones under the same feasibility rule. `gdf` has a
     km2 column (merge_into_parents)."""
     start_time = time.time()
