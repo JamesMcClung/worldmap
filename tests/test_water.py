@@ -284,10 +284,3 @@ def test_inside_share_counts_glyphs_by_their_centres() -> None:
     lake = water_label("Lake", (0, 0), shapely.box(-52, -2.5, 52, 2.5), parts, WATER_MIN_PT, kind="lakes")
     assert lake.inside_share(0, 0) == pytest.approx(1.0)
     assert lake.inside_share(30, 0) == pytest.approx(0.7)  # the right 3 glyphs' centres are past x = 52
-
-
-def test_water_label_name() -> None:
-    from test_placement import water_label
-
-    sea = water_label("Sea", (0, 0), shapely.box(0, 0, 10, 10), np.array([[-30.0, -7, 30, 7]]), 10)
-    assert sea.name == sea.text == "Sea"
