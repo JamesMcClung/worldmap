@@ -298,8 +298,8 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
   tried (30% of the one rank cut too early: one crowded fifth dropped everything after it). The rank table shows
   `(fit/)of` there: the labels placed before the cut undid them (`Outcome.cut_fit`). Every kind can be cut, countries too. A label-driven
   feature (rivers: `cli.shown_rivers`) is drawn iff its rank is before its kind's cut; one without a label ranks
-  `UNLABELED` = 6, drawn only when the kind wasn't cut. The world map with `--label countries,water` cuts lakes from
-  rank 3, seas, straits and rivers from 4. Lakes are not label-driven (`LAKE_MIN_IN2`).
+  `UNLABELED` = 6, drawn only when the kind wasn't cut. The world map with `--label countries,water` cuts lakes, seas
+  and straits from rank 3, rivers from 4. Lakes are not label-driven (`LAKE_MIN_IN2`).
 - So big labels are never pushed around by small ones (a river name once moved Czech Republic to Denmark), and in
   a crop the frame's biggest features win, whatever their kind.
 
