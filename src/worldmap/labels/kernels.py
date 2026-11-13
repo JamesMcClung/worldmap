@@ -1,5 +1,5 @@
-"""Compiled (numba) cost of a label at each of its candidate positions: the solver's inner loop, as plain loops.
-placement.cost_batch calls label_cost; the rules (and CostWeights' meanings) are documented there."""
+"""The solver's inner loops, compiled (numba): a label's cost at each candidate (label_cost), the candidates, the
+clash tests. placement.cost_batch calls label_cost; the rules (and CostWeights' meanings) are documented there."""
 
 import math
 
