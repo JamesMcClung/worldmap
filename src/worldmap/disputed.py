@@ -104,7 +104,7 @@ def load_disputes(countries: gpd.GeoDataFrame, disputed: gpd.GeoDataFrame) -> li
             else:
                 names = ([note.admin] if note.admin else []) + note.claimants
         rows = list(dict.fromkeys(row_of(n, r.NAME_EN) for n in names))
-        out.append(Dispute(r.NAME_EN, r.ADMIN, rows, breakaway, label, r.geometry, float(r.get("km2", 0.0))))
+        out.append(Dispute(r.NAME_EN, r.ADMIN, rows, breakaway, label, r.geometry, float(r.km2)))
     return out
 
 
