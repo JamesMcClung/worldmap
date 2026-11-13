@@ -5,15 +5,9 @@ from dataclasses import dataclass
 from typing import Protocol
 
 import numpy as np
-import shapely
-from shapely.geometry import Polygon
 from shapely.geometry.base import BaseGeometry
 
 COVERAGE_MAX_CELLS = 1_000_000  # a Coverage's cells are 1 px, or bigger where its shape would need more than this
-
-
-def rect(x: float, y: float, w: float, h: float) -> Polygon:
-    return shapely.box(x - w / 2, y - h / 2, x + w / 2, y + h / 2)
 
 
 def nearest_point_on_rect(px, py, x, y, w, h) -> tuple[np.ndarray, np.ndarray]:
