@@ -335,7 +335,6 @@ def fit_curve(geom: Polygon, max_tilt_deg: float, n: int = 64, max_bend_deg: flo
 class WaterLabel:
     text: str
     kind: Kind
-    rank: int
     geom: BaseGeometry  # the body, in poster px
     anchor_x: float  # the curve's middle (px): where the label wants to be
     anchor_y: float
@@ -405,7 +404,7 @@ def lay_out(body: WaterBody, curve: np.ndarray, size: float, geom_px: BaseGeomet
     pad = WATER_HALO_PX / 2
     parts = [[*(v.min(axis=0) - pad), *(v.max(axis=0) + pad)] for v in vertices]
     glyphs = Path(np.vstack(vertices), np.concatenate([codes for _, codes in laid]))
-    return WaterLabel(body.text, body.kind, body.rank, geom_px, float(anchor[0]), float(anchor[1]), size, glyphs, np.array(parts), label_scale, body.full_size)
+    return WaterLabel(body.text, body.kind, geom_px, float(anchor[0]), float(anchor[1]), size, glyphs, np.array(parts), label_scale, body.full_size)
 
 
 def body_curve(body: WaterBody) -> np.ndarray:

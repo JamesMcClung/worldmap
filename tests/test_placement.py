@@ -53,7 +53,7 @@ def one_label(frame: MapFrame) -> list[Label]:
 def water_label(text: str, anchor: tuple[float, float], geom: shapely.Geometry, parts: np.ndarray, size: float, kind: str = "seas") -> WaterLabel:
     x0, y0, x1, y1 = parts.min(axis=0)[0], parts.min(axis=0)[1], parts.max(axis=0)[2], parts.max(axis=0)[3]
     glyphs = Path([(x0, y0), (x1, y0), (x1, y1), (x0, y1), (x0, y0)], closed=True)
-    return WaterLabel(text, kind, 0 if kind == "oceans" else 1, geom, anchor[0], anchor[1], size, glyphs, parts)  # type: ignore[arg-type]
+    return WaterLabel(text, kind, geom, anchor[0], anchor[1], size, glyphs, parts)  # type: ignore[arg-type]
 
 
 @pytest.fixture
