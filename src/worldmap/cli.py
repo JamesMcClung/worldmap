@@ -54,14 +54,16 @@ LABEL_KINDS = ("countries", "territories", *WATER_KINDS)
 
 
 def label_kinds(s: str) -> list[str]:
-    """A comma-separated list of LABEL_KINDS, or "none", in order (the order labels are placed in), without repeats."""
+    """A comma-separated list of LABEL_KINDS, or "none", in order (the order labels are placed in), without repeats;
+    `water` stands for every water kind, in its place."""
     if s == "none":
         return []
     kinds = s.split(",")
     unknown = [k for k in kinds if k not in LABEL_KINDS]
     if unknown:
         raise argparse.ArgumentTypeError("unknown label kind %r: choose from %s, or none" % (unknown[0], ",".join(LABEL_KINDS)))
-    return list(dict.fromkeys(kinds))
+    water = [k for k in WATER_KINDS if k != "water"]
+    return list(dict.fromkeys(k for kind in kinds for k in (water if kind == "water" else [kind])))
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
