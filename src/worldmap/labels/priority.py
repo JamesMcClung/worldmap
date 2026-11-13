@@ -2,6 +2,7 @@
 length) into fifths of all those in the frame; rank by rank, the kinds follow the --label order."""
 
 import os
+import shutil
 import sys
 from collections.abc import Callable, Collection, Sequence
 from dataclasses import dataclass, replace
@@ -54,16 +55,19 @@ def steps(kinds: Sequence[str], sizes: Sequence[float], order: Sequence[str], ra
     return out
 
 
-DROPPED_WIDTH = 30  # the rank table's dropped labels of a kind are cut to this many characters, "..." included
+DROPPED_WIDTH = 40  # the rank table's dropped labels of a kind fit in this many characters off a terminal
+DROPPED_MIN = 20  # on a terminal, the dropped column fills the rest of the line, left out if narrower than this
 
 GREEN, YELLOW, RED, PLAIN = "\x1b[32m", "\x1b[33m", "\x1b[31m", "\x1b[0m"
 
 
 def rank_table(plan: list[tuple[int, list[int]]], kinds: Sequence[str], order: Sequence[str], placed: Collection[int], color: bool,
-               names: Sequence[str] = ()) -> str:
+               names: Sequence[str] = (), columns: int | None = None) -> str:
     """How many of each rank's labels were placed, as text: a row per kind (in `order`, those with any), then of
     all kinds, then that as a percentage; on the right, of every rank, then as a percentage, then (with `names`) a
-    kind's dropped labels, biggest first, cut to DROPPED_WIDTH ('-' if none; the plan has a kind's labels by size). In
+    kind's dropped labels, biggest first ('-' if none; the plan has a kind's labels by size), as many whole names as
+    fit, then ', N more': in DROPPED_WIDTH characters, or on a terminal `columns` wide the rest of the line (no
+    column if under DROPPED_MIN). In
     colour a cell is green if all were placed, red if none, else yellow; of the rank cells of a kind, only a yellow
     one shows how many ('28/36'). Lines set off the header and the totals, and the rank, total and dropped columns."""
     total = {kind: np.zeros(N_RANKS, int) for kind in [*order, "all"]}
@@ -86,9 +90,19 @@ def rank_table(plan: list[tuple[int, list[int]]], kinds: Sequence[str], order: S
         hue = GREEN if n == of else RED if n == 0 else YELLOW
         return f"{hue}{str(of) if short and hue != YELLOW else text:>8}{PLAIN}"
 
+    room = DROPPED_WIDTH if columns is None else columns - (12 + 8 * N_RANKS + 16 + 3 * len(" │") + 1)
+    if room < DROPPED_MIN:
+        names = ()
+
     def gone(kind: str) -> str:
-        text = ", ".join(dropped[kind]) or "-"
-        return " " + (text if len(text) <= DROPPED_WIDTH else text[:DROPPED_WIDTH - 3].rstrip(", ") + "...")
+        lost = dropped[kind]
+        if not lost:
+            return " -"
+        for k in range(len(lost), -1, -1):
+            text = ", ".join([*lost[:k], *[f"{len(lost) - k} more"] * (k < len(lost))])
+            if len(text) <= room:
+                break
+        return " " + text
 
     def line(parts: list[str]) -> str:
         return " │".join(parts).rstrip()
@@ -220,5 +234,5 @@ def place_by_priority(labels: list[Label], water: list[WaterLabel], frame: MapFr
                 home_x[i], home_y[i], settled_size[i] = p.x[i], p.y[i], p.size[i]
     print("labels skipped:", skipped)
     print(rank_table(plan, kinds, order, set(np.flatnonzero(active).tolist()), sys.stdout.isatty() and "NO_COLOR" not in os.environ,
-                     [item.name for item in items]))
+                     [item.name for item in items], shutil.get_terminal_size().columns if sys.stdout.isatty() else None))
     return subset(p, active)
