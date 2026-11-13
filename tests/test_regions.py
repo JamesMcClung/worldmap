@@ -76,7 +76,7 @@ def test_parents_are_labeled_countries(regions: list[ChildRegion], countries: gp
     assert {r.parent_name for r in regions} <= labeled | set(PARENT_SHORT.values())
 
 
-def build_labels(countries: gpd.GeoDataFrame, countries_projected: gpd.GeoDataFrame, frame: MapFrame, children: list[ChildRegion], fill_of: Callable[[int, Point | None], Fill]) -> list[Label]:
+def build_labels(countries_projected: gpd.GeoDataFrame, frame: MapFrame, children: list[ChildRegion], fill_of: Callable[[int, Point | None], Fill]) -> list[Label]:
     return make_labels(countries_projected, frame, fill_of, children)
 
 
@@ -84,25 +84,25 @@ def test_child_labels_are_italic(countries: gpd.GeoDataFrame, countries_projecte
     def grey(i: int, pt: Point | None) -> Fill:
         return (0.5, 0.5, 0.5)
 
-    with_children = build_labels(countries, countries_projected, frame, regions, grey)
+    with_children = build_labels(countries_projected, frame, regions, grey)
     italic = [label for label in with_children if label.italic]
     assert len(italic) == 78
     assert {label.name for label in italic} == {r.text for r in regions}
-    assert not [label for label in build_labels(countries, countries_projected, frame, [], grey) if label.italic]
+    assert not [label for label in build_labels(countries_projected, frame, [], grey) if label.italic]
 
 
 def test_earth_child_label_uses_its_own_polygon(countries: gpd.GeoDataFrame, countries_projected: gpd.GeoDataFrame, frame: MapFrame, regions: list[ChildRegion]) -> None:
     if not (CACHE / RASTER).exists():
         pytest.skip("land-cover raster not downloaded")
     earth = build_regions(countries, frame)
-    labels = build_labels(countries, countries_projected, frame, regions, lambda i, pt: fill_at(earth, i, pt))
+    labels = build_labels(countries_projected, frame, regions, lambda i, pt: fill_at(earth, i, pt))
     color = {label.name: label.color for label in labels}
     assert color["Hawaii (US)"] != color["United States"]
 
 
 def test_scattered_child_labels_sized_by_land(countries: gpd.GeoDataFrame, countries_projected: gpd.GeoDataFrame, frame: MapFrame, regions: list[ChildRegion]) -> None:
     """Archipelagos spread over an ocean are sized by their land, not their convex hull, and point at an island."""
-    labels = build_labels(countries, countries_projected, frame, regions, lambda i, pt: (0.5, 0.5, 0.5))
+    labels = build_labels(countries_projected, frame, regions, lambda i, pt: (0.5, 0.5, 0.5))
     by = {label.name: label for label in labels}
     region = {r.text: r for r in regions}
     for name in ["French Polynesia (France)", "Saint Helena (UK)", "Cook Islands (New Zealand)"]:
@@ -119,5 +119,5 @@ def test_hand_picked_without_polygons_is_named(countries: gpd.GeoDataFrame, coun
 
 
 def test_labels_keep_their_case(countries: gpd.GeoDataFrame, countries_projected: gpd.GeoDataFrame, frame: MapFrame, regions: list[ChildRegion]) -> None:
-    labels = build_labels(countries, countries_projected, frame, regions, lambda i, pt: (0.5, 0.5, 0.5))
+    labels = build_labels(countries_projected, frame, regions, lambda i, pt: (0.5, 0.5, 0.5))
     assert [label.name for label in labels if label.text != label.name] == []
