@@ -25,7 +25,6 @@ def country_label(frame: MapFrame, name: str, lon: float, lat: float, half_px: f
     return new_label(frame, name, (x, y), geom, geom.area, (0.2, 0.2, 0.2))
 
 
-
 def placed(labels: list[Label], frame: MapFrame, water: Sequence[WaterLabel] = (), start: tuple[np.ndarray, np.ndarray] | None = None,
            **solve: object) -> Placement:
     """A Placement of the labels, from `start` (default: their anchors), placed (place_labels)."""
@@ -34,6 +33,7 @@ def placed(labels: list[Label], frame: MapFrame, water: Sequence[WaterLabel] = (
         p.x, p.y = start[0].copy(), start[1].copy()
     place_labels(p, frame, **solve)  # type: ignore[arg-type]
     return p
+
 
 def two_labels_copy() -> list[Label]:
     frame = make_frame()
