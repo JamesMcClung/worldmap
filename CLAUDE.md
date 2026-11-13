@@ -291,7 +291,7 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
 - Saturation cut: features whose label can't be laid out at all (`Unplaced`: a river shorter than its name, a bay
   under `WATER_MIN_INSIDE`) are ranked with the labels and count as failed in their step. The step after which a kind's
   failures so far reach `CUT_SHARE` = 30% of *all* its labels (every rank; and >= `CUT_MIN_DROPS` = 5) is undone (a
-  `Placement.copy` snapshot, so what it nudged goes back) and the kind is *cut* at that rank: no later rank of it is
+  `Settled.copy` snapshot, so what it nudged goes back) and the kind is *cut* at that rank: no later rank of it is
   tried (30% of the one rank cut too early: one crowded fifth dropped everything after it). The rank table shows
   `(fit/)of` there: the labels placed before the cut undid them (`Outcome.cut_fit`). Every kind can be cut, countries too. A label-driven
   feature (rivers: `cli.shown_rivers`) is drawn iff its rank is before its kind's cut; one without a label ranks
