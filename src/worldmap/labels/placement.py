@@ -209,11 +209,12 @@ def clashes(p: Placement, among: np.ndarray | None = None) -> list[int]:
 def place_labels(p: Placement, frame: MapFrame, seed: int = SEED, weights: CostWeights = CostWeights(),
                  active: np.ndarray | None = None, freedom: np.ndarray | None = None, home: tuple[np.ndarray, np.ndarray] | None = None,
                  floors: np.ndarray | None = None) -> None:
-    """Place the `active` labels of `p` (a mask, default all; the rest are ignored), from where they are, moving p. Free 'out' labels first move, in order, to their best spot, so they start
-    separated; then coordinate descent. Labels still clashing after it (clashes) are shrunk a step (shrink_step:
-    in p, not the labels) and the descent repeated. `freedom` (per label, default FREE): FIXED labels stay where they are, at their
-    size; NUDGE labels pay `weights.nudge` for their distance from `home` (default: where they start). `floors`:
-    the size (pt) each label shrinks no lower than (default: each label's min_size)."""
+    """Place the `active` labels of `p` (a mask, default all; the rest are ignored), from where they are, moving p.
+    Free 'out' labels first move, in order, to their best spot, so they start separated; then coordinate descent.
+    Labels still clashing after it (clashes) are shrunk a step (shrink_step: in p, not the labels) and the descent
+    repeated. `freedom` (per label, default FREE): FIXED labels stay where they are, at their size; NUDGE labels
+    pay `weights.nudge` for their distance from `home` (default: where they start). `floors`: the size (pt) each
+    label shrinks no lower than (default: each label's min_size)."""
     active = np.ones(p.n, bool) if active is None else active
     freedom = np.full(p.n, FREE) if freedom is None else np.asarray(freedom)
     home_x, home_y = (p.x.copy(), p.y.copy()) if home is None else (np.asarray(home[0]), np.asarray(home[1]))
