@@ -29,7 +29,7 @@ UNWEIGHTED_LARGEST = 10  # the biggest countries don't count towards colour bala
 WORLD_WIDTH_M = 2 * np.pi * 6378137.0  # width of EPSG:6933 in metres (shift for wrap-around at the antimeridian)
 SIMPLIFY_M = 10_000  # outline simplification for the distance queries
 TOP_UP_SEARCH_M = 5_000_000  # how far to look for top-up neighbours
-COLORING_RULE = "top10-exempt-count-balance/v6-close-first"  # bump when the colouring logic changes, to invalidate the cache
+COLORING_RULE = "top10-exempt-count-balance/v7-km2-order"  # bump when the colouring logic changes, to invalidate the cache
 SPOT_CHECK_PAIRS = [("South Korea", "Japan"), ("Russia", "United States of America"), ("Malaysia", "Philippines"), ("Italy", "Greece"), ("France", "United Kingdom"), ("United Kingdom", "Norway"), ("India", "Sri Lanka"), ("The Bahamas", "United States of America")]
 
 
@@ -57,11 +57,12 @@ def add_proximity_edges(gdf: gpd.GeoDataFrame, edges: set[Edge], major: list[boo
     """Link countries separated by water so they don't share a colour, without exceeding k colours.
     Candidate links (major countries within `max_gap` metres of each other) are tried those within CLOSE_GAP
     first, then largest-country-first, and kept only if the graph stays k-colourable; then each feature is topped
-    up to `min_deg` major-country neighbours via its nearest ones under the same feasibility rule."""
+    up to `min_deg` major-country neighbours via its nearest ones under the same feasibility rule. `gdf` has a
+    km2 column (merge_into_parents)."""
     start_time = time.time()
     geoms = gdf.to_crs(EQUAL_AREA_CRS).geometry
     simplified = [g.simplify(SIMPLIFY_M) for g in geoms]
-    area = np.array([g.area for g in geoms])
+    area = gdf.km2.to_numpy()
     n = len(simplified)
     tree = STRtree(simplified)
     linked = set(edges)
@@ -229,7 +230,8 @@ class Coloring:
 
 def merge_into_parents(gdf: gpd.GeoDataFrame, major: list[bool], parent_of: dict[int, int]) -> tuple[gpd.GeoDataFrame, list[bool], list[int]]:
     """Dissolve each dependency into its parent: one row per non-dependency (in their original order), the merged
-    rows' `major` flags (the parent's), and each original row's position in the merged frame."""
+    rows' `major` flags (the parent's), and each original row's position in the merged frame. A merged row's km2
+    is its rows' (data.with_km2)."""
     labels = list(gdf.index)
     position = {label: p for p, label in enumerate(labels)}
     roots = [label for label in labels if label not in parent_of]
@@ -239,7 +241,7 @@ def merge_into_parents(gdf: gpd.GeoDataFrame, major: list[bool], parent_of: dict
     for p, k in enumerate(node_of):
         members[k].append(p)
     geoms = [gdf.geometry.iloc[ps[0]] if len(ps) == 1 else unary_union([gdf.geometry.iloc[p] for p in ps]) for ps in members]
-    merged = gpd.GeoDataFrame(geometry=geoms, crs=gdf.crs)
+    merged = gpd.GeoDataFrame({"km2": [float(gdf.km2.iloc[ps].sum()) for ps in members]}, geometry=geoms, crs=gdf.crs)
     return merged, [major[position[label]] for label in roots], node_of
 
 
@@ -272,7 +274,7 @@ def load_or_compute_coloring(countries: gpd.GeoDataFrame, major: list[bool], rec
     must = {(min(node_of[a], node_of[b]), max(node_of[a], node_of[b])) for a, b in extra_edges if node_of[a] != node_of[b]}
     edges = add_proximity_edges(merged, adjacency(merged) | must, merged_major, N_COLORS, max_gap=MAX_GAP, min_deg=MIN_DEG)
     # Balance colour usage by country count, but don't count the largest countries, so their colours aren't penalised.
-    areas = countries.km2.groupby(np.asarray(node_of)).sum()  # each merged node's: its rows' (data.with_km2)
+    areas = merged.km2
     weights = [0.0 if rank < UNWEIGHTED_LARGEST else 1.0 for rank in areas.rank(ascending=False, method="first")]
     k, node_class = color_graph(len(merged), edges, weights, kmin=N_COLORS)
     class_pairs = {(min(node_class[i], node_class[j]), max(node_class[i], node_class[j])) for i, j in edges}

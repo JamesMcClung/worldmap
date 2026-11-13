@@ -26,10 +26,11 @@ def test_color_graph_unsolvable_raises() -> None:
 
 
 def test_merge_into_parents() -> None:
-    gdf = gpd.GeoDataFrame(geometry=[box(0, 0, 1, 1), box(5, 5, 6, 6), box(1, 0, 2, 1)], crs="EPSG:4326")
+    gdf = gpd.GeoDataFrame({"km2": [1.0, 2.0, 4.0]}, geometry=[box(0, 0, 1, 1), box(5, 5, 6, 6), box(1, 0, 2, 1)], crs="EPSG:4326")
     merged, major, node_of = merge_into_parents(gdf, [True, False, True], {1: 0})
     assert len(merged) == 2 and node_of == [0, 0, 1] and major == [True, True]
     assert merged.geometry.iloc[0].area == pytest.approx(2.0)
+    assert list(merged.km2) == [3.0, 4.0]
 
 
 def test_cache_key_covers_major_and_parents() -> None:
