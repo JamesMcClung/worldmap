@@ -180,6 +180,11 @@ def test_candidates_only_from_selected_kinds() -> None:
     assert "India" in texts and not any("OCEAN" in t or "(" in t for t in texts)
 
 
+def test_lakes_too_small_for_the_world_map_are_candidates() -> None:
+    dead = [c for c in candidates({"lakes"}, False) if c.text == "Dead Sea"]
+    assert len(dead) == 1 and dead[0].geom.contains(Point(35.5, 31.5))
+
+
 def test_country_candidate_excludes_territories() -> None:
     france = next(c for c in candidates({"countries"}, False) if c.text == "France")
     x0, y0, x1, y1 = france.geom.bounds
