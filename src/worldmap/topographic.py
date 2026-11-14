@@ -6,14 +6,23 @@ from dataclasses import dataclass
 
 import geopandas as gpd
 import numpy as np
+import shapely
 from matplotlib.axes import Axes
 from matplotlib.collections import LineCollection
 from matplotlib.colors import LinearSegmentedColormap, to_rgb
 from matplotlib.patches import Polygon as MplPolygon
-import shapely
 
 from worldmap.coloring import OCEAN
-from worldmap.data import CACHE, ETOPO, etopo15_tile, fetch, fetch_all, load_ice, load_land
+from worldmap.colorspace import lin_to_srgb, oklab_to_linear_rgb, srgb_to_oklch
+from worldmap.data import (
+    CACHE,
+    ETOPO,
+    etopo15_tile,
+    fetch,
+    fetch_all,
+    load_ice,
+    load_land,
+)
 from worldmap.frame import DPI, MapFrame, lon_ranges
 from worldmap.render import BORDER, BORDER_WIDTH, Z_BORDERS, Z_COUNTRY, draw_lakes
 
@@ -51,10 +60,32 @@ def ramp(name: str, start: float, end: float, stops: list[tuple[float, str]]) ->
     return LinearSegmentedColormap.from_list(name, [((m - start) / (end - start), c) for m, c in stops])
 
 
-LAND_BELOW_SEA = "#3f7d55"  # the Dead Sea shore, Qattara, Death Valley
-LAND_TOP = "#e2d3f2"  # light purple, not white, to stand apart from the ice
-LAND = Scale(ramp("land", -500, 6000, [(-500, LAND_BELOW_SEA), (0, "#5f9e5a"), (480, "#a8c97f"), (1200, "#e8dc95"),
-                                       (2400, "#c9a26b"), (3900, "#9a6b4a"), (5100, "#d8cfc8"), (6000, LAND_TOP)]), -500, 6000)
+def oklab(colors: list[str]) -> np.ndarray:
+    """OKLab (L, a, b) rows of the given colours."""
+    L, C, h = srgb_to_oklch(np.array([to_rgb(c) for c in colors]).T)
+    return np.stack([L, C * np.cos(np.radians(h)), C * np.sin(np.radians(h))], axis=1)
+
+
+def even_ramp(name: str, start: float, end: float, stops: list[tuple[float | None, str]],
+              n: int = 256) -> LinearSegmentedColormap:
+    """A colormap through the stops' colours along straight lines in OKLab, so equal steps in metres are equal
+    steps in perceived colour between pinned stops. A stop's metres may be None: it is then placed between the
+    pinned stops either side of it by OKLab distance. The first and last stops are pinned, at start and end."""
+    lab = oklab([c for _, c in stops])
+    gone = np.concatenate([[0], np.cumsum(np.linalg.norm(np.diff(lab, axis=0), axis=1))])  # OKLab distance so far
+    pinned = [(i, m) for i, (m, _) in enumerate(stops) if m is not None]
+    metres = np.interp(gone, gone[[i for i, _ in pinned]], [m for _, m in pinned])
+    x = np.linspace(start, end, n)
+    samples = np.stack([np.interp(x, metres, lab[:, k]) for k in range(3)])
+    rgb = np.clip(lin_to_srgb(np.clip(oklab_to_linear_rgb(*samples), 0, 1)), 0, 1).T
+    return LinearSegmentedColormap.from_list(name, list(rgb), N=n)
+
+
+LAND_BELOW_SEA = "#3f7d6b"  # the Dead Sea shore, Qattara, Death Valley
+LAND_TOP = "#805334"  # not white, to stand apart from the ice
+LAND = Scale(even_ramp("land", -500, 6000, [(-500, LAND_BELOW_SEA), (0, "#5f9e5a"), (None, "#a8c97f"),
+                                            (None, "#e8dc95"), (None, "#c9a26b"), (None, "#ad7e5b"), (None, "#9a6b4a"),
+                                            (6000, LAND_TOP)]), -500, 6000)
 # Water above 0 m: ETOPO's 3' averages along coasts. With --ocean it is a shade lighter than the sea surface.
 SEA = Scale(ramp("sea", 500, -8000, [(500, "#f7fbfd"), (0, OCEAN), (-8000, "#2f5f8c")]), 500, -8000)
 ICE = Scale(ramp("ice", 0, 4000, [(0, "#ffffff"), (4000, "#cfe3f2")]), 0, 4000)
