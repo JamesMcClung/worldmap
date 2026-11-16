@@ -4,11 +4,14 @@ import os
 import sys
 import urllib.request
 import zipfile
+from collections.abc import Sequence
 from pathlib import Path
 
 import geopandas as gpd
+import numpy as np
 import pandas as pd
 import shapely
+from shapely.geometry.base import BaseGeometry
 
 # Data files and caches live in the repo's .cache/ (found from this file, so it needs an editable install).
 CACHE = Path(__file__).resolve().parent.parent.parent / ".cache"
@@ -31,10 +34,8 @@ ETOPO_URL = "https://www.ngdc.noaa.gov/mgg/global/relief/ETOPO2022/data/60s/60s_
 ETOPO15_URL = "https://www.ngdc.noaa.gov/mgg/global/relief/ETOPO2022/data/15s/15s_surface_elev_gtif/"
 ETOPO15_DIR = "etopo15"
 
-LAKE_MIN_KM2 = 2000  # lakes at least this big are drawn as water (~8 px across on the poster)
 DRY_LAKES = {"Lake Eyre North", "Lake Torrens", "Lake Gairdner", "Lake Mackay", "Lake Frome", "Lake Barlee"}  # Australian salt pans, usually dry
-RIVER_MAX_RANK = 8  # rivers of scalerank (0 = biggest) up to this are drawn; 9+ are short tributaries
-EQUAL_AREA_CRS = "+proj=eqearth"  # for lake areas
+EQUAL_AREA_CRS = "+proj=eqearth"  # for every km2 (with_km2)
 
 CRS = "+proj=robin +lon_0=0 +datum=WGS84"  # the map's projection
 STATE_COUNTRIES = {
@@ -162,13 +163,24 @@ def parent_index(countries: gpd.GeoDataFrame) -> dict[int, int]:
     return parents
 
 
+def km2(geoms: Sequence[BaseGeometry]) -> np.ndarray:
+    """Each lon/lat geometry's area in km2."""
+    return gpd.GeoSeries(geoms, crs="EPSG:4326").to_crs(EQUAL_AREA_CRS).area.to_numpy() / 1e6
+
+
+def with_km2(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    """`gdf` (lon/lat) with a `km2` column: each row's whole area, which projecting and clipping leave as it is."""
+    gdf["km2"] = km2(gdf.geometry.values)
+    return gdf
+
+
 def load_countries() -> gpd.GeoDataFrame:
-    return gpd.read_file(fetch(COUNTRIES)).reset_index(drop=True)
+    return with_km2(gpd.read_file(fetch(COUNTRIES)).reset_index(drop=True))
 
 
 def load_disputed() -> gpd.GeoDataFrame:
     """Natural Earth's disputed areas (Kashmir, Crimea, Taiwan...), see disputed.py."""
-    return gpd.read_file(fetch(DISPUTED)).reset_index(drop=True)
+    return with_km2(gpd.read_file(fetch(DISPUTED)).reset_index(drop=True))
 
 
 def load_states() -> gpd.GeoDataFrame:
@@ -178,21 +190,19 @@ def load_states() -> gpd.GeoDataFrame:
 
 
 def load_lakes() -> gpd.GeoDataFrame:
-    """Lakes of at least LAKE_MIN_KM2, minus the usually-dry DRY_LAKES."""
-    lakes = gpd.read_file(fetch(LAKES))
-    big = lakes.to_crs(EQUAL_AREA_CRS).area >= LAKE_MIN_KM2 * 1e6
-    return lakes[big & ~lakes.name.isin(DRY_LAKES)]
+    """Every lake but the usually-dry DRY_LAKES (render.drawable_lakes keeps those big enough to see)."""
+    lakes = with_km2(gpd.read_file(fetch(LAKES)))
+    return lakes[~lakes.name.isin(DRY_LAKES)]
 
 
 def load_rivers() -> gpd.GeoDataFrame:
-    """Rivers (and their centrelines through lakes) of scalerank <= RIVER_MAX_RANK; canals left out."""
-    rivers = gpd.read_file(fetch(RIVERS))[["name", "name_en", "featurecla", "scalerank", "geometry"]]
-    return rivers[(rivers.scalerank <= RIVER_MAX_RANK) & (rivers.featurecla != "Canal")]
+    """Rivers, canals and their centrelines through lakes, of every scalerank (their labels decide which are drawn)."""
+    return gpd.read_file(fetch(RIVERS))[["name", "name_en", "featurecla", "scalerank", "geometry"]]
 
 
 def load_marine() -> gpd.GeoDataFrame:
     """Natural Earth's marine label areas (oceans, seas, gulfs, straits...), unfiltered: see labels/water.py."""
-    return gpd.read_file(fetch(MARINE))[["name", "featurecla", "scalerank", "geometry"]]
+    return with_km2(gpd.read_file(fetch(MARINE))[["name", "featurecla", "scalerank", "geometry"]])
 
 
 def load_ice_shelves() -> gpd.GeoDataFrame:

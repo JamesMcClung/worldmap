@@ -128,6 +128,12 @@ def test_matches_exact_first() -> None:
     assert [(m.text, m.kind) for m in matches("niger", c)] == [("Niger", "country"), ("Niger", "river"), ("Nigeria", "country")]
 
 
+def test_matches_of_a_kind_biggest_first() -> None:
+    c = [Candidate("United Arab Emirates", "country", Point(54, 24), (), 7e4), Candidate("United States", "country", Point(-98, 39), (), 9.5e6),
+         Candidate("United Kingdom", "country", Point(-2, 54), (), 2.4e5)]
+    assert [m.text for m in matches("united", c)] == ["United States", "United Kingdom", "United Arab Emirates"]
+
+
 def same_map(a: MapFrame, b: MapFrame, tolerance: float) -> bool:
     """Whether b shows what a does: the same size, and its canvas centred on a's."""
     centre = b.to_lonlat.transform((b.xmin + b.xmax) / 2, (b.ymin + b.ymax) / 2)
@@ -172,6 +178,11 @@ def test_checklist_has_no_toggle_all_or_invert_keys() -> None:
 def test_candidates_only_from_selected_kinds() -> None:
     texts = {c.text for c in candidates({"countries"}, False)}
     assert "India" in texts and not any("OCEAN" in t or "(" in t for t in texts)
+
+
+def test_lakes_too_small_for_the_world_map_are_candidates() -> None:
+    dead = [c for c in candidates({"lakes"}, False) if c.text == "Dead Sea"]
+    assert len(dead) == 1 and dead[0].geom.contains(Point(35.5, 31.5))
 
 
 def test_country_candidate_excludes_territories() -> None:
@@ -221,18 +232,12 @@ def test_label_scale_grows_with_zoom() -> None:
 
 
 def test_label_sizes_scale_in_a_crop() -> None:
-    import matplotlib.pyplot as plt
-
     from worldmap.labels.label import MAX_PT, MIN_PT, new_label
-    from worldmap.render import new_figure
 
     f = crop_frame(box_region((-5, 42, 9, 51)), 0.1)
-    fig, ax = new_figure(f)
-    r = fig.canvas.get_renderer()  # type: ignore[attr-defined]
     huge, tiny = f.canvas, f.canvas.centroid.buffer(1)
-    assert new_label(ax, r, f, "Big", (0, 0), huge, huge.area, (0, 0, 0)).text.get_fontsize() == pytest.approx(MAX_PT * f.label_scale)
-    assert new_label(ax, r, f, "Small", (0, 0), tiny, tiny.area, (0, 0, 0)).text.get_fontsize() == pytest.approx(MIN_PT * f.label_scale)
-    plt.close(fig)
+    assert new_label(f, "Big", (0, 0), huge, huge.area, (0, 0, 0)).size == pytest.approx(MAX_PT * f.label_scale)
+    assert new_label(f, "Small", (0, 0), tiny, tiny.area, (0, 0, 0)).size == pytest.approx(MIN_PT * f.label_scale)
 
 
 def test_wide_regions_use_equal_earth() -> None:

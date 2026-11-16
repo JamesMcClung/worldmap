@@ -6,16 +6,18 @@ import shapely.affinity
 from shapely.geometry import LineString, Point
 
 from worldmap.curves import arc_lengths, bend
-from worldmap.data import load_lakes
 from worldmap.frame import MapFrame, make_frame
-from worldmap.labels.water import (OCEAN_MIN_PT, OCEAN_PT, RIVER_MAX_PT, RIVER_MIN_PT, SEA_MAX_PT, WATER_MIN_INSIDE, WATER_MIN_PT,
+from worldmap.labels.text import PX_PER_PT
+from worldmap.labels.water import (OCEAN_MIN_PT, OCEAN_PT, RIVER_MAX_PT, RIVER_MIN_PT, RIVER_SCALE_MAX, SEA_MAX_PT, WATER_MIN_INSIDE, WATER_MIN_PT,
                                    WATER_TEXT, best_stretch, classify, fit_curve, kinds_from_labels, load_water_bodies,
-                                   longest_paths, make_water_labels, river_name, river_size)
+                                   longest_paths, make_water_labels, river_label, river_name, river_size, WaterBody, WaterLabel)
+from worldmap.labels.priority import Unplaced
+from worldmap.render import drawable_lakes
 
 
 @pytest.fixture(scope="module")
 def lakes_projected() -> gpd.GeoDataFrame:
-    return make_frame().project(load_lakes())
+    return drawable_lakes(make_frame())
 
 
 def test_classify() -> None:
@@ -29,7 +31,6 @@ def test_kinds_from_labels() -> None:
     assert kinds_from_labels({"countries"}) == set()
     assert kinds_from_labels({"seas", "countries"}) == {"seas"}
     assert kinds_from_labels({"straits"}) == {"straits"}
-    assert kinds_from_labels({"water"}) == {"oceans", "seas", "lakes", "straits", "rivers"}
 
 
 def test_oceans(lakes_projected: gpd.GeoDataFrame) -> None:
@@ -50,8 +51,8 @@ def test_seas_lakes_and_straits(lakes_projected: gpd.GeoDataFrame) -> None:
     assert "Saint Lawrence River" not in names  # a 'channel' in Natural Earth, but a river: not labelled yet
     assert names.count("Bering Sea") == 1 and names.count("Caspian Sea") == 1
     assert everything[0].kind == "oceans"
-    ranks = [b.rank for b in everything if b.kind != "oceans"]
-    assert ranks == sorted(ranks)
+    sizes = [b.full_size for b in everything]
+    assert sizes == sorted(sizes, reverse=True)
 
 
 def test_bend_straight_and_circle() -> None:
@@ -119,36 +120,42 @@ def frame() -> MapFrame:
 
 def test_water_label_layout(frame: MapFrame, lakes_projected: gpd.GeoDataFrame) -> None:
     bodies = load_water_bodies({"oceans", "seas"}, lakes_projected, make_frame())
-    labels = make_water_labels(bodies, frame)
+    labels = [l for l in make_water_labels(bodies, frame) if isinstance(l, WaterLabel)]
     med = next(l for l in labels if l.text == "Mediterranean Sea")
     atlantic = next(l for l in labels if l.text == "ATLANTIC OCEAN")
     assert OCEAN_MIN_PT <= atlantic.size <= OCEAN_PT and WATER_MIN_PT <= med.size <= SEA_MAX_PT
     assert len(med.parts) == len("MediterraneanSea")
     assert med.inside_share(med.anchor_x, med.anchor_y) >= WATER_MIN_INSIDE
-    width = med.parts[:, 2].max() - med.parts[:, 0].min()
-    med.scale(0.5)
-    assert med.parts[:, 2].max() - med.parts[:, 0].min() == pytest.approx(width / 2)
 
 
-def test_hopeless_bodies_left_out(frame: MapFrame, lakes_projected: gpd.GeoDataFrame) -> None:
+def test_hopeless_bodies_have_no_label(frame: MapFrame, lakes_projected: gpd.GeoDataFrame) -> None:
     bodies = load_water_bodies({"oceans", "seas", "lakes", "straits"}, lakes_projected, make_frame())
-    labels = make_water_labels(bodies, frame)
-    assert 0 < len(labels) < len(bodies)
+    fits = make_water_labels(bodies, frame)
+    labels = [l for l in fits if isinstance(l, WaterLabel)]
+    assert len(fits) == len(bodies) and 0 < len(labels) < len(bodies)
     assert all(l.inside_share(l.anchor_x, l.anchor_y) >= WATER_MIN_INSIDE for l in labels)
+
+
+def test_make_water_labels_one_per_body(frame: MapFrame, lakes_projected: gpd.GeoDataFrame) -> None:
+    bodies = [b for b in load_water_bodies({"rivers"}, lakes_projected, frame) if b.text in ("Nile", "Suez Canal")]
+    fits = make_water_labels(bodies, frame)
+    assert {b.text: isinstance(w, Unplaced) for b, w in zip(bodies, fits)} == {"Nile": False, "Suez Canal": True}
+    suez = next(b for b in bodies if b.text == "Suez Canal")
+    assert Unplaced("Suez Canal", "rivers", suez.full_size) in fits
 
 
 def test_draw_water_labels(frame: MapFrame, lakes_projected: gpd.GeoDataFrame) -> None:
     from matplotlib.patches import PathPatch
 
-    from worldmap.labels.placement import place_labels
+    from test_placement import placed
     from worldmap.render import draw_water_labels, new_figure
 
-    med = [l for l in make_water_labels(load_water_bodies({"seas"}, lakes_projected, make_frame()), frame) if l.text == "Mediterranean Sea"]
-    p = place_labels([], frame, water=med)
+    med = [l for l in make_water_labels(load_water_bodies({"seas"}, lakes_projected, make_frame()), frame) if isinstance(l, WaterLabel) and l.text == "Mediterranean Sea"]
+    p = placed(med, frame)
     p.x[0] += 100  # somewhere other than its anchor
     fig, ax = new_figure(frame)
     before = len(ax.patches)
-    draw_water_labels(ax, med, p, frame)
+    draw_water_labels(ax, p, frame)
     added = ax.patches[before:]
     assert len(added) == 1 and isinstance(added[0], PathPatch)
     assert np.allclose(added[0].get_facecolor()[:3], WATER_TEXT)
@@ -169,14 +176,47 @@ def test_river_name() -> None:
     assert river_name("Amazon") == "Amazon"
     assert river_name("Paraná River") == "Paraná"
     assert river_name("Grande") == "Rio Grande"
-    assert river_name("Sulina branch") is None and river_name("Suez Canal") is None
+    assert river_name("Suez Canal") == "Suez Canal" and river_name("Sulina branch") == "Sulina branch"
     assert river_name(None) is None and river_name(float("nan")) is None
 
 
 def test_river_size() -> None:
-    assert river_size(0) == river_size(1) == RIVER_MAX_PT
-    assert river_size(6) == RIVER_MIN_PT == river_size(9)
-    assert river_size(2) > river_size(4)
+    assert river_size(0) == RIVER_MAX_PT
+    assert river_size(8) == RIVER_MIN_PT == river_size(9)
+    assert river_size(2) - river_size(4) == pytest.approx(river_size(4) - river_size(6))  # linear in the line width
+
+
+def test_river_names_stay_small_in_a_crop() -> None:
+    from worldmap.crop import box_region, crop_frame
+    from worldmap.labels.water import load_river_bodies
+
+    f = crop_frame(box_region((5, 45, 15, 52)), 0)  # the Alps and Germany: label_scale near the cap
+    assert f.label_scale > RIVER_SCALE_MAX
+    rivers = [r for r in make_water_labels(load_river_bodies(f), f) if isinstance(r, WaterLabel)]
+    assert rivers and max(r.size for r in rivers) <= RIVER_MAX_PT * RIVER_SCALE_MAX
+    assert max(r.min_size for r in rivers) <= WATER_MIN_PT * RIVER_SCALE_MAX
+
+
+def test_every_drawn_river_is_a_candidate() -> None:
+    """Rivers of every drawn scalerank get a body (and so may be named), not only the bigger ones."""
+    from worldmap.crop import box_region, crop_frame
+    from worldmap.labels.water import load_river_bodies
+
+    bodies = load_river_bodies(crop_frame(box_region((5, 45, 15, 52)), 0))
+    assert max(b.rank for b in bodies) > 6
+
+
+def test_river_name_must_stay_within_an_em_of_its_river() -> None:
+    """Its glyph centres count as on the river (its label's geom) within 1 em of the line, not beyond: a name the
+    solver slides off its stretch (where it was bent to fit) doesn't float beside the river."""
+    frame = make_frame()
+    em = river_size(1) * PX_PER_PT
+    x0, y0 = 3000.0, 1500.0
+    mx, my = frame.px_to_map(np.array([x0, x0 + 40 * em]), np.array([y0, y0]))
+    label = river_label(WaterBody("Straight", "rivers", 1, LineString(np.column_stack([mx, my])), 100.0), frame)
+    assert label is not None
+    assert label.geom.contains(Point(x0 + 20 * em, y0 + 0.9 * em))
+    assert not label.geom.contains(Point(x0 + 20 * em, y0 + 1.1 * em))
 
 
 def test_longest_paths_joins_gaps_and_takes_the_trunk() -> None:
@@ -207,5 +247,68 @@ def test_crop_without_marine_areas() -> None:
     from worldmap.crop import box_region, crop_frame
 
     f = crop_frame(box_region((10, 10, 20, 20)), 0)  # Chad and Nigeria: no sea in sight
-    bodies = load_water_bodies({"oceans", "seas", "straits", "lakes"}, f.project(load_lakes()), f)
+    bodies = load_water_bodies({"oceans", "seas", "straits", "lakes"}, drawable_lakes(f), f)
     assert all(b.kind == "lakes" for b in bodies)
+
+
+def bodies_by_text(frame: MapFrame) -> dict[str, list]:
+    out: dict[str, list] = {}
+    for b in load_water_bodies({"oceans", "seas", "lakes", "straits", "rivers"}, drawable_lakes(frame), frame):
+        out.setdefault(b.text, []).append(b)
+    return out
+
+
+@pytest.fixture(scope="module")
+def world_bodies() -> dict[str, list]:
+    return bodies_by_text(make_frame())
+
+
+def test_full_size_of_water(world_bodies: dict[str, list]) -> None:
+    assert 6e4 <= world_bodies["Lake Victoria"][0].full_size <= 7.5e4
+    a, b = world_bodies["PACIFIC OCEAN"]
+    assert a.full_size == b.full_size > 1e8
+    assert world_bodies["Mediterranean Sea"][0].full_size > 1e6
+    assert 2.4e3 <= world_bodies["Danube"][0].full_size <= 3.2e3
+    colorados = sorted(world_bodies["Colorado"], key=lambda b: b.geom.centroid.y)  # Argentina's, then the US's
+    assert len(colorados) == 2 and colorados[0].full_size != colorados[1].full_size
+    assert 1.8e3 <= colorados[1].full_size <= 2.6e3
+
+
+def test_water_full_size_is_frame_independent(world_bodies: dict[str, list]) -> None:
+    from worldmap.crop import box_region, crop_frame
+
+    crop = bodies_by_text(crop_frame(box_region((5, 40, 20, 49)), 0))
+    for name in ("Danube", "Adriatic Sea"):
+        assert crop[name][0].full_size == pytest.approx(world_bodies[name][0].full_size, rel=1e-9)
+    label = make_water_labels(world_bodies["Lake Victoria"], make_frame())[0]
+    assert isinstance(label, WaterLabel)
+    assert label.full_size == world_bodies["Lake Victoria"][0].full_size
+
+
+def test_inside_share_counts_glyphs_by_their_centres() -> None:
+    """As the solver has it: a glyph box is on the water if its centre is, weighted by its area. A lake 5 px high
+    under glyph boxes 14 px high is all on; a glyph whose centre is off is off, however much of its box is on."""
+    from test_placement import water_label
+
+    parts = np.array([[-50.0 + 10 * k, -7, -40 + 10 * k, 7] for k in range(10)])
+    lake = water_label("Lake", (0, 0), shapely.box(-52, -2.5, 52, 2.5), parts, WATER_MIN_PT, kind="lakes")
+    assert lake.inside_share(0, 0) == pytest.approx(1.0)
+    assert lake.inside_share(30, 0) == pytest.approx(0.7)  # the right 3 glyphs' centres are past x = 52
+
+
+def test_river_ranks_by_name_and_nearest_body() -> None:
+    from worldmap.data import load_rivers
+    from worldmap.labels.priority import UNLABELED
+    from worldmap.labels.water import load_river_bodies, river_ranks
+
+    f = make_frame()
+    rivers = f.project(load_rivers())
+    bodies = [b for b in load_river_bodies(f) if b.text in ("Colorado", "Nile")]
+    assert len([b for b in bodies if b.text == "Colorado"]) == 2  # the US's and Argentina's
+    ranks = river_ranks(rivers, bodies, np.array([2 if b.geom.centroid.y < 0 else 3 for b in bodies]))
+    named = rivers.name_en.map(river_name)
+    colorado = (named == "Colorado").values
+    south = rivers.geometry.centroid.y.values < 0
+    assert (ranks[colorado & south] == 2).all() and (ranks[colorado & ~south] == 3).all()
+    assert (ranks[(named == "Nile").values] == 3).all()
+    assert (ranks[named.isna().values] == UNLABELED).all() and (ranks[(named == "Danube").values] == UNLABELED).all()

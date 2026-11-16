@@ -15,7 +15,7 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "cef74660bfb1254e7c4f20bfafda9ff58e68bedeff344a04c236bd87800dc418"
+    "sha256": "4a795bf86dd17309efccd492ffff11a8c6956b712a18b006e26f746814dd9433"
   },
   "crop_pacific_water": {
     "env": {
@@ -25,6 +25,7 @@
       "geopandas": "1.2.0",
       "geos": "3.14.1",
       "lakes": "2349685",
+      "land": "3269070",
       "marine": "940563",
       "matplotlib": "3.11.2",
       "numpy": "2.5.4",
@@ -35,7 +36,7 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "897eca77de855a4a17814166f88b21a50551a242140235b604ea829651cd8fb1"
+    "sha256": "dac6ab1f60b8c23faeb2dd037386b18eaccb9d25af414fde2fd501528b6db2f8"
   },
   "crop_water": {
     "env": {
@@ -45,6 +46,7 @@
       "geopandas": "1.2.0",
       "geos": "3.14.1",
       "lakes": "2349685",
+      "land": "3269070",
       "marine": "940563",
       "matplotlib": "3.11.2",
       "numpy": "2.5.4",
@@ -55,7 +57,7 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "f4be953c69cd9e21e5f1a5d6a10c07c76ea86c7edf7433cb227951658eeaa318"
+    "sha256": "89605fc1125dcd5158a5341d16e56cca0f89c831df274fbdb7841c419aa07577"
   },
   "disputed": {
     "env": {
@@ -73,7 +75,7 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "87a793c41d247c9baa7f47f2df92deb16045dfee7440692b03a94fcf21bcc937"
+    "sha256": "62dcb461c2a1cf47abc8766e3360df0964f8bc421197b2c1c27e8bfed9eb3db3"
   },
   "earth": {
     "env": {
@@ -92,7 +94,7 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "2e65c36eb708728cf5ff7dba0715adc9be03725c99096b4cb36261fee30c063d"
+    "sha256": "4035a384f1cd6b6fde0b7d7b481c4a3c78da66c3ec5c17508f562ba0c3d2f83c"
   },
   "pins": {
     "env": {
@@ -110,7 +112,7 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "2dbc97521e94860c77689c9eaa20f015dfe0962a39150a6d8ca7f026441c096a"
+    "sha256": "c13b298a225d3224f3d413e5e342b0b9133e32912c185fded94efbd025e80357"
   },
   "regions": {
     "env": {
@@ -128,7 +130,7 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "4733af9342d308c1fa7ab4f296b5ed22efa1097564f58689b9dff7cc313853cf"
+    "sha256": "811a533f13c2a3e9b633b09ed787e19406f25466b908304cca8e27ca023140f5"
   },
   "topographic_crop": {
     "env": {
@@ -156,7 +158,7 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "4d7180e76c4e07477a9b275ad418593c01b84fd489ac0b8e0d9f4f09900c790b"
+    "sha256": "d42db92d141dd97c33ac9b532c4f8eac054c76bd58684bd9b3ca9f94a00fda24"
   },
   "topographic_ocean": {
     "env": {
@@ -180,7 +182,7 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "88563fce10dd35aa2a328b8726354cbd83f6fb1a71ca510379a20b5501e85c44"
+    "sha256": "2171ae0f348bb16e0d9483283e7536f5d2b180cfb5f7e914ae53973e96d58fb9"
   },
   "topographic_water": {
     "env": {
@@ -206,7 +208,7 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "8ab3072929761135f7379139b51e7b8dd4753d305926caea6b396bf857670019"
+    "sha256": "e6906a04e539d4383e4405d1e85c37db2fa9e27a81b6eddb5c07134989d18d5c"
   },
   "water": {
     "env": {
@@ -216,6 +218,7 @@
       "geopandas": "1.2.0",
       "geos": "3.14.1",
       "lakes": "2349685",
+      "land": "3269070",
       "marine": "940563",
       "matplotlib": "3.11.2",
       "numpy": "2.5.4",
@@ -226,6 +229,6 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "b229c729829919f52f0c9458c30fe0c52fb898b2ae4c7787604047c29e8fc658"
+    "sha256": "61023a60e39a28749573815eb87e2613ebadea3ae82b885848d6da971342e86b"
   }
 }

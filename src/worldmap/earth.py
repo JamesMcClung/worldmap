@@ -16,7 +16,8 @@ from shapely import affinity
 from shapely.geometry import MultiPolygon, Point, Polygon, box
 
 from worldmap.colorspace import RGB, fit_gamut
-from worldmap.data import CACHE, COUNTRIES, RASTER, fetch
+from worldmap.data import CACHE, COUNTRIES, RASTER, fetch, km2
+from worldmap.disjoint import DisjointSets
 from worldmap.frame import SEAM_GRID_DEG, SEAM_SNAP_PX, WORLD, MapFrame
 
 GR_DESERT, GR_LUSH = -12.0, 20.0  # mean (G - R) mapped to pure sand and pure green
@@ -137,23 +138,16 @@ def share_across_seam(parts: list[Polygon], values: list[list[float]]) -> list[l
     at -180) replaced by their mean, weighted by area on the ground: they're one piece of land, coloured as one."""
     east = [k for k, p in enumerate(parts) if not p.is_empty and p.bounds[2] >= 180 - SEAM_GRID_DEG]
     west = [k for k, p in enumerate(parts) if not p.is_empty and p.bounds[0] <= -180 + SEAM_GRID_DEG]
-    group = list(range(len(parts)))
-
-    def root(k: int) -> int:
-        while group[k] != k:
-            k = group[k]
-        return k
-
+    sets = DisjointSets(len(parts))
     for w in west:
         moved = affinity.translate(parts[w], 360)
         for e in east:
             if e != w and moved.distance(parts[e]) <= SEAM_GRID_DEG:
-                group[root(w)] = root(e)
+                sets.union(w, e)
     out = [list(v) for v in values]
-    for g in {root(k) for k in range(len(parts))}:
-        members = [k for k in range(len(values)) if root(k) == g]
+    for members in sets.groups():
         if len(members) > 1:
-            weights = [parts[k].area * np.cos(np.radians(parts[k].centroid.y)) for k in members]
+            weights = km2([parts[k] for k in members])
             mean = list(np.average([values[k] for k in members], axis=0, weights=weights))
             for k in members:
                 out[k] = mean

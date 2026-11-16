@@ -180,5 +180,5 @@ def draw_colorbar(ax: Axes, frame: MapFrame, corner: Corner, scale: Scale, title
         ax.text(x + sign * pad, y, tick_label(v, scale), fontsize=TICK_SIZE, color=TEXT_COLOR, ha="right" if left else "left",
                 va="center", path_effects=HALO, zorder=Z_GLOBE + 0.2)
     side = globe_side(region) if frame.globe else inner_side(region, corner)
-    ax.add_patch(PathPatch(curved_title(region, title, unit, side), fc=TEXT_COLOR, ec="none", path_effects=TITLE_HALO,
+    ax.add_patch(PathPatch(curved_title(region, title, unit, side), fc=TEXT_COLOR, ec="none", joinstyle="round", path_effects=TITLE_HALO,
                            zorder=Z_GLOBE + 0.2))

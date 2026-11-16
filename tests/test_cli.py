@@ -34,12 +34,14 @@ def test_color_flag() -> None:
 
 
 def test_label_flag() -> None:
-    assert parse_args([]).label == {"countries"}
-    assert parse_args(["--label", "territories"]).label == {"territories"}
-    assert parse_args(["--label", "countries,territories"]).label == {"countries", "territories"}
-    assert parse_args(["--label", "none"]).label == set()
-    assert parse_args(["--label", "countries,oceans,seas,lakes,water"]).label == {"countries", "oceans", "seas", "lakes", "water"}
-    assert parse_args(["--label", "countries,rivers,straits"]).label == {"countries", "rivers", "straits"}
+    assert parse_args([]).label == ["countries"]
+    assert parse_args(["--label", "territories"]).label == ["territories"]
+    assert parse_args(["--label", "countries,territories"]).label == ["countries", "territories"]
+    assert parse_args(["--label", "none"]).label == []
+    assert parse_args(["--label", "countries,oceans,seas,lakes,water"]).label == ["countries", "oceans", "seas", "lakes", "straits", "rivers"]
+    assert parse_args(["--label", "seas,water,countries"]).label == ["seas", "oceans", "lakes", "straits", "rivers", "countries"]
+    assert parse_args(["--label", "countries,rivers,straits"]).label == ["countries", "rivers", "straits"]
+    assert parse_args(["--label", "seas,countries,seas"]).label == ["seas", "countries"]
     for bad in [["--label", "continents"], ["--label", "none,countries"], ["--label", ""], ["--regions"]]:
         with pytest.raises(SystemExit) as e:
             parse_args(bad)

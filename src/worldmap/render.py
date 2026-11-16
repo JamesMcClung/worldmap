@@ -17,29 +17,31 @@ from shapely.geometry.polygon import orient
 from shapely.ops import unary_union
 
 from worldmap.coloring import OCEAN
-from worldmap.data import RIVER_MAX_RANK
-from worldmap.disputed import Dispute, dispute_fills, stripe_parts
+from worldmap.data import load_lakes
+from worldmap.disputed import DISPUTED_GREY, Dispute, dispute_fills, stripe_parts
 from worldmap.earth import Fill, Regions
 from worldmap.frame import DPI, MapFrame
 from worldmap.labels.label import Label
-from worldmap.labels.label import LABEL_ZORDER
 from worldmap.labels.placement import Placement, leader_ends
-from worldmap.labels.water import RIVER_HALO, RIVER_TEXT, WATER_HALO, WATER_HALO_PX, WATER_TEXT, WaterLabel
+from worldmap.labels.water import RIVER_HALO, RIVER_TEXT, river_width, WATER_HALO, WATER_HALO_PX, WATER_TEXT, WaterLabel
 
 BORDER, STATE_LINE = "#3a3a3a", "#7d7d7d"
 ANTARCTICA_FILL = "#ffffff"  # Antarctica is drawn white and left unlabelled
+FIXED_FILLS = {"Antarctica": ANTARCTICA_FILL, "Bir Tawil": DISPUTED_GREY}  # Bir Tawil: claimed by no one
 GLOBE_STROKE = 2.2
 BORDER_WIDTH = 0.6
 STATE_LINE_WIDTH = 0.35
 LEADER_WIDTH = 0.7
 LEADER_DOT_SIZE = 1.3
 RIVER = "#2d76a3"  # OKLCH (0.54, 0.10, 240): near the ocean's hue, dark enough to show on every fill
-RIVER_WIDTH_MAX, RIVER_WIDTH_MIN = 1.6, 0.3  # line widths (pt) at scalerank 0 and RIVER_MAX_RANK
 BORDER_DASH = (0, (2.5, 1.5))  # --disputed: borders between a disputed area and the countries involved
 # Drawing order, bottom to top (pins are at 10, labels at 6). Borders sit below the lakes so they don't cross them.
 Z_OCEAN, Z_COUNTRY, Z_STRIPES, Z_BAIKONUR_EDGE, Z_BORDERS, Z_STATES, Z_LAKES, Z_GLOBE, Z_LEADERS = 0, 1, 1.5, 1.6, 1.7, 2, 2.5, 3, 4
+LAKE_MIN_IN2 = 0.002  # lakes covering at least this many square inches of the poster are drawn as water (~100 on the world map)
 Z_RIVERS = 2.2  # above the state lines, below the lakes (which hide the lake centrelines)
 Z_STATES_UNDER_BORDERS = 1.65  # --disputed: state lines above the stripes, below the (dashed) borders
+LABEL_ZORDER = 6
+HALO = [pe.withStroke(linewidth=2.2, foreground=(1, 1, 1, 0.55))]  # the country labels'
 
 
 def patches(geom: BaseGeometry) -> Iterator[MplPolygon]:
@@ -82,8 +84,8 @@ def draw_countries(ax: Axes, countries_projected: gpd.GeoDataFrame, fill_of: Cal
     fills only: draw_borders draws the borders."""
     ec = "none" if disputed else BORDER
     for i, row in countries_projected.iterrows():
-        if row.NAME_EN == "Antarctica":
-            ax.add_collection(PatchCollection(list(patches(row.geometry)), fc=ANTARCTICA_FILL, ec=ec, lw=BORDER_WIDTH, zorder=Z_COUNTRY))
+        if row.NAME_EN in FIXED_FILLS:
+            ax.add_collection(PatchCollection(list(patches(row.geometry)), fc=FIXED_FILLS[row.NAME_EN], ec=ec, lw=BORDER_WIDTH, zorder=Z_COUNTRY))
         elif regions is not None:
             for poly, fill in regions[i]:
                 ax.add_collection(PatchCollection(list(patches(poly)), fc=fill, ec=ec, lw=BORDER_WIDTH, zorder=Z_COUNTRY))
@@ -121,17 +123,17 @@ def draw_states(ax: Axes, states_projected: gpd.GeoDataFrame, disputed: bool = F
         states_projected.plot(ax=ax, color=STATE_LINE, linewidth=STATE_LINE_WIDTH, zorder=Z_STATES_UNDER_BORDERS if disputed else Z_STATES)
 
 
+def drawable_lakes(frame: MapFrame) -> gpd.GeoDataFrame:
+    """The lakes, projected, that cover at least LAKE_MIN_IN2 of the poster in the frame."""
+    lakes = frame.project(load_lakes())
+    return lakes[lakes.area / frame.units_per_in ** 2 >= LAKE_MIN_IN2]
+
+
 def draw_lakes(ax: Axes, lakes_projected: gpd.GeoDataFrame) -> None:
     """The country polygons include the lakes; paint the big ones back as water (borders through them then run on
     the shore), above the state lines, which also cross them."""
     for g in lakes_projected.geometry:
         ax.add_collection(PatchCollection(list(holed_patches(g)), fc=OCEAN, ec=BORDER, lw=BORDER_WIDTH, zorder=Z_LAKES))
-
-
-def river_width(rank: int) -> float:
-    """Line width (pt) of a river of Natural Earth scalerank `rank`, thinning linearly to RIVER_MAX_RANK."""
-    t = min(max(rank, 0), RIVER_MAX_RANK) / RIVER_MAX_RANK
-    return RIVER_WIDTH_MAX + t * (RIVER_WIDTH_MIN - RIVER_WIDTH_MAX)
 
 
 def draw_rivers(ax: Axes, rivers_projected: gpd.GeoDataFrame) -> None:
@@ -152,12 +154,20 @@ def subtract_lakes(countries_projected: gpd.GeoDataFrame, lakes_projected: gpd.G
     return out
 
 
-def draw_labels(ax: Axes, labels: list[Label], placement: Placement, frame: MapFrame) -> None:
-    """Move each label's text to its placed position, and draw leader lines and dots for 'out' labels."""
+def glyph_patch(glyphs: Path, scale: float, x: float, y: float, frame: MapFrame, **style: object) -> PathPatch:
+    """A label's glyphs (px, relative to its position) scaled by `scale` (shrunk in placing), at (x, y) px. Round
+    joins: the halo stroke (path_effects) would grow spikes at the glyphs' sharp corners."""
+    vertices = np.asarray(glyphs.vertices) * scale + [x, y]
+    mx, my = frame.px_to_map(vertices[:, 0], vertices[:, 1])
+    return PathPatch(Path(np.stack([mx, my], -1), glyphs.codes), ec="none", lw=0, joinstyle="round", **style)  # type: ignore[arg-type]
+
+
+def draw_labels(ax: Axes, placement: Placement, frame: MapFrame) -> None:
+    """Each country label's glyphs at its placed position and size, and leader lines and dots for 'out' labels."""
     end_x, end_y = leader_ends(placement)
-    for i, label in enumerate(labels):
-        x, y = frame.px_to_map(placement.x[i], placement.y[i])
-        label.text.set_position((float(x), float(y)))
+    for i, label in placement.each(Label):
+        ax.add_patch(glyph_patch(label.glyphs, placement.size[i] / label.size, placement.x[i], placement.y[i], frame,
+                                 fc=label.color, zorder=LABEL_ZORDER, path_effects=HALO))
         if placement.out[i]:
             x0, y0 = frame.px_to_map(placement.anchor_x[i], placement.anchor_y[i])
             x1, y1 = frame.px_to_map(end_x[i], end_y[i])
@@ -165,17 +175,12 @@ def draw_labels(ax: Axes, labels: list[Label], placement: Placement, frame: MapF
             ax.plot([x0], [y0], marker="o", ms=LEADER_DOT_SIZE, color=label.color, zorder=Z_LEADERS)
 
 
-def draw_water_labels(ax: Axes, water: list[WaterLabel], placement: Placement, frame: MapFrame) -> None:
-    """Each water label's bent glyphs at its placed position (the water labels come after the country labels in
-    `placement`), blue with a water-coloured halo (rivers: darker, with the country labels' halo), just under the
-    country labels."""
-    first = placement.n - len(water)
+def draw_water_labels(ax: Axes, placement: Placement, frame: MapFrame) -> None:
+    """Each water label's bent glyphs at its placed position and size, blue with a water-coloured halo (rivers:
+    darker, with the country labels' halo), just under the country labels."""
     halo = [pe.withStroke(linewidth=WATER_HALO_PX * 72 / DPI, foreground=WATER_HALO)]
     river_halo = [pe.withStroke(linewidth=WATER_HALO_PX * 72 / DPI, foreground=RIVER_HALO)]
-    for k, label in enumerate(water):
+    for i, label in placement.each(WaterLabel):
         river = label.kind == "rivers"
-        vertices = np.asarray(label.glyphs.vertices) + [placement.x[first + k], placement.y[first + k]]
-        x, y = frame.px_to_map(vertices[:, 0], vertices[:, 1])
-        path = Path(np.stack([x, y], -1), label.glyphs.codes)
-        ax.add_patch(PathPatch(path, fc=RIVER_TEXT if river else WATER_TEXT, ec="none", lw=0, zorder=LABEL_ZORDER - 0.1,
-                               path_effects=river_halo if river else halo))
+        ax.add_patch(glyph_patch(label.glyphs, placement.size[i] / label.size, placement.x[i], placement.y[i], frame,
+                                 fc=RIVER_TEXT if river else WATER_TEXT, zorder=LABEL_ZORDER - 0.1, path_effects=river_halo if river else halo))

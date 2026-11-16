@@ -49,6 +49,7 @@ class Dispute:
     breakaway: bool  # governs itself but has no countries-file feature (Abkhazia, Transnistria...)
     label: str | None  # label text for a self-governing area, else None
     geometry: BaseGeometry
+    km2: float = 0.0  # the whole area's
 
 
 def split_names(s: str) -> list[str]:
@@ -103,7 +104,7 @@ def load_disputes(countries: gpd.GeoDataFrame, disputed: gpd.GeoDataFrame) -> li
             else:
                 names = ([note.admin] if note.admin else []) + note.claimants
         rows = list(dict.fromkeys(row_of(n, r.NAME_EN) for n in names))
-        out.append(Dispute(r.NAME_EN, r.ADMIN, rows, breakaway, label, r.geometry))
+        out.append(Dispute(r.NAME_EN, r.ADMIN, rows, breakaway, label, r.geometry, float(r.km2)))
     return out
 
 
@@ -163,14 +164,14 @@ def border_lines(countries_projected: gpd.GeoDataFrame, disputes: list[Dispute],
     return solid, dashed
 
 
-def disputed_label_args(disputes: list[Dispute], breakaway_fill: Callable[[int, Point], Fill]) -> tuple[dict[int, str], list[tuple[str, Polygon, Fill]]]:
+def disputed_label_args(disputes: list[Dispute], breakaway_fill: Callable[[int, Point], Fill]) -> tuple[dict[int, str], list[tuple[str, Polygon, Fill, float]]]:
     """make_labels' `relabel` and `extra` for self-governing areas: countries-file features labelled with their
     label text (Taiwan, Somaliland, Northern Cyprus...), and a label on the largest polygon of each breakaway area,
-    coloured by `breakaway_fill(parent, point)`."""
+    coloured by `breakaway_fill(parent, point)`, with the area's whole km2."""
     relabel = {d.countries[0]: d.label for d in disputes if d.label and not d.breakaway}
     extra = []
     for d in disputes:
         if d.label and d.breakaway and not d.geometry.is_empty:
             largest = max(shapely.get_parts(d.geometry), key=lambda g: g.area)
-            extra.append((d.label, largest, breakaway_fill(d.countries[0], largest.representative_point())))
+            extra.append((d.label, largest, breakaway_fill(d.countries[0], largest.representative_point()), d.km2))
     return relabel, extra

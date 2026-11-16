@@ -8,7 +8,6 @@ from shapely.geometry import Point, box
 from worldmap.data import CRS, load_countries, load_disputed, parent_index
 from worldmap.frame import make_frame
 from worldmap.labels.label import make_labels
-from worldmap.render import new_figure
 from worldmap.disputed import DISPUTED_GREY, Dispute, Note, border_lines, dispute_edges, dispute_fills, disputed_label_args, load_disputes, parse_note, stripe_parts
 
 
@@ -144,16 +143,10 @@ def test_taiwan_coast_is_not_dashed(lines: tuple[BaseGeometry, BaseGeometry], di
 
 def disputed_labels(countries: gpd.GeoDataFrame, disputes: list[Dispute], with_countries: bool) -> list[tuple[str, str]]:
     """Label texts make_labels gives with the --disputed extras, as cli.main builds them (political colours)."""
-    matplotlib.use("Agg")
     frame = make_frame()
-    fig, ax = new_figure(frame)
-    fig.canvas.draw()
     relabel, extra = disputed_label_args(disputes, lambda i, pt: (0.5, 0.5, 0.5))
-    labels = make_labels(make_frame().project(countries), frame, ax, fig.canvas.get_renderer(), lambda i, pt: (0.5, 0.5, 0.5),  # type: ignore[attr-defined]
-                         countries=with_countries, relabel=relabel, extra=extra)
-    import matplotlib.pyplot as plt
-    plt.close(fig)
-    return [(label.name, label.text.get_fontstyle()) for label in labels]
+    labels = make_labels(frame.project(countries), frame, lambda i, pt: (0.5, 0.5, 0.5), countries=with_countries, relabel=relabel, extra=extra)
+    return [(label.name, "italic" if label.italic else "normal") for label in labels]
 
 
 def test_disputed_labels(countries: gpd.GeoDataFrame, disputes_projected: list[Dispute]) -> None:

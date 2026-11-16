@@ -1,16 +1,14 @@
 """Country labels: which pieces get one, where it is anchored, its size, and whether it sits on its country ('in')
-or beside it with a leader line ('out'). All positions and geometry are in poster pixels."""
+or beside it with a leader line ('out'). All positions and geometry are in poster pixels; a label's glyphs are
+outlines (text.lines)."""
 
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import geopandas as gpd
-import matplotlib.patheffects as pe
 import numpy as np
-from matplotlib.axes import Axes
-from matplotlib.backend_bases import RendererBase
-from matplotlib.text import Text
+from matplotlib.path import Path
 from shapely import maximum_inscribed_circle
 from shapely.geometry import MultiPolygon, Point, Polygon
 from shapely.geometry.base import BaseGeometry
@@ -20,7 +18,8 @@ from worldmap.colorspace import RGB, darken
 from worldmap.data import is_labeled
 from worldmap.earth import Fill
 from worldmap.frame import DPI, MapFrame
-from worldmap.labels.geometry import rect, two_line
+from worldmap.labels.geometry import Coverage, coverage, two_line
+from worldmap.labels.text import lines
 
 if TYPE_CHECKING:  # regions.py imports RENAME from here
     from worldmap.labels.regions import ChildRegion
@@ -29,9 +28,8 @@ RENAME = {"People's Republic of China": "China", "United States of America": "Un
 MIN_PT, MAX_PT = 6, 30
 FONT_SCALE = 1.6  # font size (pt) = FONT_SCALE / 10 x sqrt(area), with the area measured in points^2
 POINTS_PER_INCH = 72
-LABEL_ZORDER = 6
-HALO = [pe.withStroke(linewidth=2.2, foreground=(1, 1, 1, 0.55))]
-BOX_PAD_X, BOX_PAD_Y = 1.06, 1.15  # label box = rendered text extent scaled by these
+SHRINK_MIN_PT = 5  # a label shrinks (placement.shrink_step) down to no less than this (scaled by the frame's label_scale)
+BOX_PAD_X, BOX_PAD_Y = 1.06, 1.15  # label box = the lines' advance width and line height scaled by these
 
 # Island-heavy countries: several polygons of at least SIGNIFICANT_SHARE of the largest, the largest being under
 # ISLAND_LARGEST_SHARE of their total, and a convex hull narrower than ISLAND_MAX_HULL_WIDTH of the map.
@@ -54,21 +52,41 @@ WRAP_MIN_HEIGHTS = 2.5
 @dataclass
 class Label:
     name: str
-    area: float  # of the piece it labels, map units^2; bigger labels are placed first
     color: RGB
-    text: Text
+    text: str  # as shown: the name, or wrapped onto two lines
     width: float  # padded text box
     height: float
     anchor_x: float  # where the label belongs (and its leader's dot, if 'out')
     anchor_y: float
     geom: BaseGeometry  # the piece it labels
+    size: float  # pt, as laid out: placing it may shrink it (Placement.size)
+    glyphs: Path  # the text's outlines, px relative to the box's centre
     out: bool = False  # True: placed beside the country with a leader line
+    italic: bool = False  # child regions are
+    kind: str = "countries"  # its --label kind: countries (disputed areas too) or territories
+    full_size: float = 0.0  # km2 of the whole country or region, however much of it the frame shows: its priority
+    label_scale: float = 1.0  # the frame's
+    cover: Coverage | None = field(default=None, repr=False, compare=False)  # geom's, once needed (geometry.coverage)
+
+    @property
+    def min_size(self) -> float:
+        """The smallest it may shrink to (pt)."""
+        return SHRINK_MIN_PT * self.label_scale
+
+    @property
+    def parts(self) -> np.ndarray:
+        """Its box, its one rect."""
+        return np.array([[-self.width / 2, -self.height / 2, self.width / 2, self.height / 2]])
+
+    @property
+    def water(self) -> bool:
+        return False
 
 
-def measure(label: Label, renderer: RendererBase) -> None:
-    """Set the label's box size from its rendered text, with a little padding."""
-    ext = label.text.get_window_extent(renderer)
-    label.width, label.height = ext.width * BOX_PAD_X, ext.height * BOX_PAD_Y
+def lay_out(text: str, size: float, italic: bool) -> tuple[Path, float, float]:
+    """`text` at `size` pt as outlines (text.lines), and its box's width and height, padded by BOX_PAD_X/Y."""
+    glyphs, width, height = lines(text, size, italic)
+    return glyphs, width * BOX_PAD_X, height * BOX_PAD_Y
 
 
 def anchor_piece(polys: list[Polygon], frame: MapFrame, tolerance: float, force_island: bool) -> tuple[tuple[float, float], BaseGeometry, float, bool]:
@@ -89,24 +107,25 @@ def anchor_piece(polys: list[Polygon], frame: MapFrame, tolerance: float, force_
     return maximum_inscribed_circle(largest, tolerance=tolerance).coords[0], largest, largest.area, False
 
 
-def new_label(ax: Axes, renderer: RendererBase, frame: MapFrame, name: str, anchor: tuple[float, float], geom: BaseGeometry, area: float, color: RGB, italic: bool = False) -> Label:
-    """A measured label for `name` at `anchor` (map units), sized by `area`. Child regions are set in italics."""
+def new_label(frame: MapFrame, name: str, anchor: tuple[float, float], geom: BaseGeometry, area: float, color: RGB, italic: bool = False,
+              kind: str = "countries", full_size: float = 0.0) -> Label:
+    """A label for `name` at `anchor` (map units), sized by `area`, laid out. Child regions are set in italics."""
     ppu = frame.px_per_unit
     x, y = anchor
     s = frame.label_scale
     size = float(np.clip(FONT_SCALE * np.sqrt(area) * ppu / DPI * POINTS_PER_INCH / 10, MIN_PT * s, MAX_PT * s))
-    text = ax.text(x, y, name, fontsize=size, ha="center", va="center", color=color, zorder=LABEL_ZORDER, path_effects=HALO, fontstyle="italic" if italic else "normal")
-    label = Label(name, area, color, text, 0.0, 0.0, (x - frame.xmin) * ppu, (y - frame.ymin) * ppu, frame.to_px(geom))
-    measure(label, renderer)
-    return label
+    glyphs, width, height = lay_out(name, size, italic)
+    return Label(name, color, name, width, height, (x - frame.xmin) * ppu, (y - frame.ymin) * ppu, frame.to_px(geom), size, glyphs,
+                 italic=italic, kind=kind, full_size=full_size, label_scale=s)
 
 
-def make_labels(countries_projected: gpd.GeoDataFrame, frame: MapFrame, ax: Axes, renderer: RendererBase, fill_of: Callable[[int, Point | None], Fill], children: Sequence["ChildRegion"] = (), countries: bool = True,
-                relabel: dict[int, str] | None = None, extra: Sequence[tuple[str, Polygon, Fill]] = ()) -> list[Label]:
+def make_labels(countries_projected: gpd.GeoDataFrame, frame: MapFrame, fill_of: Callable[[int, Point | None], Fill], children: Sequence["ChildRegion"] = (), countries: bool = True,
+                relabel: dict[int, str] | None = None, extra: Sequence[tuple[str, Polygon, Fill, float]] = ()) -> list[Label]:
     """One label per labelled country (if `countries`), plus an italic one per child region (--label territories),
-    largest first (see anchor_piece for where each goes). With `countries`, --disputed adds the self-governing areas:
+    biggest first (full_size; see anchor_piece for where each goes). With `countries`, --disputed adds the self-governing areas:
     `relabel` labels these rows with this text even if they aren't is_labeled (Somaliland), and `extra` adds
-    (text, polygon, fill) labels for breakaway areas with no row of their own."""
+    (text, polygon, fill, km2) labels for breakaway areas with no row of their own. Each label's full_size is the
+    km2 of the whole row (countries_projected.km2), area or region."""
     relabel = relabel or {}
     tolerance = frame.width / INSCRIBED_CIRCLE_DIVISOR
     labels, island_names = [], []
@@ -121,36 +140,34 @@ def make_labels(countries_projected: gpd.GeoDataFrame, frame: MapFrame, ax: Axes
             island_names.append(row.NAME_EN)
         color = darken(fill_of(i, geom.representative_point() if geom.geom_type == "Polygon" else None))
         name = relabel.get(i) or RENAME.get(row.NAME_EN, row.NAME_EN)
-        labels.append(new_label(ax, renderer, frame, name, anchor, geom, area, color))
-    for text, poly, fill in extra if countries else ():
+        labels.append(new_label(frame, name, anchor, geom, area, color, full_size=float(row.km2)))
+    for text, poly, fill, km2 in extra if countries else ():
         anchor = maximum_inscribed_circle(poly, tolerance=tolerance).coords[0]
-        labels.append(new_label(ax, renderer, frame, text, anchor, poly, poly.area, darken(fill)))
+        labels.append(new_label(frame, text, anchor, poly, poly.area, darken(fill), full_size=km2))
     for child in children:
         # Anchored on and sized by the region's largest polygon: a hull would blow up archipelagos spread over an
         # ocean (French Polynesia, Saint Helena with Ascension and Tristan da Cunha).
         largest = max(child.polys, key=lambda p: p.area)
         anchor = maximum_inscribed_circle(largest, tolerance=tolerance).coords[0]
         color = darken(fill_of(child.feature, largest.representative_point()))
-        labels.append(new_label(ax, renderer, frame, child.text, anchor, largest, largest.area, color, italic=True))
-    labels.sort(key=lambda label: -label.area)
+        labels.append(new_label(frame, child.text, anchor, largest, largest.area, color, italic=True, kind="territories", full_size=child.km2))
+    labels.sort(key=lambda label: -label.full_size)
     print("island-heavy (hull-centred):", island_names)
     return labels
 
 
-def decide_out_and_wrap(labels: list[Label], renderer: RendererBase) -> None:
+def decide_out_and_wrap(labels: list[Label]) -> None:
     """Mark labels that would hide their country (or are far too wide for it) as 'out', and wrap long names onto two
     lines when an 'in' label is wider than its country."""
     for label in labels:
         x0, y0, x1, y1 = label.geom.bounds
-        box = rect(label.anchor_x, label.anchor_y, label.width, label.height)
-        covers = box.intersection(label.geom).area / label.geom.area if label.geom.area > 0 else 1.0
+        box = np.array([label.anchor_x - label.width / 2, label.anchor_y - label.height / 2, label.anchor_x + label.width / 2, label.anchor_y + label.height / 2])
+        covers = float(coverage(label).area(box)) / label.geom.area if label.geom.area > 0 else 1.0
         too_wide = label.width > OUT_WIDTH_RATIO * (x1 - x0) and (y1 - y0) < OUT_SHORT_HEIGHTS * label.height
         label.out = covers >= OUT_COVER or too_wide
     for label in labels:
         x0, y0, x1, y1 = label.geom.bounds
-        wrapped = two_line(label.text.get_text())
+        wrapped = two_line(label.text)
         if not label.out and wrapped and label.width > WRAP_WIDTH_RATIO * (x1 - x0) and (y1 - y0) > WRAP_MIN_HEIGHTS * label.height:
-            label.text.set_multialignment("center")
-            label.text.set_linespacing(1.0)
-            label.text.set_text(wrapped)
-            measure(label, renderer)
+            label.text = wrapped
+            label.glyphs, label.width, label.height = lay_out(wrapped, label.size, label.italic)

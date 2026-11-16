@@ -1,24 +1,30 @@
 """Label placement: coordinate descent over candidate positions, minimising a cost that penalises overlaps,
 leader-line clutter, drifting off the country and leaving the globe. All units are poster pixels."""
 
-from collections.abc import Sequence
-from dataclasses import dataclass, field
+import functools
+from collections.abc import Iterator, Sequence
+from dataclasses import dataclass, fields, replace
+from typing import TypeVar
 
 import numpy as np
-import shapely
 from shapely.geometry import Polygon
 
 from worldmap.frame import MapFrame
-from worldmap.labels.geometry import nearest_point_on_rect, segment_hits_rects, segments_cross
-from worldmap.labels.label import Label
-from worldmap.labels.water import PX_PER_PT, WATER_MIN_INSIDE, WaterLabel
+from worldmap.labels import kernels
+from worldmap.labels.geometry import Coverage, coverage, nearest_point_on_rect
+from worldmap.labels.placeable import Placeable
+from worldmap.labels.text import PX_PER_PT
+
+T = TypeVar("T")
 
 SEED = 7
 OUTLINE_SIMPLIFY_PX = 0.5
+OUTLINE_MAX_CELLS = 4_000_000  # the outline's Coverage: cells of ~2.6 px on the world poster
 
 # Candidate positions around a label's current centre: steps of (dx in widths, dy in heights), at several scales.
 STEPS = [(a * 0.25, b) for a in (-2, -1, 0, 1, 2) for b in (-1, 0, 1) if (a, b) != (0, 0)]
 STEP_SCALES = (0.4, 1, 2, 4)
+WATER_STEP_SCALES = (0.1, 0.2, *STEP_SCALES)  # water labels also take small steps: in narrow water a big one leaves it
 # 'out' labels also try rings around their anchor: 15 degree spacing, at several radii.
 RING_ANGLES = np.radians(np.arange(0, 360, 15))
 RING_SCALES = (1.0, 1.4, 2.0, 3.0, 4.5)
@@ -26,14 +32,19 @@ RING_X_GAP = 1.3  # ring half-width = label half-width + this many label heights
 RING_Y = 1.8  # ring half-height, in label heights
 # 'in' labels also scan a grid over their country in the first passes, so they can jump to where they fit.
 GRID_NX, GRID_NY = 14, 9
+STEP_ARRAY, SCALE_ARRAY, WATER_SCALE_ARRAY = np.array(STEPS), np.array(STEP_SCALES, float), np.array(WATER_STEP_SCALES, float)  # as the kernels take them
+RING_COS, RING_SIN, RING_SCALE_ARRAY, NO_BOUNDS = np.cos(RING_ANGLES), np.sin(RING_ANGLES), np.array(RING_SCALES), np.zeros(4)
 GRID_PASSES = 3
+ESCAPE_PX = 0.5  # a move clearing an overlap goes this far past touching
 
 PASSES = 40  # coordinate-descent passes (stops early when nothing moves)
 SHRINK_ROUNDS = 12  # rounds of shrinking still-overlapping labels...
 SHRINK_PASSES = 15  # ...each followed by this many passes
-SHRINK_FACTOR = 0.94
-SHRINK_MIN_PT = 5
+OVERHANG_MAX = 0.3  # a label on its feature (not 'out') may hang off either end of it by no more than this share of its length
+OVERHANG_SLICES = 16  # a country label's box is judged in this many upright slices; a water label by its glyphs
 STAY_BIAS = 1e-6  # ties go to the current position
+SHRINK_FACTOR = 0.94  # a label still clashing after a descent shrinks by this (down to its floor)
+FIXED, NUDGE, FREE = 0, 1, 2  # a label's freedom: stays put; moves (and shrinks) a little, at a cost; moves freely
 
 
 @dataclass(frozen=True)
@@ -47,33 +58,78 @@ class CostWeights:
     leader_target: float = 1.3  # ...in label heights
     leader_too_short: float = 10  # leader shorter than leader_min heights
     leader_min: float = 0.9
-    outside_country: float = 20  # fraction of an 'in' label's box off its country
-    drift: float = 0.15  # an 'in' label's distance from its anchor, in heights
+    off_feature: float = 20  # share of a label (not 'out') off its feature: box area, or glyph boxes by their centres
+    drift: float = 0.15  # a label's (not 'out') distance from its anchor, in units (unit_px: heights, or ems)
     outside_globe: float = 1000  # any part of the label outside the globe outline
-    outside_water: float = 20  # share of a water label's glyph boxes off its water body
-    water_drift: float = 0.15  # a water label's distance from its anchor, in ems
+    overhang: float = 100  # a label hanging off its feature by over OVERHANG_MAX: it would be skipped, or put 'out'
+    nudge: float = 2.0  # a nudged label's distance from its home, in heights (water labels: ems; 'out' labels: none)...
+    nudge_max: float = 2.0  # ...which can't be more than this
 
 
 @dataclass
 class Placement:
-    """Per-label arrays: the country labels in their order, then the water labels. x/y are box centres for country
-    labels; for a water label they are where its anchor goes, and width/height are its glyph boxes' extent (only
-    used to scale its moves). Water labels' glyph boxes are in `parts` (offsets from x/y), `owner` their label."""
+    """Per-label arrays, the labels (`items`) in any order. x/y are box centres for country labels; for a water
+    label they are where its anchor goes, and width/height are its glyph boxes' extent (only used to scale its
+    moves). Every label's rects are in `parts` (offsets from x/y), `owner` their label (ascending): a country
+    label's box, a water label's glyph boxes. The labels themselves stay as laid out: shrinking changes only
+    `size` (pt) and the extents here, which the draw functions read."""
 
     x: np.ndarray
     y: np.ndarray
     width: np.ndarray
     height: np.ndarray
+    size: np.ndarray
     anchor_x: np.ndarray
     anchor_y: np.ndarray
     out: np.ndarray  # bool
-    water: np.ndarray = field(default_factory=lambda: np.zeros(0, bool))
-    parts: np.ndarray = field(default_factory=lambda: np.zeros((0, 4)))
-    owner: np.ndarray = field(default_factory=lambda: np.zeros(0, int))
+    water: np.ndarray
+    parts: np.ndarray
+    owner: np.ndarray
+    items: list[Placeable]
 
     @property
     def n(self) -> int:
         return len(self.x)
+
+    def each(self, kind: type[T]) -> Iterator[tuple[int, T]]:
+        """The index and label of each of its labels of `kind` (label.Label, water.WaterLabel)."""
+        return ((i, item) for i, item in enumerate(self.items) if isinstance(item, kind))
+
+    def copy(self) -> "Placement":
+        """Another placement of the same labels, its arrays copied."""
+        return replace(self, **{f.name: getattr(self, f.name).copy() for f in fields(self) if f.name != "items"})
+
+    @classmethod
+    def of(cls, items: Sequence[Placeable]) -> "Placement":
+        """The labels at their anchors, at their sizes, in this order."""
+        anchor_x = np.array([item.anchor_x for item in items], float)
+        anchor_y = np.array([item.anchor_y for item in items], float)
+        parts = [item.parts for item in items]
+        return cls(
+            anchor_x.copy(), anchor_y.copy(), np.array([item.width for item in items], float), np.array([item.height for item in items], float),
+            np.array([item.size for item in items], float), anchor_x, anchor_y,
+            np.array([item.out for item in items], bool), np.array([item.water for item in items], bool),
+            np.vstack([np.zeros((0, 4)), *parts]),
+            np.concatenate([np.zeros(0, int), *[np.full(len(rows), k) for k, rows in enumerate(parts)]]),
+            list(items),
+        )
+
+
+def overhang(on: Sequence[bool] | np.ndarray) -> float:
+    """How far a label hangs off its feature at its worse end: the share of its equal pieces (`on`: each one over
+    the feature or not, in reading order) before the first one on it, or after the last; 1 if none is. A gap in
+    the middle doesn't count, so a centred label may be mostly off as long as neither end is far off."""
+    return float(kernels.hang(np.asarray(on, bool)))
+
+
+def unit_px(p: Placement, i: int) -> float:
+    """What label i's moves are measured in: a country label's height, a water label's em."""
+    return float(p.size[i] * PX_PER_PT if p.water[i] else p.height[i])
+
+
+def shrink_step(size: float, floor: float) -> float:
+    """The factor a label of `size` (pt) shrinks by: SHRINK_FACTOR, or less so as to stop at `floor`; 1 at or under it."""
+    return 1.0 if size <= floor else max(SHRINK_FACTOR, floor / size)
 
 
 def leader_ends(p: Placement) -> tuple[np.ndarray, np.ndarray]:
@@ -81,317 +137,148 @@ def leader_ends(p: Placement) -> tuple[np.ndarray, np.ndarray]:
     return nearest_point_on_rect(p.anchor_x, p.anchor_y, p.x, p.y, p.width, p.height)
 
 
-def glyph_boxes(p: Placement) -> np.ndarray:
-    """Every water glyph box where its label is now, (parts, 4)."""
+def rects(p: Placement) -> np.ndarray:
+    """Every label's rects (parts) where its label is now, (parts, 4)."""
     x, y = p.x[p.owner], p.y[p.owner]
     return p.parts + np.stack([x, y, x, y], -1)
 
 
-def boxes_of(p: Placement, keep: np.ndarray) -> np.ndarray:
-    return np.stack([p.x[keep] - p.width[keep] / 2, p.y[keep] - p.height[keep] / 2, p.x[keep] + p.width[keep] / 2, p.y[keep] + p.height[keep] / 2], -1)
+@functools.cache
+def weight_array(weights: CostWeights) -> np.ndarray:
+    """The weights the cost kernels take, in their order (kernels.OVERLAP...)."""
+    return np.array([weights.overlap, weights.dot_cover, weights.dot_radius, weights.leader_hits_label, weights.leader_crosses_leader,
+                     weights.leader_length, weights.leader_target, weights.leader_too_short, weights.leader_min, weights.off_feature,
+                     weights.drift, weights.outside_globe, weights.overhang], float)
 
 
-def near(rects: np.ndarray, envelope: np.ndarray) -> np.ndarray:
-    """The rects (n, 4) that touch the envelope [x0, y0, x1, y1]."""
-    return rects[(rects[:, 0] < envelope[2]) & (rects[:, 2] > envelope[0]) & (rects[:, 1] < envelope[3]) & (rects[:, 3] > envelope[1])]
+def cost_batch(p: Placement, i: int, cx: np.ndarray, cy: np.ndarray, weights: CostWeights, outline: Coverage,
+               placed: np.ndarray | None = None, active: np.ndarray | None = None) -> np.ndarray:
+    """Cost of placing label i at each candidate (cx[k], cy[k]): a country label's box centre, a water label's anchor.
+    Every label is its rects (parts: a country label's box, a water label's glyph boxes), in units of unit_px:
+    their overlap with other labels' rects; covering another 'out' label's dot, or its leader crossing them; any
+    corner outside the outline. An 'out' label: its leader's length, and its leader crossing other rects (unless
+    one covers its dot) and leaders. Any other: its share off its feature (geometry.Coverage: a country label's box
+    area; a water label's glyph boxes whose centres are off), hanging off it by over OVERHANG_MAX (a country label
+    in OVERHANG_SLICES slices of its box, a water label by glyph), and its drift from its anchor. Compiled:
+    kernels.label_cost. `placed`: rects(p), if the caller keeps them up to date (place_labels does). `active` (a
+    mask, default all): the labels it sees."""
+    placed = rects(p) if placed is None else placed
+    active = np.ones(p.n, bool) if active is None else active
+    cover = coverage(p.items[i])
+    first, end = np.searchsorted(p.owner, [i, i + 1])  # its rects' rows (owner ascends)
+    return kernels.label_cost(i, np.asarray(cx, float), np.asarray(cy, float), p.parts[first:end], unit_px(p, i), not p.water[i],
+                              p.x, p.y, p.width, p.height, p.anchor_x, p.anchor_y, p.out, active, placed, p.owner,
+                              cover.table, cover.x0, cover.y0, cover.step, outline.table, outline.x0, outline.y0, outline.step,
+                              OVERHANG_MAX, OVERHANG_SLICES, weight_array(weights))
 
 
-def overlap_area(a: np.ndarray, b: np.ndarray) -> np.ndarray:
-    """Overlap areas of rects a (..., 1, 4) and b (m, 4), summed over b."""
-    ox = np.clip(np.minimum(a[..., 2], b[:, 2]) - np.maximum(a[..., 0], b[:, 0]), 0, None)
-    oy = np.clip(np.minimum(a[..., 3], b[:, 3]) - np.maximum(a[..., 1], b[:, 1]), 0, None)
-    return (ox * oy).sum(-1)
+def candidates(p: Placement, i: int, grid: bool = False, placed: np.ndarray | None = None, active: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray]:
+    """Candidate centres for label i; the first is its current position. Then STEPS at each of its step scales;
+    for an 'out' label, rings round its anchor; else its anchor and (`grid`, country labels) a grid over its
+    country. Then, for each overlap of its rects with another `active` label's (a mask, default all), the shortest
+    moves that clear it (kernels.escapes): steps are too coarse for an overlap of a pixel or two. `placed`:
+    rects(p), as cost_batch. Compiled: kernels.candidates."""
+    grid = grid and not p.water[i] and not p.out[i]
+    escape_x, escape_y = kernels.escapes(i, rects(p) if placed is None else placed, p.owner, np.ones(p.n, bool) if active is None else active, ESCAPE_PX)
+    return kernels.candidates(p.x[i], p.y[i], p.width[i], p.height[i], p.anchor_x[i], p.anchor_y[i], bool(p.out[i]), STEP_ARRAY,
+                              WATER_SCALE_ARRAY if p.water[i] else SCALE_ARRAY, RING_COS, RING_SIN, RING_SCALE_ARRAY, RING_X_GAP, RING_Y,
+                              grid, np.array(p.items[i].geom.bounds) if grid else NO_BOUNDS, GRID_NX, GRID_NY, escape_x, escape_y)
 
 
-def out_leaders(p: Placement) -> tuple[np.ndarray, np.ndarray]:
-    """The 'out' labels' leader lines: (dots (d, 2), ends (d, 2))."""
-    out = p.out & ~p.water
-    end_x, end_y = nearest_point_on_rect(p.anchor_x[out], p.anchor_y[out], p.x[out], p.y[out], p.width[out], p.height[out])
-    return np.stack([p.anchor_x[out], p.anchor_y[out]], -1), np.stack([end_x, end_y], -1)
+def clash(p: Placement, i: int, among: np.ndarray) -> bool:
+    """Whether label i clashes with another label of `among` (a mask), whatever their kinds: their boxes or glyph
+    boxes overlap, or a leader line of one crosses the other (not a box covering that leader's own dot). Compiled:
+    kernels.clash."""
+    end_x, end_y = leader_ends(p)
+    return bool(kernels.clash(i, rects(p), p.owner, among, p.out, p.anchor_x, p.anchor_y, end_x, end_y))
 
 
-def water_cost(p: Placement, label: WaterLabel, i: int, cx: np.ndarray, cy: np.ndarray, weights: CostWeights, outline_px: Polygon) -> np.ndarray:
-    """Cost of putting water label i's anchor at each candidate (cx[k], cy[k])."""
-    em = label.size * PX_PER_PT
-    mine = p.owner == i
-    g = p.parts[mine][None] + np.stack([cx, cy, cx, cy], -1)[:, None, :]  # (candidates, glyphs, 4)
-    envelope = np.array([g[..., 0].min(), g[..., 1].min(), g[..., 2].max(), g[..., 3].max()])
-    obstacles = np.vstack([near(boxes_of(p, ~p.water), envelope), near(glyph_boxes(p)[~mine], envelope)])
-    cost = weights.overlap * overlap_area(g[..., None, :], obstacles).sum(1) / (em * em)
-
-    dots, ends = out_leaders(p)
-    if len(dots):
-        dot_r = weights.dot_radius * p.height[p.out & ~p.water]
-        gap_x = np.clip(np.maximum(g[..., None, 0] - dots[:, 0], dots[:, 0] - g[..., None, 2]), 0, None)
-        gap_y = np.clip(np.maximum(g[..., None, 1] - dots[:, 1], dots[:, 1] - g[..., None, 3]), 0, None)
-        gap = np.hypot(gap_x, gap_y).min(1)  # (candidates, dots): nearest glyph
-        cost += weights.dot_cover * (np.clip(dot_r - gap, 0, None) / dot_r).sum(1)
-        lo, hi = np.minimum(dots, ends), np.maximum(dots, ends)
-        close = (lo[:, 0] <= envelope[2]) & (hi[:, 0] >= envelope[0]) & (lo[:, 1] <= envelope[3]) & (hi[:, 1] >= envelope[1])
-        if close.any():
-            cost += weights.leader_hits_label * segment_hits_rects(dots[close], ends[close], g[:, :, None, :]).any(1).sum(1)
-
-    mid_x, mid_y = (g[..., 0] + g[..., 2]) / 2, (g[..., 1] + g[..., 3]) / 2
-    area = (g[..., 2] - g[..., 0]) * (g[..., 3] - g[..., 1])
-    inside = (area * shapely.contains_xy(label.geom, mid_x, mid_y)).sum(1) / area.sum(1)
-    cost += weights.outside_water * (1 - inside) + weights.water_drift * np.hypot(cx - label.anchor_x, cy - label.anchor_y) / em
-    corners_in = [shapely.contains_xy(outline_px, g[..., a], g[..., b]) for a, b in ((0, 1), (2, 1), (0, 3), (2, 3))]
-    cost += weights.outside_globe * ~np.logical_and.reduce(corners_in).all(1)
-    return cost
+def clashes(p: Placement, among: np.ndarray | None = None) -> list[int]:
+    """The labels of `among` (a mask, default all) that clash with another of them (clash)."""
+    among = np.ones(p.n, bool) if among is None else among
+    end_x, end_y = leader_ends(p)
+    return [int(i) for i in np.flatnonzero(kernels.clashes(rects(p), p.owner, among, p.out, p.anchor_x, p.anchor_y, end_x, end_y))]
 
 
-def cost_batch(p: Placement, labels: Sequence[Label | WaterLabel], i: int, cx: np.ndarray, cy: np.ndarray, weights: CostWeights, outline_px: Polygon) -> np.ndarray:
-    """Cost of placing label i at each candidate centre (cx[k], cy[k])."""
-    label = labels[i]
-    if isinstance(label, WaterLabel):
-        return water_cost(p, label, i, cx, cy, weights, outline_px)
-    n_candidates = len(cx)
-    w, h = p.width[i], p.height[i]
-    anchor_x, anchor_y = p.anchor_x[i], p.anchor_y[i]
-    boxes = np.stack([cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2], -1)  # (candidates, 4)
-    others = (np.arange(p.n) != i) & ~p.water  # water labels are only seen through their glyph boxes, below
-    ox, oy = p.x[others], p.y[others]
-    ow, oh = p.width[others], p.height[others]
-    other_boxes = np.stack([ox - ow / 2, oy - oh / 2, ox + ow / 2, oy + oh / 2], -1)  # (others, 4)
-    overlap_x = np.clip(np.minimum(boxes[:, None, 2], other_boxes[None, :, 2]) - np.maximum(boxes[:, None, 0], other_boxes[None, :, 0]), 0, None)
-    overlap_y = np.clip(np.minimum(boxes[:, None, 3], other_boxes[None, :, 3]) - np.maximum(boxes[:, None, 1], other_boxes[None, :, 1]), 0, None)
-    cost = weights.overlap * (overlap_x * overlap_y).sum(1) / (h * h)
-
-    # Other labels' leader dots and lines.
-    other_out = p.out[others]
-    if other_out.any():
-        dot_x, dot_y = p.anchor_x[others][other_out], p.anchor_y[others][other_out]
-        dot_r = weights.dot_radius * p.height[others][other_out]
-        gap_x = np.clip(np.abs(cx[:, None] - dot_x[None]) - w / 2, 0, None)
-        gap_y = np.clip(np.abs(cy[:, None] - dot_y[None]) - h / 2, 0, None)
-        gap = np.hypot(gap_x, gap_y)
-        cost += weights.dot_cover * (np.clip(dot_r[None] - gap, 0, None) / dot_r[None]).sum(1)
-        end_x, end_y = nearest_point_on_rect(dot_x, dot_y, ox[other_out], oy[other_out], ow[other_out], oh[other_out])
-        their_start = np.stack([dot_x, dot_y], -1)[None]
-        their_end = np.stack([end_x, end_y], -1)[None]
-        cost += weights.leader_hits_label * segment_hits_rects(their_start, their_end, boxes[:, None, :]).sum(1)
-
-    if p.out[i]:
-        start = np.array([anchor_x, anchor_y])[None, None, :]
-        nx, ny = nearest_point_on_rect(anchor_x, anchor_y, cx, cy, w, h)
-        end = np.stack([nx, ny], -1)[:, None, :]
-        length = np.hypot(nx - anchor_x, ny - anchor_y)
-        cost += weights.leader_length * ((length - weights.leader_target * h) / h) ** 2 + weights.leader_too_short * np.clip(weights.leader_min * h - length, 0, None) / h
-        # Our leader vs other label boxes (unless that box covers our anchor: unavoidable).
-        keep = ~((other_boxes[:, 0] <= anchor_x) & (anchor_x <= other_boxes[:, 2]) & (other_boxes[:, 1] <= anchor_y) & (anchor_y <= other_boxes[:, 3]))
-        cost += weights.leader_hits_label * segment_hits_rects(start, end, other_boxes[None, keep, :]).sum(1)
-        if other_out.any():
-            cost += weights.leader_crosses_leader * segments_cross(np.broadcast_to(start, (n_candidates, 1, 2)), end, their_start, their_end).sum(1)
-    else:
-        # clip_by_rect, not shapely.intersection: GEOS's overlay costs ~80 us a box, even against a small country
-        inside = np.array([shapely.area(shapely.clip_by_rect(label.geom, *b)) for b in boxes]) / (w * h)
-        cost += weights.outside_country * (1 - inside) + weights.drift * np.hypot(cx - anchor_x, cy - anchor_y) / h
-    cost += weights.outside_globe * ~shapely.contains(outline_px, shapely.box(boxes[:, 0], boxes[:, 1], boxes[:, 2], boxes[:, 3]))
-    if p.water.any():  # water glyphs: overlap, and our own leader crossing them
-        envelope = np.array([boxes[:, 0].min(), boxes[:, 1].min(), boxes[:, 2].max(), boxes[:, 3].max()])
-        cost += weights.overlap * overlap_area(boxes[:, None, :], near(glyph_boxes(p), envelope)) / (h * h)
-        if p.out[i]:
-            reach = np.array([min(anchor_x, end[..., 0].min()), min(anchor_y, end[..., 1].min()), max(anchor_x, end[..., 0].max()), max(anchor_y, end[..., 1].max())])
-            g = near(glyph_boxes(p), reach + [-1, -1, 1, 1])
-            g = g[~((g[:, 0] <= anchor_x) & (anchor_x <= g[:, 2]) & (g[:, 1] <= anchor_y) & (anchor_y <= g[:, 3]))]
-            cost += weights.leader_hits_label * segment_hits_rects(start, end, g[None]).sum(1)
-    return cost
-
-
-def candidates(p: Placement, labels: Sequence[Label | WaterLabel], i: int, grid: bool = False) -> tuple[np.ndarray, np.ndarray]:
-    """Candidate centres for label i; the first is its current position."""
-    w, h = p.width[i], p.height[i]
-    cx, cy = [p.x[i]], [p.y[i]]
-    for scale in STEP_SCALES:
-        for a, b in STEPS:
-            cx.append(p.x[i] + a * w * scale)
-            cy.append(p.y[i] + b * h * scale)
-    if p.out[i]:
-        for k in RING_SCALES:
-            cx += list(p.anchor_x[i] + np.cos(RING_ANGLES) * (w / 2 + RING_X_GAP * h) * k)
-            cy += list(p.anchor_y[i] + np.sin(RING_ANGLES) * RING_Y * h * k)
-    else:
-        cx.append(p.anchor_x[i])
-        cy.append(p.anchor_y[i])
-        if grid and not p.water[i]:
-            gx0, gy0, gx1, gy1 = labels[i].geom.bounds
-            us = np.linspace(gx0 + w / 2, max(gx1 - w / 2, gx0 + w / 2), GRID_NX)
-            vs = np.linspace(gy0 + h / 2, max(gy1 - h / 2, gy0 + h / 2), GRID_NY)
-            for u in us:
-                for v in vs:
-                    cx.append(u)
-                    cy.append(v)
-    return np.array(cx), np.array(cy)
-
-
-def clashes(p: Placement) -> tuple[list[int], list[int]]:
-    """(country labels overlapping another country label, water labels whose glyph boxes overlap any other label or
-    are crossed by a leader line)."""
-    country = ~p.water
-    boxes = boxes_of(p, np.ones(p.n, bool))
-    glyphs = glyph_boxes(p)
-    country_bad = []
-    for i in np.flatnonzero(country):
-        others = (np.arange(p.n) != i) & country
-        ox = np.minimum(p.x[i] + p.width[i] / 2, p.x[others] + p.width[others] / 2) - np.maximum(p.x[i] - p.width[i] / 2, p.x[others] - p.width[others] / 2)
-        oy = np.minimum(p.y[i] + p.height[i] / 2, p.y[others] + p.height[others] / 2) - np.maximum(p.y[i] - p.height[i] / 2, p.y[others] - p.height[others] / 2)
-        if ((ox > 0) & (oy > 0)).any():
-            country_bad.append(int(i))
-    water_bad = []
-    dots, ends = out_leaders(p)
-    for i in np.flatnonzero(p.water):
-        mine = p.owner == i
-        obstacles = np.vstack([boxes[country], glyphs[~mine]])
-        g = glyphs[mine][:, None, :]
-        ox = np.minimum(g[..., 2], obstacles[:, 2]) - np.maximum(g[..., 0], obstacles[:, 0])
-        oy = np.minimum(g[..., 3], obstacles[:, 3]) - np.maximum(g[..., 1], obstacles[:, 1])
-        if ((ox > 0) & (oy > 0)).any() or (len(dots) and segment_hits_rects(dots, ends, g).any()):
-            water_bad.append(int(i))
-    return country_bad, water_bad
-
-
-def place_labels(labels: list[Label], frame: MapFrame, seed: int = SEED, weights: CostWeights = CostWeights(),
-                 water: Sequence[WaterLabel] = (), start: tuple[np.ndarray, np.ndarray] | None = None, fixed: int = 0) -> Placement:
-    """Place the labels (largest first in `labels`) and the water labels (most important first). Labels still
-    overlapping after descent are shrunk slightly (their text too) and the descent repeated: country labels only
-    for other country labels, water labels for anything. `start`: positions to start from, for all labels. The
-    first `fixed` labels (country labels, then water labels) stay where `start` puts them, at their size."""
-    items: list[Label | WaterLabel] = [*labels, *water]
-    anchor_x = np.array([label.anchor_x for label in items])
-    anchor_y = np.array([label.anchor_y for label in items])
-    extent = [(w.parts[:, 2].max() - w.parts[:, 0].min(), w.parts[:, 3].max() - w.parts[:, 1].min()) for w in water]
-    p = Placement(
-        anchor_x.copy(), anchor_y.copy(),
-        np.array([label.width for label in labels] + [e[0] for e in extent]),
-        np.array([label.height for label in labels] + [e[1] for e in extent]),
-        anchor_x, anchor_y, np.array([label.out for label in labels] + [False] * len(water), bool),
-        np.array([False] * len(labels) + [True] * len(water), bool),
-        np.vstack([np.zeros((0, 4)), *[w.parts for w in water]]),
-        np.concatenate([np.zeros(0, int), *[np.full(len(w.parts), len(labels) + k) for k, w in enumerate(water)]]),
-    )
-    for w in water:
-        shapely.prepare(w.geom)
-    if start is not None:
-        p.x, p.y = start[0].copy(), start[1].copy()
-    outline_px = frame.to_px(Polygon(frame.outline), simplify=OUTLINE_SIMPLIFY_PX)
-    shapely.prepare(outline_px)
+def place_labels(p: Placement, frame: MapFrame, seed: int = SEED, weights: CostWeights = CostWeights(),
+                 active: np.ndarray | None = None, freedom: np.ndarray | None = None, home: tuple[np.ndarray, np.ndarray] | None = None,
+                 floors: np.ndarray | None = None) -> None:
+    """Place the `active` labels of `p` (a mask, default all; the rest are ignored), from where they are, moving p.
+    Free 'out' labels first move, in order, to their best spot, so they start separated; then coordinate descent.
+    Labels still clashing after it (clashes) are shrunk a step (shrink_step: in p, not the labels) and the descent
+    repeated. `freedom` (per label, default FREE): FIXED labels stay where they are, at their size; NUDGE labels
+    pay `weights.nudge` for their distance from `home` (default: where they start). `floors`: the size (pt) each
+    label shrinks no lower than (default: each label's min_size)."""
+    active = np.ones(p.n, bool) if active is None else active
+    freedom = np.full(p.n, FREE) if freedom is None else np.asarray(freedom)
+    home_x, home_y = (p.x.copy(), p.y.copy()) if home is None else (np.asarray(home[0]), np.asarray(home[1]))
+    if floors is None:
+        floors = np.array([item.min_size for item in p.items])
+    movable = np.flatnonzero(active & (freedom != FIXED))
+    outline = outline_coverage(frame)
     rng = np.random.default_rng(seed)
+    placed = rects(p)  # kept up to date as labels move and shrink: rebuilding them per cost was ~5% of a run
+    first = np.searchsorted(p.owner, np.arange(p.n + 1))  # label k's rects: rows first[k]:first[k + 1] (owner ascends)
+
+    def place_rects(i: int) -> None:
+        rows = slice(first[i], first[i + 1])
+        placed[rows] = p.parts[rows] + np.array([p.x[i], p.y[i], p.x[i], p.y[i]])
 
     def move_to_best(i: int, grid: bool = False, stay_bias: float = 0.0) -> bool:
         """Move label i to its cheapest candidate; True if it moved."""
-        cx, cy = candidates(p, items, i, grid)
-        cost = cost_batch(p, items, i, cx, cy, weights, outline_px)
+        cx, cy = candidates(p, i, grid, placed, active)
+        cost = cost_batch(p, i, cx, cy, weights, outline, placed, active)
+        if freedom[i] == NUDGE and not p.out[i]:  # an 'out' label has no spot of its own to keep, only its dot
+            away = np.hypot(cx - home_x[i], cy - home_y[i]) / unit_px(p, i)
+            cost += np.where(away <= weights.nudge_max, weights.nudge * away, np.inf)
         cost[0] -= stay_bias
         j = int(np.argmin(cost))
         p.x[i], p.y[i] = cx[j], cy[j]
+        place_rects(i)
         return j != 0
 
     def optimize(passes: int) -> None:
         for pass_no in range(passes):
-            moved = [move_to_best(i, grid=pass_no < GRID_PASSES, stay_bias=STAY_BIAS) for i in fixed + rng.permutation(p.n - fixed)]
+            moved = [move_to_best(int(i), grid=pass_no < GRID_PASSES, stay_bias=STAY_BIAS) for i in movable[rng.permutation(len(movable))]]
             if not any(moved):
                 break
 
-    # Seed 'out' labels in largest-first order so they start separated, then descend.
-    if start is None:
-        for i in range(fixed, p.n):
-            if p.out[i]:
-                move_to_best(i)
+    for k in np.flatnonzero(active & p.out & (freedom == FREE)).tolist():
+        move_to_best(k)
     optimize(PASSES)
     for _ in range(SHRINK_ROUNDS):
-        bad, water_bad = clashes(p)
-        bad, water_bad = [i for i in bad if i >= fixed], [i for i in water_bad if i >= fixed]
-        if not bad and not water_bad:
+        clashing = [i for i in clashes(p, active) if freedom[i] != FIXED]
+        if not clashing:
             break
-        for i in bad:
-            size = float(labels[i].text.get_fontsize())
-            if size > SHRINK_MIN_PT * frame.label_scale:
-                labels[i].text.set_fontsize(size * SHRINK_FACTOR)
-                p.width[i] *= SHRINK_FACTOR
-                p.height[i] *= SHRINK_FACTOR
-        for i in water_bad:
-            w = water[i - len(labels)]
-            if w.size > w.min_size:
-                factor = max(SHRINK_FACTOR, w.min_size / w.size)  # stop at its floor
-                w.scale(factor)
-                p.parts[p.owner == i] = w.parts
-                p.width[i] *= factor
-                p.height[i] *= factor
+        for i in clashing:
+            factor = shrink_step(p.size[i], floors[i])
+            p.size[i] *= factor
+            p.width[i] *= factor
+            p.height[i] *= factor
+            p.parts[first[i]:first[i + 1]] *= factor
+            place_rects(i)
         optimize(SHRINK_PASSES)
-    print("passes done; unresolved overlaps:", [labels[i].name for i in clashes(p)[0]])
-    return p
 
 
-def water_touching(p: Placement, i: int, x: float, y: float) -> list[int]:
-    """The other water labels whose glyph boxes overlap water label i's when i is at (x, y)."""
-    mine = p.owner == i
-    g = p.parts[mine] + np.array([x, y, x, y])
-    others, owners = glyph_boxes(p)[~mine], p.owner[~mine]
-    ox = np.minimum(g[:, None, 2], others[:, 2]) - np.maximum(g[:, None, 0], others[:, 0])
-    oy = np.minimum(g[:, None, 3], others[:, 3]) - np.maximum(g[:, None, 1], others[:, 1])
-    return sorted({int(j) for j in owners[((ox > 0) & (oy > 0)).any(0)]})
+def subset(p: Placement, keep: np.ndarray) -> Placement:
+    """The placement of the `keep` labels (boolean mask) only, in the same order."""
+    new_index = np.cumsum(keep) - 1
+    glyph_kept = keep[p.owner]
+    return Placement(p.x[keep], p.y[keep], p.width[keep], p.height[keep], p.size[keep], p.anchor_x[keep], p.anchor_y[keep], p.out[keep],
+                     p.water[keep], p.parts[glyph_kept], new_index[p.owner[glyph_kept]], [item for item, k in zip(p.items, keep) if k])
 
 
-def place_all(labels: list[Label], water: list[WaterLabel], frame: MapFrame) -> tuple[Placement, list[WaterLabel]]:
-    """Country and water labels (place_with_water), then, if there are any, the river names around them: rivers
-    give way to everything else, so they can't push a country's name off it."""
-    rivers = [w for w in water if w.kind == "rivers"]
-    p, kept = place_with_water(labels, [w for w in water if w.kind != "rivers"], frame)
-    if not rivers:
-        return p, kept
-    start = (np.concatenate([p.x, [r.anchor_x for r in rivers]]), np.concatenate([p.y, [r.anchor_y for r in rivers]]))
-    return place_with_water(labels, kept + rivers, frame, start, fixed=p.n)
+_outline: list[tuple[MapFrame, Coverage]] = []  # the last frame's outline_coverage (one: each is ~32 MB)
+
+
+def outline_coverage(frame: MapFrame) -> Coverage:
+    """The frame's outline in poster px as a Coverage (cells of OUTLINE_MAX_CELLS at most), made once per frame."""
+    if not _outline or _outline[0][0] is not frame:
+        _outline[:] = [(frame, Coverage.of(frame.to_px(Polygon(frame.outline), simplify=OUTLINE_SIMPLIFY_PX), OUTLINE_MAX_CELLS))]
+    return _outline[0][1]
 
 
 def outside_outline(p: Placement, frame: MapFrame) -> set[int]:
     """Water labels with a glyph box not wholly inside the frame's outline."""
-    outline_px = frame.to_px(Polygon(frame.outline), simplify=OUTLINE_SIMPLIFY_PX)
-    g = glyph_boxes(p)
-    inside = shapely.contains(outline_px, shapely.box(g[:, 0], g[:, 1], g[:, 2], g[:, 3]))
-    return {int(i) for i in p.owner[~inside]}
-
-
-def place_with_water(labels: list[Label], water: list[WaterLabel], frame: MapFrame,
-                     start: tuple[np.ndarray, np.ndarray] | None = None, fixed: int = 0) -> tuple[Placement, list[WaterLabel]]:
-    """Place country and water labels together, dropping water labels until none fails, and return the placement
-    and the water labels kept. A water label fails when it ends mostly off its body, or still clashes at its
-    minimum size (or without having shrunk in that run: so every round drops or shrinks something, and the loop
-    ends). Each failing label and the water labels it touches (where it is, or would at its anchor) form a
-    group; the least important water label of each group is dropped and the rest re-placed from where they were.
-    Country labels are never dropped, and start each run at their own size. `start` and `fixed` are as in
-    place_labels: the fixed labels stay put and are never dropped."""
-    sizes = [label.text.get_fontsize() for label in labels]
-    kept, dropped = list(water), []
-    while True:
-        for label, size in zip(labels, sizes):
-            label.text.set_fontsize(size)
-        sizes_before = [w.size for w in kept]
-        p = place_labels(labels, frame, water=kept, start=start, fixed=fixed)
-        if not water:
-            return p, kept
-        n_country = len(labels)
-        clashing = {i for i in clashes(p)[1] if i >= fixed}
-        outside = set() if frame.globe else outside_outline(p, frame)  # in a crop: under a colour bar
-        failing = [i for i in range(max(n_country, fixed), p.n)
-                   if kept[i - n_country].inside_share(p.x[i], p.y[i]) < WATER_MIN_INSIDE or i in outside
-                   or (i in clashing and (kept[i - n_country].size <= kept[i - n_country].min_size * (1 + 1e-9)
-                                          or kept[i - n_country].size == sizes_before[i - n_country]))]  # can't or didn't shrink
-        if not failing and not clashing:
-            break
-        group = {i: i for i in range(n_country, p.n)}  # union-find over the water labels
-
-        def root(i: int) -> int:
-            while group[i] != i:
-                i = group[i]
-            return i
-
-        for f in failing:
-            for j in water_touching(p, f, p.x[f], p.y[f]) + water_touching(p, f, p.anchor_x[f], p.anchor_y[f]):
-                group[root(j)] = root(f)
-        drop = {max(i for i in group if root(i) == r) for r in {root(f) for f in failing}}
-        dropped += [kept[i - n_country].text for i in sorted(drop)]
-        stay = np.array([i not in drop for i in range(p.n)])
-        kept = [w for k, w in enumerate(kept) if n_country + k not in drop]
-        start = (p.x[stay], p.y[stay])  # clashing labels that can still shrink just go round again
-    print("water labels dropped:", dropped)
-    return p, kept
+    inside = outline_coverage(frame).holds(rects(p))
+    return {int(i) for i in p.owner[~inside & p.water[p.owner]]}

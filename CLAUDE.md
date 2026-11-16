@@ -27,9 +27,14 @@ tiles: the crop falls back to 1'). `coloring.json`, `earth.json` and `etopo_3min
 
 `.venv/bin/pytest` (~55 s on 4 pytest-xdist workers, `addopts` in `pyproject.toml`; `-n0` for serial, ~200 s). Unit tests cover the pure pieces (colour maths, `color_graph`, pin parsing and sprite, label geometry,
 CLI errors), and `test_import_has_no_pyplot` guards that importing any module doesn't pick a matplotlib backend (`--pick` needs to).
-`test_regression.py` renders `--pins` (the default map under the pins), `--color earth`, `--label countries,territories`, `--label countries,water` (`water`; draws the rivers too), `--disputed`, `--type topographic --ocean`, `--type topographic --label water` (`topographic_water`; also checks the outside is transparent), `--crop France` (`crop`), a Bering Strait box crop with territories, water and `--disputed` (`crop_water`) an Alps box crop with `--type topographic --ocean` (`topographic_crop`; reads four 15" tiles, recorded in its
-environment, so it skips where they aren't downloaded) and `--crop pacific --label countries,oceans,seas` (`crop_pacific_water`, Equal Earth) maps in a subprocess and compares a SHA-256 of the decoded pixels
-with `tests/fingerprints.json`:
+`test_regression.py` renders these maps (fingerprint name: options) in a subprocess and compares a SHA-256 of the
+decoded pixels with `tests/fingerprints.json`:
+`pins`: `--pins` (the default map under the pins); `earth`: `--color earth`; `regions`: `--label countries,territories`;
+`water`: `--label countries,water` (draws the rivers too); `disputed`: `--disputed`; `topographic_ocean`:
+`--type topographic --ocean`; `topographic_water`: `--type topographic --label water` (also checks the outside is
+transparent); `crop`: `--crop France`; `crop_water`: a Bering Strait box crop with territories, water and `--disputed`;
+`topographic_crop`: an Alps box crop with `--type topographic --ocean` (reads four 15" tiles, recorded in its
+environment, so it skips where they aren't downloaded); `crop_pacific_water`: `--crop pacific --label countries,oceans,seas` (Equal Earth).
 - A commit that changes the output on purpose re-records with `UPDATE_REFERENCE=1 .venv/bin/pytest` and commits `fingerprints.json`
   in the same commit, saying in the body what changed visually. Refactors must leave the fingerprints unchanged.
 - Each fingerprint records the library versions it was made with (matplotlib, freetype, numpy, shapely, GEOS, ...). With other
@@ -42,7 +47,7 @@ with `tests/fingerprints.json`:
 - `conftest.environment(mode)` keys data files per mode (`raster` for earth, ETOPO etc. for topographic*, `marine` for *water*, `rivers` for *water*):
   a new key on an existing mode would make it skip, so add keys only for the modes that use them.
 - Parallel runs: `pytest_collection_modifyitems` schedules the renders first (else the long ones start last). The
-  topographic renders peak at 3.3 GB (world) and 5 GB (Alps crop), so each `xdist_group` (`topographic`,
+  topographic renders take GBs (`--type topographic`, Memory), so each `xdist_group` (`topographic`,
   `topographic_crop`) runs on one worker; the political ones peak near 0.5 GB. `UPDATE_REFERENCE` writes
   `fingerprints.json` under a lock in `.cache/reference/`.
 - The crop tests build `crop.candidates` once per set of kinds (`test_crop.candidates`, also patched into `cli`).
@@ -55,40 +60,50 @@ Importing any module has no side effects; only `cli.main` (after choosing the ba
 
 | Module | Contents |
 |---|---|
-| `cli.py` | `parse_args` (`--label`: `label_kinds`, a list that replaces the default `countries`; `none` = no labels), `graph_fills` (palette + Baikonur), `main()`: the pipeline as a sequence of stage calls |
-| `data.py` | `fetch`, `fetch_all`, `confirm_download`, `etopo15_tile`, file names (`MARINE`: the marine label areas; `RIVERS`), `CRS`, `STATE_COUNTRIES`, lakes filter, `is_dependency`, `parent_index`, `is_labeled`, `load_*` (`load_rivers`: scalerank <= `RIVER_MAX_RANK`, no canals) |
-| `frame.py` | `MapFrame` (transformers, outline, extent, `crs`, `globe`, `clip`, `label_scale`, `width_in`/`height_in`, `px_per_unit`, `units_per_in`, `canvas`, `project`, `visible`, `to_px`, `px_to_map`), `make_frame`, `cut`, `join_at_antimeridian`, `lon_ranges`, `DPI`, `POSTER_WIDTH_IN` |
-| `crop.py` | `--crop`: `parse_box`, `box_region`, `extent`, `sphere_centre`, `sample_lonlat`, `clip_boxes`, `canvas_centre`, `reach`, `seam_boxes`, `globe_outline`, `crop_frame`, `round_pole`, `fit_frame`, `canvas_frame`, `with_label_scale`, `parse_centre`, `centre_frame`, `centre_recipe`, `centre_spec`, `Candidate`, `candidates`, `matches`, `describe`, `checklist`, `choose` |
+| `cli.py` | `parse_args` (`--label`: an ordered list replacing the default `countries`; `water` expands in place; `none` = no labels), `main()` (the pipeline as a sequence of stage calls), `place` (placing with the progress line and summary), `shown_rivers` |
+| `data.py` | Natural Earth/ETOPO downloads (`fetch`, `fetch_all`, `etopo15_tile`), file names, `load_*`, which features are dependencies/labelled |
+| `frame.py` | `MapFrame`: projection, canvas, `project`/`visible`/`to_px`, `label_scale`; `make_frame` (world), antimeridian helpers, `DPI`, `POSTER_WIDTH_IN` |
+| `crop.py` | `--crop`: box/centre/name specs (`parse_box`, `parse_centre`, `candidates`, `choose`) -> `crop_frame`/`centre_frame`, `centre_recipe` |
 | `colorspace.py` | OKLab/OKLCH conversions, `fit_gamut`, `darken` |
-| `coloring.py` | `merge_into_parents`, `adjacency`, `add_proximity_edges`, `color_graph`, `make_palette`, `load_or_compute_coloring` (cache), `spot_check`, `OCEAN` |
-| `disputed.py` | `--disputed`: `parse_note`, `ALIASES`, `HAND_CLAIMS`, `LABEL_TEXT`, `Dispute`, `load_disputes`, `dispute_edges`, `dispute_fills`, `stripe_parts`, `border_lines`, `disputed_label_args` |
-| `topographic.py` | `--type topographic`: `elevation_grid` (ETOPO -> cached 3' grid), `Grid` (a window has an origin), `elevation_window`, `read_etopo`, `read_tiles`, `elevation_for`, `sample`, `Scale` (`LAND`, `SEA`, `ICE`), `Contours`, `colorize`, `relief`, `shade`, `soften`, `poster_grid`, `polygon_mask`, `coastline`, `draw_topography` |
-| `colorbars.py` | `--type topographic`: `bar_region`, `globe_side`, `inner_side`, `curved_title`, `draw_colorbar` (right-triangle bars in the canvas corners; rectangles in a crop) |
-| `earth.py` | `--color earth`: `earth_values` (raster sampling, cache), `earth_fill`, `build_regions`, `share_across_seam`, `join_touching`, `fill_at` |
+| `coloring.py` | graph colouring (`adjacency`, `add_proximity_edges`, `color_graph`), `make_palette`, `load_or_compute_coloring` (cache), `OCEAN` |
+| `disputed.py` | `--disputed`: `load_disputes` (`NOTE_BRK` parsing, `ALIASES`, `HAND_CLAIMS`), `dispute_edges`, `stripe_parts`, `border_lines` |
+| `topographic.py` | `--type topographic`: elevation data (`elevation_grid`, `elevation_for`), `Scale`s, `relief`, `coastline`, `draw_topography` |
+| `colorbars.py` | `--type topographic`: `draw_colorbar` (right-triangle bars in the canvas corners; rectangles in a crop), `curved_title` |
+| `earth.py` | `--color earth`: `earth_values` (raster sampling, cache), `earth_fill`, `build_regions`, `fill_at` |
 | `pins.py` | `load_pins`, `PinStyle` (every sprite shading constant), `pin_sprite`, `draw_pins`, `pick_pins` |
-| `labels/label.py` | `Label` dataclass, `make_labels` (anchors, sizes, exclaves), `decide_out_and_wrap` |
-| `labels/regions.py` | `--label territories`: `ChildRegion`, `HAND_PICKED` (parent + lon/lat boxes), `child_regions` |
-| `labels/water.py` | `--label oceans,seas,lakes,straits,rivers,water`: `kinds_from_labels`, `classify`, `WaterBody`, `load_water_bodies`, `river_name`, `longest_paths`, `load_river_bodies`, `best_stretch`, `river_label`, `fit_curve`, `body_curve`, `WaterLabel`, `make_water_labels`, style constants |
-| `labels/placement.py` | `CostWeights`, `Placement` (per-label arrays, water glyph boxes), `cost_batch`/`water_cost`, `candidates`, `clashes`, `place_labels` (`fixed`), `place_with_water` (drop loop), `place_all` (rivers last), `leader_ends` |
-| `labels/geometry.py` | `rect`, `nearest_point_on_rect`, `segment_hits_rects`, `segments_cross`, `two_line` |
-| `curves.py` | `arc_lengths`, `along`, `bend` (points along a polyline + its left normal): text bending for `colorbars.curved_title` and water labels |
-| `render.py` | `new_figure`, `draw_countries`, `draw_stripes`, `draw_borders`, `draw_states`, `draw_rivers`, `draw_lakes`, `subtract_lakes`, `draw_labels`, `draw_water_labels`, line widths and z-orders |
+| `labels/text.py` | text as `TextPath` outlines, no figure needed: `font`, `text_width`, `lines`, `bent` (glyphs along a curve) |
+| `labels/label.py` | country labels: `Label`, `lay_out`, `make_labels` (anchors, sizes, exclaves), `decide_out_and_wrap` |
+| `labels/regions.py` | `--label territories`: `HAND_PICKED` (parent + lon/lat boxes), `child_regions` |
+| `labels/water.py` | water and river labels: `classify`, `load_water_bodies`, `load_river_bodies`, `fit_curve`, `river_label`, `WaterLabel`, `make_water_labels`, style constants, `river_width` |
+| `labels/placement.py` | the solver: `Placement` (per-label arrays; knows labels only as `Placeable`s), `CostWeights`, `FIXED`/`NUDGE`/`FREE`, `place_labels`, `clash`/`clashes` |
+| `labels/placeable.py` | `Placeable`: what the solvers ask of a country or water label |
+| `labels/kernels.py` | numba (`@njit(cache=True)`) loops behind the solver; weights passed as an array in `CostWeights` field order (`weight_array`) |
+| `labels/priority.py` | `place_by_priority` (prints nothing; returns an `Outcome` indexed like its entries), `ranks_by_quantile`, `check_step`, `Unplaced`, `Settled` |
+| `labels/report.py` | `progress`, `rank_table` (coloured on a tty unless `NO_COLOR`), `summary` (what was skipped and cut) |
+| `labels/geometry.py` | `Coverage` (summed-area table of a shape), `coverage` (cached), `on_feature`, rect helpers |
+| `rivers.py` | `--rivers`: `river_flow` (cached): pieces split at junctions, oriented toward mouths |
+| `disjoint.py` | `DisjointSets` (union-find) |
+| `curves.py` | `arc_lengths`, `along`, `bend`: text bending for colour bar titles and water labels |
+| `render.py` | the `draw_*` layers (labels drawn from the `Placement` alone), `drawable_lakes`, `subtract_lakes`, line widths and z-orders |
 
 Pipeline (`cli.main`):
 1. **Colouring** of all country features. Dependencies (`is_dependency`: `SOVEREIGNT != ADMIN`, not a lease or
    "Indeterminate"; 46 of them, e.g. Greenland, Puerto Rico, Hong Kong) are first dissolved into their parent
    (`merge_into_parents`), so they always share its colour. Then border adjacency (`adjacency`), plus across-water links
-   (`add_proximity_edges`: major countries within `MAX_GAP` = 600 km, biggest first, kept only while the graph stays 5-colourable;
-   then each feature topped up to >= 3 major-country neighbours), then exact DSATUR backtracking (`color_graph`).
+   (`add_proximity_edges`: major countries within `MAX_GAP` = 600 km, those within `CLOSE_GAP` = 100 km first (else
+   the Bahamas lost its link to the US), then biggest first, kept only while the graph, dispute edges included, stays
+   5-colourable; then each feature topped up to >= 3 major-country neighbours), then exact DSATUR backtracking (`color_graph`).
    Usage is balanced by country *count*, with the largest countries given weight 0 so their colours aren't penalised
    (`UNWEIGHTED_LARGEST = 10`, but the test is `rank < 10`, so 9 are exempt; kept for output stability).
 2. **Drawing**: full Robinson globe outline (poles included; the canvas is its bounding box plus a small pad; Antarctica is drawn in
-   hardcoded white with no label), outline stroked, figure background transparent, country fills, state lines for `STATE_COUNTRIES`, Baikonur special case.
-   The country polygons cover lakes, so every lake in `ne_10m_lakes.zip` (a `physical/` NE file) of >= `LAKE_MIN_KM2`,
-   minus the usually-dry `DRY_LAKES`, is painted back in `OCEAN` at zorder 2.5 (above the state lines that cross them;
+   hardcoded white with no label, unclaimed Bir Tawil in `DISPUTED_GREY`: `render.FIXED_FILLS`), outline stroked, figure background transparent, country fills, state lines for `STATE_COUNTRIES`, Baikonur special case.
+   The country polygons cover lakes, so every lake in `ne_10m_lakes.zip` (a `physical/` NE file) covering >= `LAKE_MIN_IN2` = 0.002 in2 of the poster
+   (`drawable_lakes`; ~100 on the world map, a crop shows smaller lakes), minus the usually-dry `DRY_LAKES`, is painted back in `OCEAN` at zorder 2.5 (above the state lines that cross them;
    `holed_patches` keeps islands). The lakes are then subtracted (`subtract_lakes`), so label placement treats them as water.
-3. **Labels**: anchor points, font size, in/out mode, wrapping, then a cost-minimising placement
-   (coordinate descent over candidate positions, rng seed `SEED = 7`) with leader lines for labels that would hide their country.
+3. **Labels**: anchor points, font size, in/out mode, wrapping, then `place_by_priority`: labels are ranked into
+   fifths by full size and placed step by step (rank, then `--label` kind), each step a cost-minimising placement
+   (coordinate descent over candidate positions, rng seed `SEED = 7`) with leader lines for labels that would hide
+   their country. A label that can't fit is skipped; the rank table printed after shows what was placed.
 
 ## Colour scheme
 
@@ -104,11 +119,11 @@ Pipeline (`cli.main`):
 ## Caching
 
 `coloring.json` (in `.cache/`) stores each country's colour class and which classes touch. It is rebuilt when the
-country file, country list, the major-country, dependency or dispute-edge lists (`cache_key`), `N_COLORS`, `MAX_GAP`, `MIN_DEG` or
+country file, country list, the major-country, dependency or dispute-edge lists (`cache_key`), `N_COLORS`, `MAX_GAP`, `CLOSE_GAP`, `MIN_DEG` or
 `COLORING_RULE` change, or with `--recolor`.
 Palette tweaks never change which countries share a class. If you change the colouring *logic*, bump `COLORING_RULE`.
 The script prints a spot-check of same-coloured pairs (Korea/Japan, Malaysia/Philippines, Italy/Greece, France/UK,
-UK/Norway, India/Sri Lanka, Russia/US) on every run; it should be empty.
+UK/Norway, India/Sri Lanka, Russia/US, Bahamas/US) on every run; it should be empty.
 
 ## `--color earth` colouring mode
 
@@ -133,7 +148,8 @@ it first; `ALIASES` maps the note's short names (`U.K.`, `China`...) to `NAME_EN
 (Kosovo, Gaza...), and an unknown name is an error. Features without a claim (DMZ, Ceuta, Isla Aves "multiple") are skipped.
 Today: 72 two-country areas, 11 with 3+ countries, 6 breakaways (self-governing, no countries-file feature: Abkhazia, Donetsk...).
 - Colouring: `dispute_edges` adds an edge between the two countries of every 2-country dispute, with or without the flag,
-  so their stripes always differ (only the US / Marshall Islands, Wake Island, needed it).
+  so their stripes always differ (only the US / Marshall Islands, Wake Island, needed it). They go in before the
+  links across water (added after, they once left no 5-colouring).
 - Stripes (`stripe_parts`): 45-degree '/' bands `STRIPE_WIDTH_IN` wide, counted from the map origin. 3+ countries: plain
   `DISPUTED_GREY`; breakaways: the parent's colour and grey. Disputed polygons are drawn untrimmed (a few islets exist only in this file).
 - Borders: with `--disputed`, fills have no edges and `draw_borders` draws `border_lines`: a disputed outline is dashed
@@ -149,7 +165,7 @@ Today: 72 two-country areas, 11 with 3+ countries, 6 breakaways (self-governing,
 
 `cli.main` branches to `draw_topographic` right after the frame (and `--pick`), so none of the political data, colouring
 or country labels run. `--color`, `--disputed`, `--recolor` and `--label countries,territories` are ignored; water kinds in
-`--label` add water labels (`place_with_water` with no country labels), else no label stage runs. `--ocean` is ignored with `--type political`.
+`--label` add water labels (`place_by_priority` with no country labels), else no label stage runs. `--ocean` is ignored with `--type political`.
 - Data: ETOPO 2022 60" ice-surface GeoTIFF (`data.ETOPO`, Deflate + float predictor, read with rasterio), reduced to `GRID_STEP_DEG` = 3' block means as int16 and cached in `etopo_3min.npy` (keyed on the file size
   and `ELEVATION_RULE`; bump it if the reduction changes). Ice: Natural Earth `glaciated_areas` + `antarctic_ice_shelves_polys`
   (`load_ice`; the shelves' holes are dropped, the islands in them are ice-covered). Land vs water: Natural Earth
@@ -167,7 +183,8 @@ or country labels run. `--color`, `--disputed`, `--recolor` and `--label countri
   (`coastline`) is the outline of the union of the land and ice polygons, as in the political map, minus the
   slivers the union leaves where ice shelves meet land (`SLIVER_M2`, `SLIVER_HOLE_M2`; they drew stray dashes).
   It takes ~3 s. Tracing it from the smoothed pixel mask instead rounded the coast and left river mouths inland.
-- Memory: a 200 dpi run peaks around 3 GB. Work in blocks or in place on the whole-poster arrays; don't use
+- Memory: at 200 dpi the world peaks ~3.3 GB, a square crop ~4.3 GB, the Alps test crop ~5 GB (crops have more
+  pixels than the world poster). Work in blocks or in place on the whole-poster arrays; don't use
   `ax.contour` (its ContourSet keeps a float64 copy of the grid per call, ~665 MB each), use `contour_lines` (contourpy).
 - Colour bars (`colorbars.py`): height bottom-right, depth top-right (`--ocean` only), ice bottom-left. Each is its
   corner quadrant minus the globe grown by `BAR_GAP_IN`, minus `BAR_MARGIN_IN`; signed labels in the gap with a white
@@ -209,7 +226,7 @@ oceans) gets Equal Earth centred on its longitude instead, clipped a hair either
   only (`candidates`, built in the world frame, then lon/lat). A country's extent leaves out what territories label
   separately (`HAND_PICKED`, which also has the far-flung islands for this). `Candidate.aliases` match too: a
   country's `NAME_EN` (UAE), a territory's parent (so `united` lists Alaska (US) beside the United States).
-  Several matches: a `questionary` `checklist` (no select-all/invert keys; exact first, `describe` = text, kind,
+  Several matches: a `questionary` `checklist` (no select-all/invert keys; exact first, then by kind, biggest `full_size` first; `describe` = text, kind,
   and the centre crop that reproduces the crop, to copy and adjust). Every name crop prints that of everything chosen
   (`cropping to France; the same as --crop 2.62,46.33/1375km,1270km`): `centre_recipe` takes the canvas's middle
   (`canvas_centre`) and bisects each size in the crop's projection (`CENTRE_BISECTIONS`). Left out if a centre crop that size picks the other projection (only the US Minor
@@ -225,8 +242,8 @@ oceans) gets Equal Earth centred on its longitude instead, clipped a hair either
   8th shown pixel, + `FINE_PAD_DEG`; runs across +-180 are read in two pieces). The 15" tiles stitch their sources
   roughly at +-180 (a line shaded through Fiji; the 60" file, their block mean, hides it). The data is shown as it is
   (the user's call: no hard-coded smoothing); a read of the tiles across +-180 prints a note instead. `soften` still blurs heights over
-  about a cell when a cell spans > 2 pixels (bilinear heights shade as flat facets). A 200 dpi square crop peaks
-  ~4.3 GB (more pixels than the world poster). Colour bars are rectangles (`BAR_RECT_WIDTH_IN`, `BAR_RECT_LENGTH`) titled along `inner_side`,
+  about a cell when a cell spans > 2 pixels (bilinear heights shade as flat facets).
+  Colour bars are rectangles (`BAR_RECT_WIDTH_IN`, `BAR_RECT_LENGTH`) titled along `inner_side`,
   over the map: water labels are placed in `label_outline` (the canvas minus the bar corners), and a crop's water
   label with a glyph outside the outline is dropped (`placement.outside_outline`).
 - `--pick` with the same `--crop` inverts the crop's projection.
@@ -255,9 +272,42 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
   polygons, largest < 65% of total, plus `FORCE_ISLAND`) use the convex-hull centroid and a hull-based size.
 - Font size scales with sqrt(area), clamped to 6-30 pt. A label covering >= 60% of its country (or much wider than a
   short narrow one) becomes an "out" label with a leader line. Long names wrap onto 2 lines when much wider than their
-  country; stuck labels shrink slightly (floor ~5 pt) rather than being dropped.
+  country; stuck labels shrink (floor `SHRINK_MIN_PT` x `label_scale`) before being skipped.
+- Country labels are outlines like water labels (`lay_out`: `TextPath`, box = advance width x line height, padded),
+  drawn as `PathPatch`es (`render.glyph_patch`, round joins or the halo spikes at sharp corners) for the kept labels only.
 - Cost terms: label must lie inside the globe outline, label-label overlap, covering another leader's dot, leader/label and leader/leader crossings,
-  drifting outside the country, leader length; weights in `CostWeights`. All labels are movable.
+  drifting outside the country (`off_feature`, `drift`), hanging off it by over `OVERHANG_MAX` (`overhang`, in
+  `OVERHANG_SLICES` upright slices), leader length, a nudged label's distance from where it settled; weights in `CostWeights`.
+  Box tests against a country, water body or the outline read its `Coverage` (summed-area table), not shapely; the
+  inner loops are numba kernels (`labels/kernels.py`, compiled on first run and cached in `__pycache__`).
+
+## Priority placement (`labels/priority.py`)
+
+- Every label has a `full_size` (km2 of the whole country, region or water body, km of the whole river, however
+  much the frame shows). `ranks_by_quantile` cuts all labels together, biggest first, into `N_RANKS` = 5 equal
+  fifths; a river of L km counts as `RIVER_KM2` x L^`RIVER_POWER` = 1.6 L^1.19 km2. The power is the
+  trend of Wikidata drainage basins (P2053) against length (751 rivers, basin ~ 37 L^1.19, r 0.70); the true 37
+  moved rivers up a rank, so 1.6 keeps ~80 rivers in rank 1 of `--label water`. Not re-derived at run time. `steps`: rank by rank, then the `--label` kinds in
+  order, each step's labels biggest first. The ranker is a parameter (`rank=`), so tests pin ranks.
+- One `Placement` holds every label; each step solves it over the active ones (kept so far, and the step's), the step's labels `FREE`, the kept labels of this rank and the one before `NUDGE`d
+  (they pay `CostWeights.nudge` per height/em from where they settled, at most `nudge_max`, and shrink to no less
+  than `NUDGE_MIN_SCALE` of their settled size), older ones `FIXED`. Then `check_step` checks the step's labels smallest
+  first: a country label clashing (`clash`, symmetric for every kind) with a label still kept, or hanging off its
+  country by over `OVERHANG_MAX`, becomes 'out' (leader) and the step is re-solved; one already out and clashing, or a water label clashing or hanging off its
+  water by over `OVERHANG_MAX` = 30% at either end (`overhang_of`: per glyph; a gap in the middle is fine) or out of
+  a crop's outline, is skipped for good. A water label pushed off its water first looks for a smaller label of the
+  step overlapping it at its anchor: that one is skipped instead and the step re-solved.
+- Saturation cut: features whose label can't be laid out at all (`Unplaced`: a river shorter than its name, a bay
+  under `WATER_MIN_INSIDE`) are ranked with the labels and count as failed in their step. The step after which a kind's
+  failures so far reach `CUT_SHARE` = 30% of *all* its labels (every rank; and >= `CUT_MIN_DROPS` = 5) is undone (a
+  `Settled.copy` snapshot, so what it nudged goes back) and the kind is *cut* at that rank: no later rank of it is
+  tried (30% of the one rank cut too early: one crowded fifth dropped everything after it). The rank table shows
+  `(fit/)of` there: the labels placed before the cut undid them (`Outcome.cut_fit`). Every kind can be cut, countries too. A label-driven
+  feature (rivers: `cli.shown_rivers`) is drawn iff its rank is before its kind's cut; one without a label ranks
+  `UNLABELED` = 6, drawn only when the kind wasn't cut.
+  Lakes are not label-driven (`LAKE_MIN_IN2`).
+- So big labels are never pushed around by small ones (a river name once moved Czech Republic to Denmark), and in
+  a crop the frame's biggest features win, whatever their kind.
 
 ## Water labels (`labels/water.py`)
 
@@ -265,7 +315,7 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
   `classify`: ocean -> oceans; sea/gulf/bay/sound/fjord/lagoon/inlet -> seas; strait/channel -> straits;
   reefs, rivers, unnamed `generic` areas and names ending " River" (Saint Lawrence is a 'channel') never. North + South
   Atlantic are one ATLANTIC; the Pacific is split at x = 0 into two bodies. Each body is labelled once, on its largest
-  polygon; order = oceans, then scalerank, then area (most important first; the drop loop removes from the end).
+  polygon; bodies are listed biggest `full_size` first (of two with one name, the bigger is kept).
 - Curve (`fit_curve`): principal axis of interior sample points, tilt clamped, quadratic fit with the bend clamped
   (`MAX_BEND_DEG`, `MAX_TILT_DEG`), read left to right (bottom to top within 1 degree of vertical). Oceans too, fitted on
   the whole ocean, so ATLANTIC and the left PACIFIC run pole to pole (a level label at the widest water put them in the
@@ -273,43 +323,52 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
   crop), gets an arc below the hole instead (`ring_arc`). Sizes fill `SEA_FILL` of the curve within `WATER_MIN_PT`..`SEA_MAX_PT` (oceans
   `OCEAN_MIN_PT`..`OCEAN_PT`, letter-spaced caps; all upright).
 - `WaterLabel`: one bent `Path` per label plus a halo-padded box per glyph (`parts`), both relative to its position.
-  Bodies whose name doesn't sit >= `WATER_MIN_INSIDE` over them at their anchor are left out up front (~160 of ~380 kept).
-- Solver: water labels come after the country labels in `Placement`; x/y is their anchor position. Country terms skip
-  water labels' boxes (so with no water every array is as before), plus overlap with water glyph boxes and their own
-  leader crossing them. Water labels: glyph-box overlap with everything, other leaders/dots, `outside_water` (glyph
-  centres over the body, approximate), `water_drift`, outside globe. `clashes` -> (country, water); country labels shrink
-  only for country clashes, water labels for anything.
-- `place_with_water`: re-solves (warm start, country sizes reset) dropping per group of failing labels the least
-  important; a failing label (off its water, or clashing at its minimum size) is grouped with the water labels it
-  touches where it is or at its anchor, so the solver pushing a random rival off its water can't drop the wrong one.
+  Bodies whose name doesn't sit >= `WATER_MIN_INSIDE` over them at their anchor are left out up front (`inside_share`:
+  glyph box area whose centres are on the water, as the solver counts it).
+- Solver: in `Placement` a water label's x/y is its anchor position. Every label pays
+  the same terms on its rects (`label_cost`); a water label's `off_feature` counts glyph centres over the body. A label still clashing (`clashes`, any kind)
+  after descent shrinks a step (`shrink_step`): in the `Placement` only (`size`, extents, rects); the labels stay as
+  laid out and the draw functions take the size from the placement.
+- Water labels also try steps of a tenth and a fifth of their extent (`WATER_STEP_SCALES`: big steps leave narrow
+  water); `CostWeights.overhang` keeps them within `OVERHANG_MAX` of their water.
+- Every label overlapping another also tries the shortest moves that clear each overlap (`kernels.escapes`,
+  `ESCAPE_PX` past touching): steps are too coarse for a pixel or two (Lake Michigan, as long as its lake, was
+  skipped for 1 px into the United States label's box).
 - Drawing: `PathPatch` in `WATER_TEXT` (OKLCH L 0.50 in the ocean hue) with an `OCEAN`-coloured halo, under the country
-  labels. `--label countries,water` takes ~28 s (vs ~10 s), mostly the country labels' extra passes.
+  labels. `--label countries,water` takes ~23 s (vs ~10 s).
 
 ## `--rivers`
 
-Natural Earth `ne_10m_rivers_lake_centerlines` (`data.RIVERS`), scalerank 0 (biggest) to `RIVER_MAX_RANK` = 8;
-9+ are short tributaries, canals are dropped. `render.draw_rivers` draws them in `RIVER` (OKLCH 0.54/0.10/240, darker
-than the ocean so it shows on every fill), `river_width` thinning linearly from `RIVER_WIDTH_MAX` to `RIVER_WIDTH_MIN`,
+Natural Earth `ne_10m_rivers_lake_centerlines` (`data.RIVERS`), every scalerank 0 (biggest) to 12; canals count as
+rivers. Drawn on both map types. With river labels, only the lines whose rank isn't cut are drawn (`cli.shown_rivers`), plus everything
+downstream of them (deltas, a river's last stretch below a junction); without, every line.
+- Flow (`rivers.py`): Natural Earth's lines run either way, so `river_flow` cuts them at every junction (an end on a
+  line's middle within `FLOW_JOIN_M` = 2 km), joins ends within 2 km (wider joined neighbouring sources: the Danube
+  flowed up the Tisza) or an inland end to the nearest end of its name within `SAME_NAME_JOIN_M` (a river broken at a
+  lake), takes the ends within `MOUTH_M` of the coast (`load_land`, so `--rivers` downloads it) as mouths (an inland
+  network: its most important line's end nearest the coast or a lake), and orients each piece toward the nearest
+  mouth. Canals (`CANAL` in the name) stand alone, or the Nile drained down the Suez Canal. Known miss: Natural
+  Earth's Kovzha crosses the Volga-Baltic divide, so a drawn Volga draws the Sheksna, Svir and Neva. ~1 s, cached per run.
+  Pieces are what's drawn (`RiverFlow.pieces`, Natural Earth's columns). `render.draw_rivers` draws them in `RIVER` (OKLCH 0.54/0.10/240, darker
+than the ocean so it shows on every fill), `river_width` thinning linearly from `RIVER_WIDTH_MAX` to `RIVER_WIDTH_MIN` at `RIVER_THIN_RANK` = 8,
 thin ones first. `Z_RIVERS` = 2.2: above the state lines, below the lakes, which hide the centrelines through them.
 Labels ignore them.
-
-`--type topographic` draws them too.
 
 ## River labels (`--label rivers`)
 
 - `rivers` is a water kind; `water` = all kinds (oceans, seas, lakes, straits, rivers). `--label rivers` or `water`
   also draws the rivers (`cli.draws_rivers`).
 - Bodies (`load_river_bodies`): the drawn rivers grouped by `river_name(name_en)` (English, merges Rhein/Rhin; drops
-  " River", `NOT_RIVERS` delta channels and canals, `RIVER_NAMES` fixes), scalerank <= `RIVER_LABEL_MAX_RANK`. Natural
+  " River", `RIVER_NAMES` fixes; canals and delta channels are named too, though too short to fit on the world map), every drawn river. Natural
   Earth breaks rivers at lakes, reservoirs and junctions, so `longest_paths` joins ends within `RIVER_JOIN_M` and takes
   the longest path through each network's maximum spanning tree (an exhaustive search blew up on deltas). Same-named
   networks `RIVER_REPEAT_M` apart are labelled separately (Colorado US/Argentina). `WaterBody.geom` is the line.
-- `river_label`: italic, `river_size` by rank; `best_stretch` picks the straightest, most level stretch near the middle
+- `river_label`: italic, `river_size` linear in its line width (`river_width` of its thickest piece's scalerank: `RIVER_MAX_PT` 8.5 down to `RIVER_MIN_PT` 4.2); `best_stretch` picks the straightest, most level stretch near the middle
   for the name + an em; `fit_curve` on it; `lay_out(rise=)` puts the baseline `RIVER_GAP_EM` above the curve plus
   however far the river wiggles above it (`height_above`). Its `geom` is a `RIVER_CORRIDOR_EM` buffer of the whole river.
-- Placement: `place_all` places countries + other water first, then the rivers with all of those `fixed` (so a river
-  name can't push a country label off its country: it once moved Czech Republic to Denmark). Rivers come last, so the drop loop drops them first. Drawn in `RIVER_TEXT` with the country labels' white halo.
-- `--label countries,rivers` takes ~13 s; ~180 river names kept.
+- Placement: by priority like every label (a river ranks by its whole length). Drawn in `RIVER_TEXT` with the
+  country labels' white halo; capped at `RIVER_MAX_PT` and `RIVER_SCALE_MAX` x the crop's scale.
+- `--label countries,rivers` takes ~11 s.
 
 ## Gotchas
 

@@ -1,28 +1,33 @@
 """Water labels (--label oceans, seas, lakes, water, rivers): which water bodies get a name, the curve each name
 follows, and its glyphs laid out along it. Bodies are in projected map units; labels are in poster pixels."""
 
-from dataclasses import dataclass
+import functools
+from collections.abc import Collection
+from dataclasses import dataclass, field
 from typing import Literal
 
 import geopandas as gpd
 import numpy as np
 import shapely
+from pyproj import Geod, Transformer
 from matplotlib.colors import to_rgb
-from matplotlib.font_manager import FontProperties
 from matplotlib.path import Path
-from matplotlib.textpath import TextPath, TextToPath
+from matplotlib.textpath import TextPath
 from shapely.geometry import LineString, Polygon
 from shapely.geometry.base import BaseGeometry
 
 from worldmap.coloring import OCEAN
 from worldmap.colorspace import RGB, fit_gamut, srgb_to_oklch
 from worldmap.curves import along, arc_lengths, bend
-from worldmap.data import load_marine, load_rivers
-from worldmap.frame import DPI, MapFrame
+from worldmap.data import EQUAL_AREA_CRS, load_marine, load_rivers
+from worldmap.disjoint import DisjointSets
+from worldmap.frame import MapFrame
+from worldmap.labels.geometry import Coverage, coverage, on_feature
+from worldmap.labels.priority import UNLABELED, Unplaced
+from worldmap.labels.text import PX_PER_PT, bent, font, text_width
 
-WATER_KINDS = ("oceans", "seas", "lakes", "straits", "rivers", "water")  # the --label values; water = all the others
 Kind = Literal["oceans", "seas", "lakes", "straits", "rivers"]
-ALL_KINDS: set[Kind] = {"oceans", "seas", "lakes", "straits", "rivers"}
+WATER_KINDS: tuple[Kind, ...] = ("oceans", "seas", "lakes", "straits", "rivers")  # their --label values (and --label water's order)
 SEA: Kind = "seas"
 CLASSES: dict[str, Kind] = {"ocean": "oceans", "strait": "straits", "channel": "straits"}
 CLASSES |= {c: SEA for c in ("sea", "gulf", "bay", "sound", "fjord", "lagoon", "inlet")}  # reefs, river mouths and the unnamed 'generic' areas are never labelled
@@ -43,27 +48,29 @@ _ocean_hue = srgb_to_oklch(to_rgb(OCEAN))[2]
 _fitted = fit_gamut(0.50, 0.08, _ocean_hue)
 assert _fitted is not None
 WATER_TEXT: RGB = _fitted[0]  # a deeper blue in the ocean's hue
-RIVER_LABEL_MAX_RANK = 6  # rivers of Natural Earth scalerank up to this get a name
-RIVER_MAX_PT, RIVER_MIN_PT = 10, 7  # river names: italic, this size at scalerank <= 1 down to RIVER_LABEL_MAX_RANK
+RIVER_WIDTH_MAX, RIVER_WIDTH_MIN = 1.6, 0.3  # line widths (pt) at scalerank 0 and RIVER_THIN_RANK
+RIVER_THIN_RANK = 8  # rivers of this scalerank and beyond are drawn thinnest
+RIVER_MAX_PT, RIVER_MIN_PT = 8.5, 4.2  # river names: italic, linear in the river's line width, these at its widest and thinnest
+RIVER_SCALE_MAX = 1.2  # river names grow with a crop's label_scale up to this, no more: they stay small
 RIVER_GAP_EM = 0.3  # baseline height over the river
-RIVER_CORRIDOR_EM = 1.6  # a river name's glyph centres should be within this of its river
+RIVER_CORRIDOR_EM = 1.0  # a river name's glyph centres should be within this of its river (more: it slid off where it was bent to fit)
 RIVER_JOIN_M = 30_000  # river pieces whose ends are this close are joined (lakes and reservoirs break them up)
+GEOD = Geod(ellps="WGS84")
+TO_EQUAL_AREA = Transformer.from_crs("EPSG:4326", EQUAL_AREA_CRS, always_xy=True)
 RIVER_REPEAT_M = 1_500_000  # same-named rivers further apart than this are named separately (Colorado, Red...)
 RIVER_TILT_COST = 0.4  # choosing a river's stretch: steepness (0..1 from level to vertical) against wiggliness...
 RIVER_MIDDLE_COST = 0.3  # ...and distance from the river's middle (0..0.5 of its length)
 RIVER_NAMES = {"Grande": "Rio Grande", "Syr Dar": "Syr Darya"}  # Natural Earth name_en (after dropping " River") -> label
-NOT_RIVERS = (" branch", " Branch", " Canal", " Protoka", " Csatorna")  # name endings of delta channels and canals
 _river_text = fit_gamut(0.42, 0.10, _ocean_hue)
 assert _river_text is not None
 RIVER_TEXT: RGB = _river_text[0]  # darker than WATER_TEXT: it sits on land, not water
 RIVER_HALO = (1, 1, 1, 0.55)  # like the country labels'
-PX_PER_PT = DPI / 72
 OCEAN_TEXT = {"Atlantic": "ATLANTIC OCEAN", "Pacific": "PACIFIC OCEAN", "Indian": "INDIAN OCEAN", "Arctic": "ARCTIC OCEAN", "Southern": "SOUTHERN OCEAN"}
 
 
-def kinds_from_labels(label: set[str]) -> set[Kind]:
+def kinds_from_labels(label: Collection[str]) -> set[Kind]:
     """The water kinds asked for in --label (countries and territories are not water)."""
-    return set(ALL_KINDS) if "water" in label else {k for k in ALL_KINDS if k in label}
+    return {k for k in WATER_KINDS if k in label}
 
 
 def classify(featurecla: str) -> Kind | None:
@@ -77,6 +84,7 @@ class WaterBody:
     kind: Kind
     rank: int  # Natural Earth scalerank: 0 = oceans, 1 = major seas, ... lower is more important
     geom: Polygon | LineString  # the piece the label goes on (a river's line), in map units
+    full_size: float  # km2 of the whole body, or km of the whole river, however much the frame shows: its priority
 
 
 def largest(geom: BaseGeometry) -> Polygon:
@@ -88,10 +96,13 @@ def ocean_word(name: str) -> str:
 
 
 def load_water_bodies(kinds: set[Kind], lakes_projected: gpd.GeoDataFrame, frame: MapFrame) -> list[WaterBody]:
-    """The water bodies of `kinds`, most important first: oceans, then by scalerank, then by area. North and South
+    """The water bodies of `kinds`, biggest first (full_size; of two of one name, the bigger). North and South
     Atlantic are one ATLANTIC; on the world map the Pacific, cut by the antimeridian, is labelled twice (left and right of x = 0).
     Every other body is labelled once, on its largest polygon."""
-    marine = frame.visible(frame.project(load_marine()))
+    everywhere = load_marine()
+    whole_oceans = everywhere[everywhere.featurecla == "ocean"]
+    ocean_km2 = whole_oceans.km2.groupby(whole_oceans.name.map(ocean_word)).sum()  # the whole of each, shown or not
+    marine = frame.visible(frame.project(everywhere))
     marine = marine[~marine.geometry.is_empty]
     lakes_projected = frame.visible(lakes_projected)
     marine = marine[marine.name.notna() & ~marine.name.str.endswith(" River")]  # rivers come later, with river drawing
@@ -106,19 +117,19 @@ def load_water_bodies(kinds: set[Kind], lakes_projected: gpd.GeoDataFrame, frame
             halves = [whole.intersection(shapely.box(x0, y0, 0, y1)), whole.intersection(shapely.box(0, y0, x1, y1))]
         else:
             halves = [whole]
-        bodies += [WaterBody(OCEAN_TEXT[word], "oceans", 0, largest(h)) for h in halves]
+        bodies += [WaterBody(OCEAN_TEXT[word], "oceans", 0, largest(h), float(ocean_km2[word])) for h in halves]
     for row in marine[marine.featurecla != "ocean"].itertuples():
         kind = classify(row.featurecla)
         assert kind is not None
-        bodies.append(WaterBody(row.name, kind, int(row.scalerank), largest(row.geometry)))
+        bodies.append(WaterBody(row.name, kind, int(row.scalerank), largest(row.geometry), float(row.km2)))
     if "lakes" in kinds:
-        bodies += [WaterBody(r.name, "lakes", int(r.scalerank), largest(r.geometry)) for r in lakes_projected.itertuples() if isinstance(r.name, str) and not r.geometry.is_empty]
+        bodies += [WaterBody(r.name, "lakes", int(r.scalerank), largest(r.geometry), float(r.km2)) for r in lakes_projected.itertuples() if isinstance(r.name, str) and not r.geometry.is_empty]
     if "rivers" in kinds:
         bodies += load_river_bodies(frame)
-    bodies.sort(key=lambda b: (b.kind != "oceans", b.rank, b.kind == "rivers", -(b.geom.length if b.kind == "rivers" else b.geom.area)))
+    bodies.sort(key=lambda b: -b.full_size)
     seen: set[str] = set()
     unique = []
-    for b in bodies:  # oceans and rivers may share a name (the two Pacifics, far-apart rivers); others once, marine before lakes
+    for b in bodies:  # oceans and rivers may share a name (the two Pacifics, far-apart rivers); others once
         if b.kind in ("oceans", "rivers") or b.text not in seen:
             unique.append(b)
             seen.add(b.text)
@@ -126,8 +137,8 @@ def load_water_bodies(kinds: set[Kind], lakes_projected: gpd.GeoDataFrame, frame
 
 
 def river_name(name_en: object) -> str | None:
-    """A river's label from Natural Earth's English name, or None for unnamed lines, delta channels and canals."""
-    if not isinstance(name_en, str) or name_en.endswith(NOT_RIVERS):
+    """A river's label from Natural Earth's English name, or None for unnamed lines."""
+    if not isinstance(name_en, str):
         return None
     name = name_en.removesuffix(" River")
     return RIVER_NAMES.get(name, name)
@@ -138,22 +149,16 @@ def longest_paths(lines: list[LineString], join: float) -> list[LineString]:
     (the gap is bridged straight). The path is the longest through the network's maximum spanning tree (exact
     when the network has no loops; delta branches and braids make loops)."""
     ends = shapely.points([c for line in lines for c in (line.coords[0], line.coords[-1])])
-    node = list(range(len(ends)))  # union-find: first over line ends, then over the tree's nodes
-
-    def root(i: int) -> int:
-        while node[i] != i:
-            i = node[i]
-        return i
-
+    joined = DisjointSets(len(ends))  # line ends that meet: one node
     for a, b in shapely.STRtree(ends).query(ends, predicate="dwithin", distance=join).T:
-        node[root(int(a))] = root(int(b))
-    ends_of = [(root(2 * k), root(2 * k + 1)) for k in range(len(lines))]
-    node = list(range(len(ends)))
+        joined.union(int(a), int(b))
+    ends_of = [(joined.find(2 * k), joined.find(2 * k + 1)) for k in range(len(lines))]
+    linked = DisjointSets(len(ends))  # the tree's nodes linked so far
     tree: dict[int, list[tuple[int, int, int]]] = {}  # node -> (line, other node, direction)
     for k in sorted(range(len(lines)), key=lambda k: -lines[k].length):  # Kruskal, longest lines first
         u, v = ends_of[k]
-        if root(u) != root(v):
-            node[root(u)] = root(v)
+        if linked.find(u) != linked.find(v):
+            linked.union(u, v)
             tree.setdefault(u, []).append((k, v, 1))
             tree.setdefault(v, []).append((k, u, -1))
 
@@ -188,8 +193,36 @@ def longest_paths(lines: list[LineString], join: float) -> list[LineString]:
     return sorted(paths, key=lambda g: -g.length)
 
 
+@functools.cache
+def whole_rivers() -> dict[str, list[tuple[BaseGeometry, float]]]:
+    """Per river name, each river of that name: its unclipped features (EQUAL_AREA_CRS metres) and their total
+    length (km). Natural Earth's pieces of one river (broken at lakes, reservoirs and junctions) come within
+    RIVER_REPEAT_M of each other, as load_river_bodies names them once; rivers further apart are different rivers
+    (the Colorados of the US and Argentina)."""
+    rivers = load_rivers()
+    text = rivers.name_en.map(river_name)
+    rivers, text = rivers[text.notna()], text[text.notna()]
+    km = np.array([GEOD.geometry_length(g) / 1000 for g in rivers.geometry.values])
+    metres = np.asarray(rivers.to_crs(EQUAL_AREA_CRS).geometry.values)
+    out: dict[str, list[tuple[BaseGeometry, float]]] = {}
+    for name, rows in text.groupby(text).indices.items():
+        mine = metres[rows]
+        sets = DisjointSets(len(rows))
+        for a, b in zip(*np.nonzero(shapely.dwithin(mine[:, None], mine[None, :], RIVER_REPEAT_M))):
+            sets.union(int(a), int(b))
+        out[str(name)] = [(shapely.union_all(metres[rows[g]]), float(km[rows[g]].sum())) for g in sets.groups()]
+    return out
+
+
+def river_length(text: str, part: LineString, frame: MapFrame) -> float:
+    """The whole length (km) of the river named `text` that `part` (projected, in `frame`) lies on."""
+    mid = part.interpolate(0.5, normalized=True)
+    x, y = TO_EQUAL_AREA.transform(*frame.to_lonlat.transform(mid.x, mid.y))
+    return min(whole_rivers()[text], key=lambda r: r[0].distance(shapely.Point(x, y)))[1]
+
+
 def load_river_bodies(frame: MapFrame) -> list[WaterBody]:
-    """One body per river name of scalerank <= RIVER_LABEL_MAX_RANK: the longest path through its features
+    """One body per drawn river name: the longest path through its features
     (longest_paths), plus any other path at least RIVER_REPEAT_M from those kept (two rivers with one name). Rank =
     the path's most important feature."""
     rivers = frame.visible(frame.project(load_rivers()))
@@ -197,8 +230,6 @@ def load_river_bodies(frame: MapFrame) -> list[WaterBody]:
     rivers["text"] = rivers.name_en.map(river_name)
     bodies = []
     for text, group in rivers[rivers.text.notna()].groupby("text"):
-        if group.scalerank.min() > RIVER_LABEL_MAX_RANK:
-            continue
         parts = longest_paths(list(shapely.get_parts(shapely.line_merge(shapely.union_all(group.geometry.values)))), RIVER_JOIN_M)
         kept: list[LineString] = []
         for part in parts:
@@ -206,9 +237,23 @@ def load_river_bodies(frame: MapFrame) -> list[WaterBody]:
                 kept.append(part)
         for part in kept:
             rank = int(group.scalerank[shapely.dwithin(group.geometry.values, part, 1.0)].min())
-            if rank <= RIVER_LABEL_MAX_RANK:
-                bodies.append(WaterBody(str(text), "rivers", rank, part))
+            bodies.append(WaterBody(str(text), "rivers", rank, part, river_length(str(text), part, frame)))
     return bodies
+
+
+def river_ranks(rivers_projected: gpd.GeoDataFrame, bodies: list[WaterBody], ranks: np.ndarray) -> np.ndarray:
+    """Each river line's rank: that of the nearest of the `bodies` (with their `ranks`) of its name (river_name),
+    or UNLABELED if none has it (unnamed, or rivers not labelled)."""
+    out = np.full(len(rivers_projected), UNLABELED)
+    names = rivers_projected.name_en.map(river_name).to_numpy()
+    lines = rivers_projected.geometry.to_numpy()
+    for text in {b.text for b in bodies}:
+        mine = [k for k, b in enumerate(bodies) if b.text == text]
+        rows = np.flatnonzero((names == text) & ~shapely.is_empty(lines))
+        if len(rows):
+            gap = shapely.distance(lines[rows][:, None], np.array([bodies[k].geom for k in mine])[None, :])
+            out[rows] = ranks[mine][gap.argmin(axis=1)]
+    return out
 
 
 def interior_points(geom: Polygon) -> np.ndarray:
@@ -305,7 +350,6 @@ def fit_curve(geom: Polygon, max_tilt_deg: float, n: int = 64, max_bend_deg: flo
 class WaterLabel:
     text: str
     kind: Kind
-    rank: int
     geom: BaseGeometry  # the body, in poster px
     anchor_x: float  # the curve's middle (px): where the label wants to be
     anchor_y: float
@@ -313,32 +357,38 @@ class WaterLabel:
     glyphs: Path  # the bent text, in px relative to the label's position
     parts: np.ndarray  # (k, 4) x0, y0, x1, y1 per non-space glyph, px relative to the label's position, halo-padded
     label_scale: float = 1.0  # the frame's
+    full_size: float = 0.0  # its body's (WaterBody.full_size)
+    cover: Coverage | None = field(default=None, repr=False, compare=False)  # geom's, once needed (geometry.coverage)
 
     @property
     def min_size(self) -> float:
         """The smallest it may shrink to (pt): oceans stay bigger than any sea."""
         return (OCEAN_MIN_PT if self.kind == "oceans" else WATER_MIN_PT) * self.label_scale
 
-    def scale(self, factor: float) -> None:
-        """Shrink the label by `factor` about its position."""
-        self.glyphs = Path(np.asarray(self.glyphs.vertices) * factor, self.glyphs.codes)
-        self.parts = self.parts * factor
-        self.size *= factor
+    @property
+    def name(self) -> str:
+        return self.text
+
+    @property
+    def width(self) -> float:
+        return float(self.parts[:, 2].max() - self.parts[:, 0].min())
+
+    @property
+    def height(self) -> float:
+        return float(self.parts[:, 3].max() - self.parts[:, 1].min())
+
+    @property
+    def out(self) -> bool:
+        return False
+
+    @property
+    def water(self) -> bool:
+        return True
 
     def inside_share(self, x: float, y: float) -> float:
-        """The share of the glyph boxes' area over the body when the label is at (x, y)."""
-        boxes = shapely.box(self.parts[:, 0] + x, self.parts[:, 1] + y, self.parts[:, 2] + x, self.parts[:, 3] + y)
-        total = shapely.area(boxes).sum()
-        return float(shapely.area(shapely.intersection(boxes, self.geom)).sum() / total) if total > 0 else 0.0
-
-
-def font(size: float, italic: bool = False) -> FontProperties:
-    return FontProperties(size=size, style="italic" if italic else "normal")
-
-
-def text_width(text: str, prop: FontProperties) -> float:
-    """Advance width of `text` in points."""
-    return TextToPath().get_text_width_height_descent(text, prop, ismath=False)[0] if text else 0.0
+        """The share of the glyph boxes' area on the body when the label is at (x, y), as the solver has it
+        (geometry.on_feature: a box is on it if its centre is)."""
+        return on_feature(coverage(self), self.parts, x, y, False, 0)[0]
 
 
 def extend(curve: np.ndarray, length: float) -> np.ndarray:
@@ -363,23 +413,13 @@ def lay_out(body: WaterBody, curve: np.ndarray, size: float, geom_px: BaseGeomet
     centre = reach + length / 2  # distance along long_curve of the curve's middle
     h = 1.0  # px, for tangents
     anchor = bend(long_curve, np.array([centre]), np.zeros(1), h)[0]
-    vertices, codes, parts = [], [], []
-    for k, ch in enumerate(text):
-        if ch.isspace():
-            continue
-        x = text_width(text[:k], prop) + tracking * k
-        glyph = TextPath((x, 0), ch, prop=prop)
-        if len(glyph.vertices) == 0:
-            continue
-        u = centre + (glyph.vertices[:, 0] - total / 2) * PX_PER_PT
-        v = (glyph.vertices[:, 1] - middle) * PX_PER_PT if rise is None else glyph.vertices[:, 1] * PX_PER_PT + rise
-        bent = bend(long_curve, u, v, h) - anchor
-        vertices.append(bent)
-        codes.append(glyph.codes)
-        pad = WATER_HALO_PX / 2
-        parts.append([*(bent.min(axis=0) - pad), *(bent.max(axis=0) + pad)])
-    glyphs = Path(np.vstack(vertices), np.concatenate(codes))
-    return WaterLabel(body.text, body.kind, body.rank, geom_px, float(anchor[0]), float(anchor[1]), size, glyphs, np.array(parts), label_scale)
+    drop, lift = (middle, 0.0) if rise is None else (0.0, rise)
+    laid = bent(text, prop, long_curve, centre, drop, lift, tracking, h)
+    vertices = [points - anchor for points, _ in laid]
+    pad = WATER_HALO_PX / 2
+    parts = [[*(v.min(axis=0) - pad), *(v.max(axis=0) + pad)] for v in vertices]
+    glyphs = Path(np.vstack(vertices), np.concatenate([codes for _, codes in laid]))
+    return WaterLabel(body.text, body.kind, geom_px, float(anchor[0]), float(anchor[1]), size, glyphs, np.array(parts), label_scale, body.full_size)
 
 
 def body_curve(body: WaterBody) -> np.ndarray:
@@ -387,10 +427,16 @@ def body_curve(body: WaterBody) -> np.ndarray:
     return fit_curve(body.geom, MAX_TILT_DEG)
 
 
+def river_width(rank: int) -> float:
+    """Line width (pt) of a river of Natural Earth scalerank `rank`, thinning linearly to RIVER_THIN_RANK."""
+    t = min(max(rank, 0), RIVER_THIN_RANK) / RIVER_THIN_RANK
+    return RIVER_WIDTH_MAX + t * (RIVER_WIDTH_MIN - RIVER_WIDTH_MAX)
+
+
 def river_size(rank: int) -> float:
-    """A river name's size (pt) from its scalerank."""
-    t = min(max(rank - 1, 0), RIVER_LABEL_MAX_RANK - 1) / (RIVER_LABEL_MAX_RANK - 1)
-    return RIVER_MAX_PT + t * (RIVER_MIN_PT - RIVER_MAX_PT)
+    """A river name's size (pt) from its scalerank: a function of how wide its line is drawn (river_width)."""
+    t = (river_width(rank) - RIVER_WIDTH_MIN) / (RIVER_WIDTH_MAX - RIVER_WIDTH_MIN)
+    return RIVER_MIN_PT + t * (RIVER_MAX_PT - RIVER_MIN_PT)
 
 
 def best_stretch(pts: np.ndarray, length: float) -> np.ndarray:
@@ -427,8 +473,9 @@ def height_above(points: np.ndarray, curve: np.ndarray) -> float:
 
 def river_label(body: WaterBody, frame: MapFrame) -> WaterLabel | None:
     """A river's name just above the best stretch of it (best_stretch) for a name its size plus half an em each side,
-    clear of its wiggles there; None if the river is shorter than that."""
-    size = river_size(body.rank) * frame.label_scale
+    clear of its wiggles there; None if the river is shorter than that. Sized by label_scale up to RIVER_SCALE_MAX."""
+    scale = min(frame.label_scale, RIVER_SCALE_MAX)
+    size = river_size(body.rank) * scale
     em = size * PX_PER_PT
     line = largest_line(frame.to_px(body.geom))
     pts = np.asarray(line.coords)
@@ -438,7 +485,7 @@ def river_label(body: WaterBody, frame: MapFrame) -> WaterLabel | None:
     stretch = best_stretch(pts, need)
     curve = fit_curve(LineString(stretch).buffer(1.0), MAX_TILT_DEG)
     rise = RIVER_GAP_EM * em + height_above(stretch, curve)
-    label = lay_out(body, curve, size, line.buffer(RIVER_CORRIDOR_EM * em), frame.label_scale, rise)
+    label = lay_out(body, curve, size, line.buffer(RIVER_CORRIDOR_EM * em), scale, rise)
     return label if label.inside_share(label.anchor_x, label.anchor_y) >= WATER_MIN_INSIDE else None
 
 
@@ -446,16 +493,14 @@ def largest_line(geom: BaseGeometry) -> LineString:
     return max(shapely.get_parts(geom), key=lambda g: g.length)
 
 
-def make_water_labels(bodies: list[WaterBody], frame: MapFrame) -> list[WaterLabel]:
-    """A curved label per body, in the same order, leaving out those with under WATER_MIN_INSIDE of their glyph
+def make_water_labels(bodies: list[WaterBody], frame: MapFrame) -> list[WaterLabel | Unplaced]:
+    """A curved label per body, in the same order; an Unplaced for those with under WATER_MIN_INSIDE of their glyph
     boxes over their body to start with (most small bays: no room for their name), and rivers too short for theirs."""
     ppu = frame.px_per_unit
-    labels = []
+    labels: list[WaterLabel | None] = []
     for body in bodies:
         if body.kind == "rivers":
-            river = river_label(body, frame)
-            if river is not None:
-                labels.append(river)
+            labels.append(river_label(body, frame))
             continue
         assert isinstance(body.geom, Polygon)
         curve = (body_curve(body) - np.array([frame.xmin, frame.ymin])) * ppu
@@ -465,6 +510,5 @@ def make_water_labels(bodies: list[WaterBody], frame: MapFrame) -> list[WaterLab
         low, high = (OCEAN_MIN_PT, OCEAN_PT) if body.kind == "oceans" else (WATER_MIN_PT, SEA_MAX_PT)
         size = float(np.clip(SEA_FILL * arc_lengths(curve)[-1] / width_1pt, low * frame.label_scale, high * frame.label_scale))
         label = lay_out(body, curve, size, frame.to_px(body.geom), frame.label_scale)
-        if label.inside_share(label.anchor_x, label.anchor_y) >= WATER_MIN_INSIDE:
-            labels.append(label)
-    return labels
+        labels.append(label if label.inside_share(label.anchor_x, label.anchor_y) >= WATER_MIN_INSIDE else None)
+    return [Unplaced(b.text, b.kind, b.full_size) if label is None else label for b, label in zip(bodies, labels)]

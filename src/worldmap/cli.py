@@ -7,8 +7,10 @@ Pins: --pick pins.txt (click the rendered map to add pins) and --pins pins.txt [
 import argparse
 import dataclasses
 import os
+import shutil
 import sys
 import time
+from collections.abc import Sequence
 
 import geopandas as gpd
 import matplotlib
@@ -19,18 +21,21 @@ from shapely.geometry import Point
 from worldmap.colorbars import Corner, draw_colorbar, label_outline
 from worldmap.coloring import Coloring, load_or_compute_coloring, make_palette, spot_check
 from worldmap.colorspace import RGB
-from worldmap.data import is_labeled, load_countries, load_disputed, load_lakes, load_rivers, load_states, parent_index
+from worldmap.data import is_labeled, load_countries, load_disputed, load_states, parent_index
 from worldmap.disputed import DISPUTED_GREY, STRIPE_WIDTH_IN, border_lines, dispute_edges, disputed_label_args, load_disputes
 from worldmap.crop import (CROP_MARGIN, box_region, candidates, centre_frame, centre_recipe, centre_spec, choose, crop_frame, matches,
                            parse_box, parse_centre)
 from worldmap.earth import Fill, build_regions, fill_at
 from worldmap.frame import DPI, MapFrame, make_frame
 from worldmap.labels.label import decide_out_and_wrap, make_labels
-from worldmap.labels.placement import place_all
+from worldmap.labels.placeable import Placeable
+from worldmap.labels.priority import Outcome, Unplaced, place_by_priority
 from worldmap.labels.regions import child_regions
-from worldmap.labels.water import WATER_KINDS, kinds_from_labels, load_water_bodies, make_water_labels
+from worldmap.labels.report import progress, summary
+from worldmap.labels.water import WATER_KINDS, Kind, WaterBody, WaterLabel, kinds_from_labels, load_water_bodies, make_water_labels, river_ranks
 from worldmap.pins import draw_pins, load_pins, pick_pins, pin_sprite
-from worldmap.render import draw_borders, draw_countries, draw_labels, draw_lakes, draw_rivers, draw_states, draw_stripes, draw_water_labels, new_figure, subtract_lakes
+from worldmap.render import draw_borders, draw_countries, draw_labels, draw_lakes, drawable_lakes, draw_rivers, draw_states, draw_stripes, draw_water_labels, new_figure, subtract_lakes
+from worldmap.rivers import river_flow
 from worldmap.topographic import ICE, ICE_CONTOURS, LAND, LAND_CONTOURS, SEA, SEA_CONTOURS, draw_topography
 
 
@@ -45,18 +50,19 @@ def positive_float(s: str) -> float:
     return v
 
 
-LABEL_KINDS = ("countries", "territories", *WATER_KINDS)
+LABEL_KINDS = ("countries", "territories", *WATER_KINDS, "water")  # water = every water kind
 
 
-def label_kinds(s: str) -> set[str]:
-    """A comma-separated list of LABEL_KINDS, or "none"."""
+def label_kinds(s: str) -> list[str]:
+    """A comma-separated list of LABEL_KINDS, or "none", in order (the order labels are placed in), without repeats;
+    `water` stands for every water kind, in its place."""
     if s == "none":
-        return set()
+        return []
     kinds = s.split(",")
     unknown = [k for k in kinds if k not in LABEL_KINDS]
     if unknown:
         raise argparse.ArgumentTypeError("unknown label kind %r: choose from %s, or none" % (unknown[0], ",".join(LABEL_KINDS)))
-    return set(kinds)
+    return list(dict.fromkeys(k for kind in kinds for k in (WATER_KINDS if kind == "water" else [kind])))
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -72,7 +78,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--color", choices=["colorblind", "earth"], default="colorblind",
                    help="how countries are filled: colorblind = distinct colours that red/green colour-blind viewers "
                         "can tell apart (default); earth = land cover as seen from space (sandy desert -> light green)")
-    p.add_argument("--label", metavar="LIST", type=label_kinds, default={"countries"},
+    p.add_argument("--label", metavar="LIST", type=label_kinds, default=["countries"],
                    help="what to label, comma-separated, or none: countries (default); territories = dependencies and "
                         "outlying regions (Alaska, Greenland, Kaliningrad...) with their parent country; oceans, seas "
                         "(and gulfs, bays...), lakes, straits (and channels), rivers (draws them too); water = all of these")
@@ -157,8 +163,7 @@ def main(argv: list[str] | None = None) -> None:
     disputes = load_disputes(countries, frame.project(load_disputed()))
     fills = graph_fills(countries, load_or_compute_coloring(countries, major, args.recolor, parent_index(countries), dispute_edges(disputes)))
     disputes = [d for d in disputes if not d.geometry.is_empty]  # a crop leaves out those it doesn't show
-    states, lakes = load_states(), load_lakes()
-    countries_p, states_p, lakes_p = frame.project(countries), frame.project(states), frame.project(lakes)
+    countries_p, states_p, lakes_p = frame.project(countries), frame.project(load_states()), drawable_lakes(frame)
     regions = build_regions(countries, frame) if args.color == "earth" else None
 
     def fill_of(i: int, pt: Point | None = None) -> Fill:
@@ -173,32 +178,64 @@ def main(argv: list[str] | None = None) -> None:
     if args.disputed:
         draw_borders(ax, *border_lines(countries_p, disputes, parent_index(countries)))
     draw_states(ax, states_p, args.disputed)
-    if draws_rivers(args):
-        draw_rivers(ax, frame.project(load_rivers()))
     draw_lakes(ax, lakes_p)
     countries_p = subtract_lakes(countries_p, lakes_p)
     ax.set_xlim(frame.xmin, frame.xmax)
     ax.set_ylim(frame.ymin, frame.ymax)
 
-    # Labels are measured in rendered pixels, so draw once first.
-    fig.canvas.draw()
-    renderer = fig.canvas.get_renderer()  # type: ignore[attr-defined]  # Agg canvas
     shown = frame.visible(countries_p)  # labels go on what the frame shows
     children = child_regions(countries, shown, frame) if "territories" in args.label else []
     if not frame.globe:
         disputes = [dataclasses.replace(d, geometry=d.geometry.intersection(frame.canvas)) for d in disputes]
     relabel, extra = disputed_label_args(disputes, lambda i, pt: fill_of(i, pt) if regions else DISPUTED_GREY) if args.disputed else ({}, [])
-    labels = make_labels(shown, frame, ax, renderer, fill_of, children, "countries" in args.label, relabel, extra)
-    decide_out_and_wrap(labels, renderer)
-    water = make_water_labels(load_water_bodies(kinds_from_labels(args.label), lakes_p, frame), frame) if kinds_from_labels(args.label) else []
-    placement, water = place_all(labels, water, frame)
-    draw_labels(ax, labels, placement, frame)
-    draw_water_labels(ax, water, placement, frame)
+    labels = make_labels(shown, frame, fill_of, children, "countries" in args.label, relabel, extra)
+    decide_out_and_wrap(labels)
+    bodies, water = water_labels(kinds_from_labels(args.label), lakes_p, frame)
+    outcome = place([*labels, *water], frame, args.label)
+    if draws_rivers(args):
+        draw_rivers(ax, shown_rivers(frame, bodies, water, outcome))
+    placement = outcome.placement
+    draw_labels(ax, placement, frame)
+    draw_water_labels(ax, placement, frame)
 
     add_pins(ax, frame, args)
     # Layout above is measured at DPI; saving at another resolution only rescales it.
     fig.savefig(out, dpi=args.dpi, transparent=True)
-    print("wrote", out, "labels:", len(labels), "leaders:", int(placement.out.sum()), "water labels:", len(water))
+    print("wrote", out, "labels:", int((~placement.water).sum()), "leaders:", int(placement.out.sum()), "water labels:", int(placement.water.sum()))
+
+
+def water_labels(kinds: set[Kind], lakes_projected: gpd.GeoDataFrame, frame: MapFrame) -> tuple[list[WaterBody], list[WaterLabel | Unplaced]]:
+    """The water bodies of `kinds` and their labels, one per body (make_water_labels: an Unplaced where the name
+    doesn't fit)."""
+    bodies = load_water_bodies(kinds, lakes_projected, frame) if kinds else []
+    return bodies, make_water_labels(bodies, frame)
+
+
+def shown_rivers(frame: MapFrame, bodies: list[WaterBody], water: list[WaterLabel | Unplaced], outcome: Outcome | None) -> gpd.GeoDataFrame:
+    """The river pieces to draw, projected: those whose rank (water.river_ranks; the bodies' are those of their
+    labels, `water`, in `outcome`), or that of a piece upstream (RiverFlow.downstream), rivers weren't cut at;
+    every one if no labels were placed at all (`outcome` None)."""
+    flow = river_flow()
+    rivers = frame.project(flow.pieces)
+    if outcome is None:
+        return rivers
+    ranks = outcome.ranks_of(water)
+    named = [k for k, b in enumerate(bodies) if b.kind == "rivers"]
+    return rivers[outcome.shown("rivers", flow.downstream(river_ranks(rivers, [bodies[k] for k in named], ranks[named])))]
+
+
+def place(entries: Sequence[Placeable | Unplaced], frame: MapFrame, order: list[str]) -> Outcome:
+    """place_by_priority, showing on a terminal the rank being placed, then printing its summary."""
+    tty, columns = sys.stdout.isatty(), shutil.get_terminal_size().columns
+
+    def show(r: int, done: int, of: int, kind: str) -> None:
+        print(f"\r\x1b[K{progress(r, done, of, kind, columns)}", end="", flush=True)
+
+    outcome = place_by_priority(entries, frame, order, on_step=show if tty else None)
+    if tty:
+        print("\r\x1b[K", end="")
+    print(summary(outcome, order, tty and "NO_COLOR" not in os.environ, columns if tty else None))
+    return outcome
 
 
 def add_pins(ax: Axes, frame: MapFrame, args: argparse.Namespace) -> None:
@@ -215,20 +252,23 @@ def draw_topographic(args: argparse.Namespace, out: str, frame: MapFrame) -> Non
     """--type topographic: heights (and sea depths with --ocean), colour bars in the corners, pins; nothing political."""
     start = time.perf_counter()
     fig, ax = new_figure(frame)
-    draw_topography(ax, frame, args.dpi, args.ocean)
-    if draws_rivers(args):
-        draw_rivers(ax, frame.project(load_rivers()))
+    lakes_p = drawable_lakes(frame)
+    draw_topography(ax, frame, args.dpi, args.ocean, lakes_p)
     draw_colorbar(ax, frame, "br", LAND, "Height", LAND_CONTOURS)
     if args.ocean:
         draw_colorbar(ax, frame, "tr", SEA, "Depth", SEA_CONTOURS)
     draw_colorbar(ax, frame, "bl", ICE, "Ice", ICE_CONTOURS)
     kinds = kinds_from_labels(args.label)
+    bodies, water = water_labels(kinds, lakes_p, frame)
+    outcome = None
     if kinds:  # without water kinds no label stage runs
         # A crop's bars sit over the map: keep the labels off them.
         bars: list[Corner] = ["br", "tr", "bl"] if args.ocean else ["br", "bl"]
         room = frame if frame.globe else dataclasses.replace(frame, outline=label_outline(frame, bars))
-        placement, water = place_all([], make_water_labels(load_water_bodies(kinds, frame.project(load_lakes()), frame), frame), room)
-        draw_water_labels(ax, water, placement, frame)
+        outcome = place(water, room, args.label)
+        draw_water_labels(ax, outcome.placement, frame)
+    if draws_rivers(args):
+        draw_rivers(ax, shown_rivers(frame, bodies, water, outcome))
     ax.set_xlim(frame.xmin, frame.xmax)
     ax.set_ylim(frame.ymin, frame.ymax)
     add_pins(ax, frame, args)
