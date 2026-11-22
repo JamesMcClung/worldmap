@@ -124,6 +124,5 @@ def test_jordan_name_not_in_the_dead_sea() -> None:
     lakes = drawable_lakes(frame)
     merged = shapely.union_all(lakes.geometry.values)
     _, labels = water_labels({"rivers"}, lakes, merged, frame)
-    jordan = [lab for lab in labels if isinstance(lab, WaterLabel) and lab.text == "Jordan"]
-    water_px = frame.to_px(merged, simplify=0)
-    assert all(not water_px.contains(Point(lab.anchor_x, lab.anchor_y)) for lab in jordan)
+    [jordan] = [lab for lab in labels if isinstance(lab, WaterLabel) and lab.text == "Jordan"]
+    assert not frame.to_px(merged, simplify=0).contains(Point(jordan.anchor_x, jordan.anchor_y))
