@@ -62,9 +62,10 @@ def test_fit_curve_steep_and_bent_never_tips_past_vertical() -> None:
 
 def test_styles_by_kind() -> None:
     from worldmap.labels.curved import OCEAN_TRACKING_EM, STYLES
+    from worldmap.labels.land import LAND_KINDS
     from worldmap.labels.water import WATER_KINDS
 
-    assert set(WATER_KINDS) <= STYLES.keys()
+    assert STYLES.keys() == {*WATER_KINDS, *LAND_KINDS}
     assert STYLES["oceans"].tracking_em == OCEAN_TRACKING_EM and STYLES["oceans"].cap_centred
     assert STYLES["seas"].tracking_em == 0 and not STYLES["seas"].cap_centred
     assert STYLES["rivers"].italic and not STYLES["seas"].italic
