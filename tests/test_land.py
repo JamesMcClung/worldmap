@@ -32,6 +32,10 @@ def test_text_of() -> None:
     assert text_of(None, "SIERRA MADRE DEL SUR") == "Sierra Madre del Sur"
     assert text_of("Rub' al Khali", "x") == "Rub' al Khali"
     assert text_of(float("nan"), "Alps") == "Alps"
+    assert text_of("Ahag", "AHAGGAR MTS.") == "Ahaggar Mountains"  # Natural Earth's English names that are wrong
+    assert text_of("Cruach nam Miseag", "Grampian Mts.") == "Grampian Mountains"
+    assert text_of("Cordillera Blanca", "CORD. CENTRAL") == "Cordillera Central"
+    assert text_of("Pamir mountains", "PAMIRS") == "Pamir Mountains"
 
 
 def test_load_land_bodies(world_bodies: list[Body]) -> None:
