@@ -76,8 +76,7 @@ def test_same_name_pieces_are_one_feature(world_bodies: list[Body]) -> None:
 
     regions = load_regions()
     split = regions[regions.name_en == "Transantarctic Mountains"].km2.sum()
-    [transantarctic] = [b for b in load_land_bodies({"mountains"}, make_frame()) if b.text == "Transantarctic Mountains"]
+    [transantarctic] = [b for b in world_bodies if b.text == "Transantarctic Mountains"]
     assert transantarctic.full_size == pytest.approx(split)
-    sierras = [b for b in load_land_bodies({"mountains"}, make_frame()) if b.text == "Sierra Nevada"]
-    assert len(sierras) == 2
+    assert len([b for b in world_bodies if b.text == "Sierra Nevada"]) == 2
     assert len([b for b in world_bodies if b.text == "Sahara"]) == 1
