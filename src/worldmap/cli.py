@@ -34,7 +34,7 @@ from worldmap.labels.priority import Outcome, Unplaced, place_by_priority
 from worldmap.labels.regions import child_regions
 from worldmap.labels.report import progress, summary
 from worldmap.labels.water import WATER_KINDS, Kind, WaterBody, WaterLabel, kinds_from_labels, load_water_bodies, make_water_labels, river_ranks
-from worldmap.pins import check_render_shape, draw_pins, load_pins, pick_pins, pin_sprite, rendered_size_in
+from worldmap.pins import draw_pins, fit_to_render, load_pins, pick_pins, pin_sprite
 from worldmap.render import draw_borders, draw_countries, draw_labels, draw_lakes, drawable_lakes, draw_rivers, merged_lakes, draw_states, draw_stripes, draw_water_labels, new_figure, subtract_lakes
 from worldmap.rivers import river_flow
 from worldmap.topographic import ICE, ICE_CONTOURS, LAND, LAND_CONTOURS, SEA, SEA_CONTOURS, draw_topography
@@ -162,10 +162,7 @@ def main(argv: list[str] | None = None) -> None:
 
     frame = make_map_frame(args)
     if args.pick:
-        check_render_shape(out, frame)
-        if args.size is None and (size := rendered_size_in(out)):  # so its preview pins come out the render's size
-            frame = dataclasses.replace(frame, size_in=size)
-        pick_pins(args.pick, out, frame, args.pin_size, DPI)
+        pick_pins(args.pick, out, fit_to_render(out, frame), args.pin_size, DPI)  # its preview pins the render's size
         return
     if args.type == "topographic":
         draw_topographic(args, out, frame)

@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from worldmap.cli import main
-from worldmap.pins import PinStyle, check_render_shape, load_pins, pin_sprite, rendered_size_in
+from worldmap.pins import PinStyle, fit_to_render, load_pins, pin_sprite
 
 
 def write(tmp_path: Path, text: str) -> Path:
@@ -37,26 +37,31 @@ def test_pin_sprite_shape_and_alpha() -> None:
     assert np.isfinite(sprite).all()
 
 
-def test_rendered_size_in(tmp_path: Path) -> None:
+def test_fit_to_render_takes_its_size(tmp_path: Path) -> None:
+    from dataclasses import replace
+
     from PIL import Image
 
+    from worldmap.frame import make_frame
+
+    tall = replace(make_frame(), xmin=0, xmax=1, ymin=0, ymax=2)
     Image.new("RGBA", (1800, 3600)).save(tmp_path / "tall.png", dpi=(200, 200))
-    assert rendered_size_in(str(tmp_path / "tall.png")) == pytest.approx(18, abs=1e-3)  # PNG stores dots per metre
-    Image.new("RGBA", (4, 4)).save(tmp_path / "bare.png")
-    assert rendered_size_in(str(tmp_path / "bare.png")) is None
+    assert fit_to_render(str(tmp_path / "tall.png"), tall).size_in == pytest.approx(18, abs=1e-3)  # PNG stores dots per metre
+    Image.new("RGBA", (4, 8)).save(tmp_path / "bare.png")
+    assert fit_to_render(str(tmp_path / "bare.png"), tall).size_in is None
 
 
-def test_check_render_shape(tmp_path: Path) -> None:
+def test_fit_to_render_checks_shape(tmp_path: Path) -> None:
     from PIL import Image
 
     from worldmap.frame import make_frame
 
     for size in [(1800, 923), (1800, 924)]:  # the world at 50 dpi: 923.5 px tall, either way it rounds
         Image.new("RGBA", size).save(tmp_path / "world.png")
-        check_render_shape(str(tmp_path / "world.png"), make_frame())
+        fit_to_render(str(tmp_path / "world.png"), make_frame())
     Image.new("RGBA", (1800, 1800)).save(tmp_path / "square.png")
     with pytest.raises(SystemExit, match="pass the --crop"):
-        check_render_shape(str(tmp_path / "square.png"), make_frame())
+        fit_to_render(str(tmp_path / "square.png"), make_frame())
 
 
 def test_pick_without_render_exits(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

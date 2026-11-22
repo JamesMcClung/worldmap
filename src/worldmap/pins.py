@@ -3,7 +3,7 @@
 import os
 import sys
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import numpy as np
@@ -79,25 +79,18 @@ def load_pins(path: str | Path) -> list[LonLat]:
     return pins
 
 
-def rendered_size_in(png: str) -> float | None:
-    """The long side (inches) of a map make_map saved: its pixels over the dpi it records; None if it records none."""
+def fit_to_render(png: str, frame: MapFrame) -> MapFrame:
+    """`frame` at the size of the map make_map saved as `png` (its pixels over the dpi it records), unless it has a
+    size_in (--size) or `png` records no dpi. Exits unless `png` has the frame's aspect ratio, to within its pixel
+    rounding: --pick on a crop's render needs the --crop it was rendered with."""
     from PIL import Image
 
     with Image.open(png) as im:
-        dpi = im.info.get("dpi")
-        return max(im.size) / float(dpi[0]) if dpi else None
-
-
-def check_render_shape(png: str, frame: MapFrame) -> None:
-    """Exit unless `png` has `frame`'s aspect ratio, to within its pixel rounding: --pick on a crop's render needs
-    the --crop it was rendered with."""
-    from PIL import Image
-
-    with Image.open(png) as im:
-        w, h = im.size
+        (w, h), dpi = im.size, im.info.get("dpi")
     if abs(np.log(w / h * frame.height / frame.width)) > 2 / min(w, h):
         sys.exit("--pick: %s is %d x %d px, not the shape of this map (%.1f x %.1f in): pass the --crop it was rendered with"
                  % (png, w, h, frame.width_in, frame.height_in))
+    return replace(frame, size_in=max(w, h) / float(dpi[0])) if frame.size_in is None and dpi else frame
 
 
 def smoothstep(edge0: float, edge1: float, x: np.ndarray) -> np.ndarray:
