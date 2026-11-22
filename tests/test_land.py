@@ -35,7 +35,11 @@ def test_text_of() -> None:
     assert text_of("Ahag", "AHAGGAR MTS.") == "Ahaggar Mountains"  # Natural Earth's English names that are wrong
     assert text_of("Cruach nam Miseag", "Grampian Mts.") == "Grampian Mountains"
     assert text_of("Cordillera Blanca", "CORD. CENTRAL") == "Cordillera Central"
+    assert text_of("Appennino Ligure", "APPENNINI") == "Apennines"  # the whole range, not its Ligurian end
+    assert text_of("Nullabor Plain", "NULLARBOR PLAIN") == "Nullarbor Plain"
+    assert text_of("Stanovoy Range", "STANOVOY UPLAND") == "Stanovoy Upland"  # not the range
     assert text_of("Pamir mountains", "PAMIRS") == "Pamir Mountains"
+    assert text_of("Amazon basin", "x") == "Amazon Basin" and text_of("Pontic-Caspian steppe", "x") == "Pontic-Caspian Steppe"
 
 
 def test_load_land_bodies(world_bodies: list[Body]) -> None:
@@ -64,3 +68,4 @@ def test_make_land_labels(frame: MapFrame) -> None:
     dx = (last[0] + last[2]) / 2 - (first[0] + first[2]) / 2
     dy = (last[1] + last[3]) / 2 - (first[1] + first[3]) / 2
     assert abs(dy) > abs(dx)  # along the range, not across it
+

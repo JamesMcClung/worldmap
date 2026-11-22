@@ -17,10 +17,12 @@ CLASSES: dict[str, Kind] = {"Range/mtn": "mountains", "Plateau": "uplands", "Des
 CLASSES |= {c: "lowlands" for c in ("Plain", "Basin", "Lowland", "Valley", "Gorge", "Depression")}  # islands, capes, coasts,
 # continents, regions (Siberia), deltas, wetlands, foothills and tundra are never labelled
 SMALL_WORDS = {"of", "de", "del", "la", "the", "and"}  # lower case inside a title-cased name
-NAMES = {  # Natural Earth NAME_EN -> label, where it's wrong: cut short, a single peak, another range
-    "Ahag": "Ahaggar Mountains", "Cruach nam Miseag": "Grampian Mountains", "Cordillera Blanca": "Cordillera Central",
-    "Grande Sertão Veredas National Park": "Campos Sertão",
+NAMES = {  # Natural Earth NAME -> label, where its NAME_EN is wrong: cut short ('Ahag'), a single peak, a part, another feature
+    "AHAGGAR MTS.": "Ahaggar Mountains", "Grampian Mts.": "Grampian Mountains", "CORD. CENTRAL": "Cordillera Central",
+    "Campos Sertão": "Campos Sertão", "APPENNINI": "Apennines", "NULLARBOR PLAIN": "Nullarbor Plain",
+    "CRYSTAL MOUNTAINS": "Crystal Mountains", "COLUMBIA MTS.": "Columbia Mountains", "STANOVOY UPLAND": "Stanovoy Upland",
 }
+GENERIC_WORDS = {"mountains", "basin", "steppe", "coastal", "plain"}  # capitalised after the first word ('Amazon basin')
 
 
 def classify(featurecla: str) -> Kind | None:
@@ -34,12 +36,13 @@ def kinds_from_labels(label: Collection[str]) -> set[Kind]:
 
 
 def text_of(name_en: object, name: str) -> str:
-    """The label text: the English name (NAMES fixing a few), else the name; one in capitals in the data (Natural
-    Earth styles some that way: CANADIAN SHIELD) in title case, small words after the first lower case."""
-    text = NAMES.get(name_en, name_en) if isinstance(name_en, str) and name_en else name
-    if not text.isupper():
-        return text.replace(" mountains", " Mountains")  # Pamir, Taurus, Kolyma...
+    """The label text: NAMES' for a few, else the English name, else the name; one in capitals in the data (Natural
+    Earth styles some that way: CANADIAN SHIELD) in title case, small words after the first lower case; generic words
+    after the first capitalised (Amazon Basin)."""
+    text = NAMES.get(name) or (name_en if isinstance(name_en, str) and name_en else name)
     words = text.split(" ")
+    if not text.isupper():
+        return " ".join(w.capitalize() if k and w in GENERIC_WORDS else w for k, w in enumerate(words))
     return " ".join(w.lower() if k and w.lower() in SMALL_WORDS else w[:1].upper() + w[1:].lower() for k, w in enumerate(words))
 
 
