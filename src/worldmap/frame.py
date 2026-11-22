@@ -78,6 +78,7 @@ class MapFrame:
     crs: str = CRS
     globe: bool = True  # the whole globe; False for a --crop, whose outline is the canvas rectangle
     clip: tuple[LonLatBox, ...] = (WORLD,)  # lon/lat data is clipped to these boxes before projecting
+    size_in: float = POSTER_WIDTH_IN  # the poster's long side, inches
 
     @property
     def width(self) -> float:
@@ -89,12 +90,12 @@ class MapFrame:
 
     @property
     def width_in(self) -> float:
-        """Poster width in inches: the long side is POSTER_WIDTH_IN."""
-        return POSTER_WIDTH_IN if self.width >= self.height else POSTER_WIDTH_IN * self.width / self.height
+        """Poster width in inches: the long side is size_in."""
+        return self.size_in if self.width >= self.height else self.size_in * self.width / self.height
 
     @property
     def height_in(self) -> float:
-        return POSTER_WIDTH_IN * self.height / self.width if self.width >= self.height else POSTER_WIDTH_IN
+        return self.size_in * self.height / self.width if self.width >= self.height else self.size_in
 
     @property
     def px_per_unit(self) -> float:
