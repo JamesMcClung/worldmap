@@ -28,7 +28,7 @@ RENAME = {"People's Republic of China": "China", "United States of America": "Un
 MIN_PT, MAX_PT = 6, 30
 FONT_SCALE = 1.6  # font size (pt) = FONT_SCALE / 10 x sqrt(area), with the area measured in points^2
 POINTS_PER_INCH = 72
-SHRINK_MIN_PT = 5  # a label shrinks (placement.shrink_step) down to no less than this (scaled by the frame's label_scale)
+SHRINK_MIN_PT = 5  # a label shrinks (placement.shrink_step) down to no less than this
 BOX_PAD_X, BOX_PAD_Y = 1.06, 1.15  # label box = the lines' advance width and line height scaled by these
 
 # Island-heavy countries: several polygons of at least SIGNIFICANT_SHARE of the largest, the largest being under
@@ -65,13 +65,12 @@ class Label:
     italic: bool = False  # child regions are
     kind: str = "countries"  # its --label kind: countries (disputed areas too) or territories
     full_size: float = 0.0  # km2 of the whole country or region, however much of it the frame shows: its priority
-    label_scale: float = 1.0  # the frame's
     cover: Coverage | None = field(default=None, repr=False, compare=False)  # geom's, once needed (geometry.coverage)
 
     @property
     def min_size(self) -> float:
         """The smallest it may shrink to (pt)."""
-        return SHRINK_MIN_PT * self.label_scale
+        return SHRINK_MIN_PT
 
     @property
     def parts(self) -> np.ndarray:
@@ -112,11 +111,10 @@ def new_label(frame: MapFrame, name: str, anchor: tuple[float, float], geom: Bas
     """A label for `name` at `anchor` (map units), sized by `area`, laid out. Child regions are set in italics."""
     ppu = frame.px_per_unit
     x, y = anchor
-    s = frame.label_scale
-    size = float(np.clip(FONT_SCALE * np.sqrt(area) * ppu / DPI * POINTS_PER_INCH / 10, MIN_PT * s, MAX_PT * s))
+    size = float(np.clip(FONT_SCALE * np.sqrt(area) * ppu / DPI * POINTS_PER_INCH / 10, MIN_PT, MAX_PT))
     glyphs, width, height = lay_out(name, size, italic)
     return Label(name, color, name, width, height, (x - frame.xmin) * ppu, (y - frame.ymin) * ppu, frame.to_px(geom), size, glyphs,
-                 italic=italic, kind=kind, full_size=full_size, label_scale=s)
+                 italic=italic, kind=kind, full_size=full_size)
 
 
 def make_labels(countries_projected: gpd.GeoDataFrame, frame: MapFrame, fill_of: Callable[[int, Point | None], Fill], children: Sequence["ChildRegion"] = (), countries: bool = True,

@@ -53,6 +53,4 @@ def test_label_min_size() -> None:
     from worldmap.labels.label import SHRINK_MIN_PT
 
     label = country_label(make_frame(), "Atlantis", -35, 30, 500)
-    assert label.min_size == SHRINK_MIN_PT  # the world frame: label_scale 1
-    label.label_scale = 2
-    assert label.min_size == 2 * SHRINK_MIN_PT
+    assert label.min_size == SHRINK_MIN_PT

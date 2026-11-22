@@ -15,7 +15,7 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "4a795bf86dd17309efccd492ffff11a8c6956b712a18b006e26f746814dd9433"
+    "sha256": "9b7a387dfae03ae6fd291098fe8333a0a3e7238c3ed13144a51cddae09a080d3"
   },
   "crop_pacific_water": {
     "env": {
@@ -36,7 +36,7 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "dac6ab1f60b8c23faeb2dd037386b18eaccb9d25af414fde2fd501528b6db2f8"
+    "sha256": "cc23c1e4473cae1d69753fb97699347be4f1f5ff03d0c6006c8ef8840d783b2c"
   },
   "crop_water": {
     "env": {
@@ -57,7 +57,7 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "89605fc1125dcd5158a5341d16e56cca0f89c831df274fbdb7841c419aa07577"
+    "sha256": "b2bdba432db2de9f989b9eb71a670c0c67bb9b3576e5f75254a9d11025439e7d"
   },
   "disputed": {
     "env": {

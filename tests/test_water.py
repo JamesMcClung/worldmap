@@ -8,7 +8,7 @@ from shapely.geometry import LineString, Point
 from worldmap.curves import arc_lengths, bend
 from worldmap.frame import MapFrame, make_frame
 from worldmap.labels.text import PX_PER_PT
-from worldmap.labels.water import (OCEAN_MIN_PT, OCEAN_PT, RIVER_MAX_PT, RIVER_MIN_PT, RIVER_SCALE_MAX, SEA_MAX_PT, WATER_MIN_INSIDE, WATER_MIN_PT,
+from worldmap.labels.water import (OCEAN_MIN_PT, OCEAN_PT, RIVER_MAX_PT, RIVER_MIN_PT, SEA_MAX_PT, WATER_MIN_INSIDE, WATER_MIN_PT,
                                    WATER_TEXT, best_stretch, classify, fit_curve, kinds_from_labels, load_water_bodies,
                                    longest_paths, make_water_labels, river_label, river_name, river_size, WaterBody, WaterLabel)
 from worldmap.labels.priority import Unplaced
@@ -186,15 +186,14 @@ def test_river_size() -> None:
     assert river_size(2) - river_size(4) == pytest.approx(river_size(4) - river_size(6))  # linear in the line width
 
 
-def test_river_names_stay_small_in_a_crop() -> None:
+def test_river_names_absolute_in_a_crop() -> None:
     from worldmap.crop import box_region, crop_frame
     from worldmap.labels.water import load_river_bodies
 
-    f = crop_frame(box_region((5, 45, 15, 52)), 0)  # the Alps and Germany: label_scale near the cap
-    assert f.label_scale > RIVER_SCALE_MAX
+    f = crop_frame(box_region((5, 45, 15, 52)), 0)  # the Alps and Germany
     rivers = [r for r in make_water_labels(load_river_bodies(f), f) if isinstance(r, WaterLabel)]
-    assert rivers and max(r.size for r in rivers) <= RIVER_MAX_PT * RIVER_SCALE_MAX
-    assert max(r.min_size for r in rivers) <= WATER_MIN_PT * RIVER_SCALE_MAX
+    assert rivers and max(r.size for r in rivers) <= RIVER_MAX_PT
+    assert max(r.min_size for r in rivers) == WATER_MIN_PT
 
 
 def test_every_drawn_river_is_a_candidate() -> None:

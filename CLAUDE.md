@@ -62,7 +62,7 @@ Importing any module has no side effects; only `cli.main` (after choosing the ba
 |---|---|
 | `cli.py` | `parse_args` (`--label`: an ordered list replacing the default `countries`; `water` expands in place; `none` = no labels), `main()` (the pipeline as a sequence of stage calls), `place` (placing with the progress line and summary), `shown_rivers` |
 | `data.py` | Natural Earth/ETOPO downloads (`fetch`, `fetch_all`, `etopo15_tile`), file names, `load_*`, which features are dependencies/labelled |
-| `frame.py` | `MapFrame`: projection, canvas, `project`/`visible`/`to_px`, `label_scale`; `make_frame` (world), antimeridian helpers, `DPI`, `POSTER_WIDTH_IN` |
+| `frame.py` | `MapFrame`: projection, canvas, `project`/`visible`/`to_px`; `make_frame` (world), antimeridian helpers, `DPI`, `POSTER_WIDTH_IN` |
 | `crop.py` | `--crop`: box/centre/name specs (`parse_box`, `parse_centre`, `candidates`, `choose`) -> `crop_frame`/`centre_frame`, `centre_recipe` |
 | `colorspace.py` | OKLab/OKLCH conversions, `fit_gamut`, `darken` |
 | `coloring.py` | graph colouring (`adjacency`, `add_proximity_edges`, `color_graph`), `make_palette`, `load_or_compute_coloring` (cache), `OCEAN` |
@@ -213,8 +213,8 @@ oceans) gets Equal Earth centred on its longitude instead, clipped a hair either
   Wrangel Island) pass `dissolve=True`. `frame.visible` cuts to the canvas itself: labels use it,
   so a neighbour cut by the edge is labelled on its visible part.
 - Size: the long side is `POSTER_WIDTH_IN` (`width_in`/`height_in`).
-- Labels: `frame.label_scale` = sqrt(zoom over the world map), 1..`LABEL_SCALE_MAX` = 2.5, multiplies every size
-  limit (country `MIN_PT`/`MAX_PT`, water and river sizes, `SHRINK_MIN_PT`, `WaterLabel.min_size`).
+- Labels: every text size is absolute (pt on the poster), the same limits as the world map's in any crop: a
+  bigger poster fits more labels, it doesn't grow them.
 - `--crop W:E,S:N`: edges, lon then lat; any end may be left out (lon -180/180, lat -90/90, so `:,60:` is everything
   north of 60N); west past east crosses +-180 (`170:-160,50:70`); no margin.
 - `--crop LON,LAT/W,H` (`parse_centre`, `centre_frame`): centred there, half of W (H) along the ground to the middle
@@ -272,7 +272,7 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
   polygons, largest < 65% of total, plus `FORCE_ISLAND`) use the convex-hull centroid and a hull-based size.
 - Font size scales with sqrt(area), clamped to 6-30 pt. A label covering >= 60% of its country (or much wider than a
   short narrow one) becomes an "out" label with a leader line. Long names wrap onto 2 lines when much wider than their
-  country; stuck labels shrink (floor `SHRINK_MIN_PT` x `label_scale`) before being skipped.
+  country; stuck labels shrink (floor `SHRINK_MIN_PT`) before being skipped.
 - Country labels are outlines like water labels (`lay_out`: `TextPath`, box = advance width x line height, padded),
   drawn as `PathPatch`es (`render.glyph_patch`, round joins or the halo spikes at sharp corners) for the kept labels only.
 - Cost terms: label must lie inside the globe outline, label-label overlap, covering another leader's dot, leader/label and leader/leader crossings,
@@ -367,7 +367,7 @@ Labels ignore them.
   for the name + an em; `fit_curve` on it; `lay_out(rise=)` puts the baseline `RIVER_GAP_EM` above the curve plus
   however far the river wiggles above it (`height_above`). Its `geom` is a `RIVER_CORRIDOR_EM` buffer of the whole river.
 - Placement: by priority like every label (a river ranks by its whole length). Drawn in `RIVER_TEXT` with the
-  country labels' white halo; capped at `RIVER_MAX_PT` and `RIVER_SCALE_MAX` x the crop's scale.
+  country labels' white halo; capped at `RIVER_MAX_PT`.
 - `--label countries,rivers` takes ~11 s.
 
 ## Gotchas
