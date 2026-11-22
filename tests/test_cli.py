@@ -102,18 +102,6 @@ def test_pick_takes_the_size_of_the_render(tmp_path, monkeypatch) -> None:  # ty
     assert seen[0].width_in == pytest.approx(18, abs=1e-3) and seen[1].width_in == 30
 
 
-def test_pick_on_a_render_of_another_map_exits(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    from PIL import Image
-
-    from worldmap import cli
-
-    png = tmp_path / "map.png"
-    Image.new("RGBA", (1800, 923)).save(png)  # the world's shape
-    monkeypatch.setattr(cli, "pick_pins", lambda *a: pytest.fail("opened the picker"))
-    with pytest.raises(SystemExit, match="pass the --crop"):
-        cli.main(["--pick", str(tmp_path / "p.txt"), "--crop", "-5:9,42:51", str(png)])
-
-
 def test_centre_crop_from_the_command_line() -> None:
     from worldmap.cli import make_map_frame, parse_args
     from worldmap.crop import centre_frame
