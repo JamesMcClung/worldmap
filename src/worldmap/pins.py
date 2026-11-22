@@ -88,6 +88,18 @@ def rendered_size_in(png: str) -> float | None:
         return max(im.size) / float(dpi[0]) if dpi else None
 
 
+def check_render_shape(png: str, frame: MapFrame) -> None:
+    """Exit unless `png` has `frame`'s aspect ratio, to within its pixel rounding: --pick on a crop's render needs
+    the --crop it was rendered with."""
+    from PIL import Image
+
+    with Image.open(png) as im:
+        w, h = im.size
+    if abs(np.log(w / h * frame.height / frame.width)) > 2 / min(w, h):
+        sys.exit("--pick: %s is %d x %d px, not the shape of this map (%.1f x %.1f in): pass the --crop it was rendered with"
+                 % (png, w, h, frame.width_in, frame.height_in))
+
+
 def smoothstep(edge0: float, edge1: float, x: np.ndarray) -> np.ndarray:
     t = np.clip((x - edge0) / (edge1 - edge0), 0, 1)
     return t * t * (3 - 2 * t)
