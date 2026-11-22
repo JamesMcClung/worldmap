@@ -85,7 +85,7 @@ Importing any module has no side effects; only `cli.main` (after choosing the ba
 | `rivers.py` | `--rivers`: `river_flow` (cached): pieces split at junctions, oriented toward mouths |
 | `disjoint.py` | `DisjointSets` (union-find) |
 | `curves.py` | `arc_lengths`, `along`, `bend`: text bending for colour bar titles and water labels |
-| `render.py` | the `draw_*` layers (labels drawn from the `Placement` alone), `drawable_lakes`, `subtract_lakes`, line widths and z-orders |
+| `render.py` | the `draw_*` layers (labels drawn from the `Placement` alone), `drawable_lakes`, `merged_lakes`, `subtract_lakes`, line widths and z-orders |
 
 Pipeline (`cli.main`):
 1. **Colouring** of all country features. Dependencies (`is_dependency`: `SOVEREIGNT != ADMIN`, not a lease or
@@ -261,7 +261,7 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
   reaches this session's pins). The picker runs right after the globe extent is computed, then exits, so it skips the label work.
 - `make_map [out.png] --pins pins.txt [--pin-size 0.24]` draws golden shaded spheres (`pin_sprite`, tuned through `PinStyle`: shaded by a reflected environment: cream sky, dark band above a domed horizon, gold ground, window strips at the sides; styled after `pin-example.png`
   environment for a chrome-like look, broad specular glare with a hot core, baked drop shadow) at zorder 10, above labels. Pins are drawn northernmost first so southern ones overlap them.
-  Diameter is in poster inches, whatever `--size`; `--pick` takes the render's size from the PNG (`rendered_size_in`: pixels over its recorded dpi) unless given `--size`. Default output with `--pins` is `worldmap_pins.png`, so the bare map isn't overwritten.
+  Diameter is in poster inches, whatever `--size`; `--pick` takes the render's size from the PNG (`rendered_size_in`: pixels over its recorded dpi) unless given `--size`, and exits if its aspect isn't the frame's (`check_render_shape`: a crop's render needs its `--crop`). Default output with `--pins` is `worldmap_pins.png`, so the bare map isn't overwritten.
 - `--pick` skips `matplotlib.use("Agg")` to get the interactive backend. Pins on the antimeridian are clipped by the canvas edge.
 
 ## Label placement notes
