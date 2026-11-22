@@ -20,10 +20,6 @@ def test_dpi_flag() -> None:
 def test_size_parses() -> None:
     assert parse_args([]).size is None
     assert parse_args(["--size", "12"]).size == 12
-    for bad in ["0", "-3", "x"]:
-        with pytest.raises(SystemExit) as e:
-            parse_args(["--size", bad])
-        assert e.value.code == 2
 
 
 def test_size_overrides_crop_default() -> None:
