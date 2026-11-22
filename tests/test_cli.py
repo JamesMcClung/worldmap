@@ -52,6 +52,8 @@ def test_label_flag() -> None:
     assert parse_args(["--label", "seas,water,countries"]).label == ["seas", "oceans", "lakes", "straits", "rivers", "countries"]
     assert parse_args(["--label", "countries,rivers,straits"]).label == ["countries", "rivers", "straits"]
     assert parse_args(["--label", "seas,countries,seas"]).label == ["seas", "countries"]
+    assert parse_args(["--label", "countries,land"]).label == ["countries", "mountains", "uplands", "deserts", "lowlands"]
+    assert parse_args(["--label", "deserts,land,seas"]).label == ["deserts", "mountains", "uplands", "lowlands", "seas"]
     for bad in [["--label", "continents"], ["--label", "none,countries"], ["--label", ""], ["--regions"]]:
         with pytest.raises(SystemExit) as e:
             parse_args(bad)
@@ -120,3 +122,10 @@ def test_jordan_name_not_in_the_dead_sea() -> None:
     _, labels = water_labels({"rivers"}, lakes, frame)
     [jordan] = [lab for lab in labels if isinstance(lab, CurvedLabel) and lab.text == "Jordan"]
     assert not frame.to_px(lakes.merged, simplify=0).contains(Point(jordan.anchor_x, jordan.anchor_y))
+
+
+def test_area_kinds() -> None:
+    from worldmap.cli import area_kinds
+
+    assert area_kinds(["mountains"]) and area_kinds(["seas"]) and area_kinds(["countries", "lowlands"])
+    assert not area_kinds(["countries", "territories"]) and not area_kinds([])

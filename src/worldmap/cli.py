@@ -27,12 +27,13 @@ from worldmap.crop import (CROP_MARGIN, box_region, candidates, centre_frame, ce
                            parse_box, parse_centre)
 from worldmap.earth import Fill, build_regions, fill_at
 from worldmap.frame import DPI, MapFrame, make_frame
+from worldmap.labels import land
+from worldmap.labels.curved import Body, CurvedLabel
 from worldmap.labels.label import decide_out_and_wrap, make_labels
 from worldmap.labels.placeable import Placeable
 from worldmap.labels.priority import Outcome, Unplaced, place_by_priority
 from worldmap.labels.regions import child_regions
 from worldmap.labels.report import progress, summary
-from worldmap.labels.curved import Body, CurvedLabel
 from worldmap.labels.water import WATER_KINDS, Kind, kinds_from_labels, load_water_bodies, make_water_labels, river_ranks
 from worldmap.pins import draw_pins, fit_to_render, load_pins, pick_pins, pin_sprite
 from worldmap.render import draw_borders, draw_countries, draw_labels, draw_lakes, drawable_lakes, draw_rivers, draw_states, draw_stripes, draw_curved_labels, Lakes, new_figure, subtract_lakes
@@ -51,19 +52,20 @@ def positive_float(s: str) -> float:
     return v
 
 
-LABEL_KINDS = ("countries", "territories", *WATER_KINDS, "water")  # water = every water kind
+LABEL_KINDS = ("countries", "territories", *WATER_KINDS, "water", *land.LAND_KINDS, "land")
+GROUPS: dict[str, tuple[str, ...]] = {"water": WATER_KINDS, "land": land.LAND_KINDS}  # each stands for its kinds, in its place
 
 
 def label_kinds(s: str) -> list[str]:
     """A comma-separated list of LABEL_KINDS, or "none", in order (the order labels are placed in), without repeats;
-    `water` stands for every water kind, in its place."""
+    `water` and `land` stand for every water or land kind (GROUPS), in their place."""
     if s == "none":
         return []
     kinds = s.split(",")
     unknown = [k for k in kinds if k not in LABEL_KINDS]
     if unknown:
         raise argparse.ArgumentTypeError("unknown label kind %r: choose from %s, or none" % (unknown[0], ",".join(LABEL_KINDS)))
-    return list(dict.fromkeys(k for kind in kinds for k in (WATER_KINDS if kind == "water" else [kind])))
+    return list(dict.fromkeys(k for kind in kinds for k in GROUPS.get(kind, (kind,))))
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -82,7 +84,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--label", metavar="LIST", type=label_kinds, default=["countries"],
                    help="what to label, comma-separated, or none: countries (default); territories = dependencies and "
                         "outlying regions (Alaska, Greenland, Kaliningrad...) with their parent country; oceans, seas "
-                        "(and gulfs, bays...), lakes, straits (and channels), rivers (draws them too); water = all of these")
+                        "(and gulfs, bays...), lakes, straits (and channels), rivers (draws them too); water = all of these; "
+                        "mountains, uplands (plateaus), deserts, lowlands (plains, basins, valleys); land = all of these")
     p.add_argument("--disputed", action="store_true",
                    help="stripe disputed areas in the colours of the countries involved and dash their borders")
     p.add_argument("--rivers", action="store_true", help="draw the major rivers")
@@ -200,7 +203,7 @@ def main(argv: list[str] | None = None) -> None:
     labels = make_labels(shown, frame, fill_of, children, "countries" in args.label, relabel, extra)
     decide_out_and_wrap(labels)
     bodies, water = water_labels(kinds_from_labels(args.label), lakes, frame)
-    outcome = place([*labels, *water], frame, args.label)
+    outcome = place([*labels, *water, *land_labels(land.kinds_from_labels(args.label), frame)], frame, args.label)
     if draws_rivers(args):
         draw_rivers(ax, shown_rivers(frame, bodies, water, outcome))
     placement = outcome.placement
@@ -220,6 +223,16 @@ def water_labels(kinds: set[Kind], lakes: Lakes, frame: MapFrame) -> tuple[list[
         return [], []
     bodies = load_water_bodies(kinds, lakes.shapes, frame)
     return bodies, make_water_labels(bodies, frame, lakes.merged)
+
+
+def land_labels(kinds: set[land.Kind], frame: MapFrame) -> list[CurvedLabel | Unplaced]:
+    """The landforms of `kinds` the frame shows, a label (or an Unplaced) each."""
+    return land.make_land_labels(land.load_land_bodies(kinds, frame), frame) if kinds else []
+
+
+def area_kinds(label: Sequence[str]) -> bool:
+    """Whether --label asks for any curved area labels (water or land): without, --type topographic places none."""
+    return bool(kinds_from_labels(label) or land.kinds_from_labels(label))
 
 
 def shown_rivers(frame: MapFrame, bodies: list[Body], water: list[CurvedLabel | Unplaced], outcome: Outcome | None) -> gpd.GeoDataFrame:
@@ -269,14 +282,13 @@ def draw_topographic(args: argparse.Namespace, out: str, frame: MapFrame) -> Non
     if args.ocean:
         draw_colorbar(ax, frame, "tr", SEA, "Depth", SEA_CONTOURS)
     draw_colorbar(ax, frame, "bl", ICE, "Ice", ICE_CONTOURS)
-    kinds = kinds_from_labels(args.label)
-    bodies, water = water_labels(kinds, lakes, frame)
+    bodies, water = water_labels(kinds_from_labels(args.label), lakes, frame)
     outcome = None
-    if kinds:  # without water kinds no label stage runs
+    if area_kinds(args.label):  # without water or land kinds no label stage runs
         # A crop's bars sit over the map: keep the labels off them.
         bars: list[Corner] = ["br", "tr", "bl"] if args.ocean else ["br", "bl"]
         room = frame if frame.globe else dataclasses.replace(frame, outline=label_outline(frame, bars))
-        outcome = place(water, room, args.label)
+        outcome = place([*water, *land_labels(land.kinds_from_labels(args.label), frame)], room, args.label)
         draw_curved_labels(ax, outcome.placement, frame)
     if draws_rivers(args):
         draw_rivers(ax, shown_rivers(frame, bodies, water, outcome))
