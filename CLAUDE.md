@@ -371,9 +371,9 @@ Labels ignore them.
   networks `RIVER_REPEAT_M` apart are labelled separately (Colorado US/Argentina). `WaterBody.geom` is the line.
 - `river_label`: italic, `river_size` linear in its line width (`river_width` of its thickest piece's scalerank: `RIVER_MAX_PT` 8.5 down to `RIVER_MIN_PT` 4.2); `best_stretch` picks the straightest, most level stretch near the middle
   for the name + an em; `fit_curve` on it; `lay_out(rise=)` puts the baseline `RIVER_GAP_EM` above the curve plus
-  however far the river wiggles above it (`height_above`). Its `geom` is a `RIVER_CORRIDOR_EM` buffer of the whole river.
+  however far the river wiggles above it (`height_above`). Only the river's longest piece outside the drawn lakes counts (its line runs on under them); `geom` is a `RIVER_CORRIDOR_EM` buffer of that piece.
 - Placement: by priority like every label (a river ranks by its whole length). Drawn in `RIVER_TEXT` with the
-  country labels' white halo; capped at `RIVER_MAX_PT`.
+  country labels' white halo.
 - `--label countries,rivers` takes ~11 s.
 
 ## Gotchas
