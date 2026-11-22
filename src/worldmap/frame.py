@@ -1,6 +1,7 @@
 """The map frame: projection, globe outline, canvas extent, and map <-> poster-pixel conversion."""
 
 from dataclasses import dataclass
+from functools import cache
 
 import geopandas as gpd
 import numpy as np
@@ -12,7 +13,9 @@ from shapely.geometry.base import BaseGeometry
 
 from worldmap.data import CRS
 
-POSTER_WIDTH_IN = 36
+POSTER_WIDTH_IN = 36  # the world poster's width, and the most any map's default long side grows to
+CROP_SIZE_POWER = 0.4  # a map's default long side: POSTER_WIDTH_IN x (its long side on the world poster / POSTER_WIDTH_IN) ** this
+CROP_MIN_IN = 6  # ... but at least this (inches): a small region still gets room for its labels
 DPI = 200  # 36 in x 200 dpi = 7200 px wide
 OUTLINE_POINTS = 200  # points along each side (meridian +-180) of the globe outline
 ANTIMERIDIAN_EPS = 1e-6  # degrees inside +-180, so the outline doesn't wrap
@@ -78,7 +81,7 @@ class MapFrame:
     crs: str = CRS
     globe: bool = True  # the whole globe; False for a --crop, whose outline is the canvas rectangle
     clip: tuple[LonLatBox, ...] = (WORLD,)  # lon/lat data is clipped to these boxes before projecting
-    size_in: float = POSTER_WIDTH_IN  # the poster's long side, inches
+    size_in: float | None = None  # the poster's long side, inches; None: default_size_in
 
     @property
     def width(self) -> float:
@@ -89,13 +92,25 @@ class MapFrame:
         return self.ymax - self.ymin
 
     @property
+    def default_size_in(self) -> float:
+        """The long side (inches) without --size: POSTER_WIDTH_IN for the world, a crop's from its long side s on
+        the world poster (CROP_SIZE_POWER), CROP_MIN_IN..POSTER_WIDTH_IN."""
+        share = max(self.width, self.height) / world_width()  # s / POSTER_WIDTH_IN; both in metres
+        return min(max(POSTER_WIDTH_IN * share ** CROP_SIZE_POWER, CROP_MIN_IN), POSTER_WIDTH_IN)
+
+    @property
+    def long_side_in(self) -> float:
+        return self.default_size_in if self.size_in is None else self.size_in
+
+    @property
     def width_in(self) -> float:
-        """Poster width in inches: the long side is size_in."""
-        return self.size_in if self.width >= self.height else self.size_in * self.width / self.height
+        side = self.long_side_in
+        return side if self.width >= self.height else side * self.width / self.height
 
     @property
     def height_in(self) -> float:
-        return self.size_in * self.height / self.width if self.width >= self.height else self.size_in
+        side = self.long_side_in
+        return side * self.height / self.width if self.width >= self.height else side
 
     @property
     def px_per_unit(self) -> float:
@@ -158,6 +173,11 @@ class MapFrame:
     def px_to_map(self, px: np.ndarray, py: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         ppu = self.px_per_unit
         return px / ppu + self.xmin, py / ppu + self.ymin
+
+
+@cache
+def world_width() -> float:
+    return make_frame().width
 
 
 def make_frame() -> MapFrame:

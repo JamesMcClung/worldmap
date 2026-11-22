@@ -228,7 +228,7 @@ def long_side(f: MapFrame) -> float:
 
 
 def test_default_size_floor() -> None:
-    from worldmap.crop import CROP_MIN_IN
+    from worldmap.frame import CROP_MIN_IN
 
     assert long_side(crop_frame(box_region((35.3, 31.0, 35.7, 31.8)), 0.1)) == CROP_MIN_IN  # the Dead Sea
 
@@ -242,11 +242,10 @@ def test_default_size_grows_with_region() -> None:
 def test_default_size_capped_at_poster_width() -> None:
     from dataclasses import replace
 
-    from worldmap.crop import default_size_in
     from worldmap.frame import POSTER_WIDTH_IN
 
     w = make_frame()
-    assert default_size_in(replace(w, xmax=w.xmin + 1.1 * w.width)) == POSTER_WIDTH_IN  # wider than the globe
+    assert replace(w, xmax=w.xmin + 1.1 * w.width).width_in == POSTER_WIDTH_IN  # wider than the globe
 
 
 def test_label_sizes_are_absolute_in_a_crop() -> None:

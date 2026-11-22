@@ -14,11 +14,9 @@ def test_world_frame_size_unchanged() -> None:
 
 
 def test_tall_frame_long_side_is_size_in() -> None:
-    f = replace(make_frame(), xmin=0, xmax=1, ymin=0, ymax=2)
-    assert f.height_in == POSTER_WIDTH_IN and f.width_in == POSTER_WIDTH_IN / 2
-    assert f.px_per_unit == POSTER_WIDTH_IN * DPI / 2
-    f = replace(f, size_in=10)
+    f = replace(make_frame(), xmin=0, xmax=1, ymin=0, ymax=2, size_in=10)
     assert f.height_in == 10 and f.width_in == 5
+    assert f.px_per_unit == 10 * DPI / 2
 
 
 def test_size_in_sets_long_side() -> None:

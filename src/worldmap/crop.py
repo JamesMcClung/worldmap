@@ -4,7 +4,7 @@ import re
 import sys
 import unicodedata
 from collections.abc import Collection
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -16,7 +16,7 @@ from shapely.geometry.base import BaseGeometry
 from worldmap.data import is_labeled, load_countries, load_disputed, load_lakes
 from worldmap.disputed import disputed_label_args, load_disputes
 from worldmap.earth import Fill
-from worldmap.frame import (ANTIMERIDIAN_EPS, OUTLINE_POINTS, POSTER_WIDTH_IN, PROJECT_PAD, SEGMENT_DEG, LonLatBox, MapFrame, lon_ranges,
+from worldmap.frame import (ANTIMERIDIAN_EPS, OUTLINE_POINTS, PROJECT_PAD, SEGMENT_DEG, LonLatBox, MapFrame, lon_ranges,
                             make_frame)
 from worldmap.labels.label import RENAME
 from worldmap.labels.regions import PARENT_SHORT, child_regions, polygons
@@ -37,8 +37,6 @@ RECIPE_TOLERANCE = 0.002  # centre_recipe: how close a centre crop's size must c
 CENTRE_BISECTIONS = 30  # centre_recipe: halvings of each size's range (0..120 or 360 degrees)
 POLE_DEG = 0.1  # round_pole: reaching this close to a pole counts
 RECENTRE_ROUNDS, RECENTRE_TOLERANCE = 8, 1e-4  # crop_frame: rounds of moving the centre to the map's middle, and how close
-CROP_SIZE_POWER = 0.4  # a crop's default long side: 36 in x (its long side on the world poster / 36 in) ** this
-CROP_MIN_IN = 6  # ... but at least this (inches): a small region still gets room for its labels
 KM_PER_DEG = 6371.0088 * np.pi / 180  # a degree of arc on the mean Earth sphere
 UNIT_KM = {"km": 1.0, "mi": 1.609344}  # a centre crop's size units (a bare size is in degrees)
 
@@ -187,7 +185,7 @@ def crop_frame(region: BaseGeometry, margin: float) -> MapFrame:
     centred on the middle of the map: the bounds aren't symmetric about the region's own centre, so it's moved there
     and the bounds refitted, up to RECENTRE_ROUNDS times. A region round a pole gets a square map centred on it."""
     if (pole := round_pole(region)) is not None:
-        return with_default_size(fit_frame(region, margin, 0.0, pole, square=True))
+        return fit_frame(region, margin, 0.0, pole, square=True)
     lon0, lat0 = sphere_centre(region)
     for _ in range(RECENTRE_ROUNDS):
         frame = fit_frame(region, margin, lon0, lat0)
@@ -196,7 +194,7 @@ def crop_frame(region: BaseGeometry, margin: float) -> MapFrame:
             break
         lon, lat = frame.to_lonlat.transform(mid_x, mid_y)
         lon0, lat0 = float(lon), float(lat) if frame.azimuthal else lat0
-    return with_default_size(frame)
+    return frame
 
 
 def centre_frame(crop: CentreCrop, azimuthal: bool | None = None) -> MapFrame:
@@ -217,7 +215,7 @@ def centre_frame(crop: CentreCrop, azimuthal: bool | None = None) -> MapFrame:
         to_map = Transformer.from_crs("EPSG:4326", crs, always_xy=True)
         half_x = float(np.hypot(*ends((90, -90), width / 2).T).max())
         half_y = float(np.hypot(*ends((0, 180), height / 2).T).max())
-        return with_default_size(canvas_frame(crs, lon0, lat0, box(-half_x, -half_y, half_x, half_y)))
+        return canvas_frame(crs, lon0, lat0, box(-half_x, -half_y, half_x, half_y))
     crs = f"+proj=eqearth +lon_0={lon0:.6f} +datum=WGS84"
     to_map = Transformer.from_crs("EPSG:4326", crs, always_xy=True)
     half_x = float(np.abs(ends((90, -90), width / 2)[:, 0]).max())
@@ -227,17 +225,7 @@ def centre_frame(crop: CentreCrop, azimuthal: bool | None = None) -> MapFrame:
     _, pole_scale = np.abs(np.diff(to_map.transform([lon0, lon0], [89.0, 90.0]), axis=1)).ravel()  # per degree
     y = np.asarray(y) + np.sign(lats) * np.maximum(np.abs(lats) - 90, 0) * pole_scale
     half_y = float(np.abs(y - yc).max())
-    return with_default_size(canvas_frame(crs, lon0, lat0, box(-half_x, yc - half_y, half_x, yc + half_y)))
-
-
-def default_size_in(frame: MapFrame) -> float:
-    """A crop's default long side (inches), from its long side s on the world poster (CROP_SIZE_POWER)."""
-    share = max(frame.width, frame.height) / make_frame().width  # s / POSTER_WIDTH_IN; both in metres
-    return float(np.clip(POSTER_WIDTH_IN * share ** CROP_SIZE_POWER, CROP_MIN_IN, POSTER_WIDTH_IN))
-
-
-def with_default_size(frame: MapFrame) -> MapFrame:
-    return replace(frame, size_in=default_size_in(frame))
+    return canvas_frame(crs, lon0, lat0, box(-half_x, yc - half_y, half_x, yc + half_y))
 
 
 def round_pole(region: BaseGeometry) -> float | None:
