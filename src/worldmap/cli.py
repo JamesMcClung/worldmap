@@ -215,9 +215,9 @@ def main(argv: list[str] | None = None) -> None:
 
 def water_labels(kinds: set[Kind], lakes_projected: gpd.GeoDataFrame, frame: MapFrame) -> tuple[list[WaterBody], list[WaterLabel | Unplaced]]:
     """The water bodies of `kinds` and their labels, one per body (make_water_labels: an Unplaced where the name
-    doesn't fit)."""
+    doesn't fit; river names kept off the drawn lakes)."""
     bodies = load_water_bodies(kinds, lakes_projected, frame) if kinds else []
-    return bodies, make_water_labels(bodies, frame)
+    return bodies, make_water_labels(bodies, frame, shapely.union_all(lakes_projected.geometry.values))
 
 
 def shown_rivers(frame: MapFrame, bodies: list[WaterBody], water: list[WaterLabel | Unplaced], outcome: Outcome | None) -> gpd.GeoDataFrame:
