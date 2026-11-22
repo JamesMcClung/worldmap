@@ -2,8 +2,8 @@ import pytest
 
 from worldmap.crop import box_region, crop_frame, parse_box
 from worldmap.frame import MapFrame, make_frame
-from worldmap.labels.curved import LAND_TEXT, Body, CurvedLabel
-from worldmap.labels.land import classify, kinds_from_labels, load_land_bodies, make_land_labels, text_of
+from worldmap.labels.curved import Body, CurvedLabel
+from worldmap.labels.land import LAND_TEXT, classify, kinds_from_labels, load_land_bodies, make_land_labels, text_of
 
 
 @pytest.fixture(scope="module")

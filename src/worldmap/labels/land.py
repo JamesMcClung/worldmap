@@ -8,10 +8,11 @@ import geopandas as gpd
 import shapely
 from shapely.affinity import translate
 
+from worldmap.colorspace import RGB, fit_gamut
 from worldmap.data import load_regions
 from worldmap.disjoint import DisjointSets
 from worldmap.frame import MapFrame
-from worldmap.labels.curved import WHITE_HALO, LAND_MAX_PT, LAND_MIN_PT, LAND_TEXT, Body, CurvedLabel, Style, area_label, largest
+from worldmap.labels.curved import WHITE_HALO, Body, CurvedLabel, Style, area_label, largest
 from worldmap.labels.priority import Unplaced
 
 Kind = Literal["mountains", "uplands", "deserts", "lowlands"]
@@ -26,6 +27,10 @@ NAMES = {  # Natural Earth NAME -> label, where its NAME_EN is wrong: cut short 
     "CRYSTAL MOUNTAINS": "Crystal Mountains", "COLUMBIA MTS.": "Columbia Mountains", "STANOVOY UPLAND": "Stanovoy Upland",
 }
 GENERIC_WORDS = {"mountains", "basin", "steppe", "coastal", "plain"}  # capitalised after the first word ('Amazon basin')
+_land_text = fit_gamut(0.40, 0.07, 55)
+assert _land_text is not None
+LAND_TEXT: RGB = _land_text[0]  # a dark warm brown, terrain rather than water or a country's hue
+LAND_MIN_PT, LAND_MAX_PT = 6.5, 14.0  # sized to fill curved.SEA_FILL of their curve, within these
 STYLE = Style(True, 0.0, False, LAND_TEXT, WHITE_HALO, LAND_MIN_PT, LAND_MAX_PT)  # every kind's: no capitals, whatever the size
 JOIN_DEG = 1.0  # rows of one name this close (degrees) are one feature (split at +-180, or in pieces); further, separate ones
 

@@ -39,10 +39,6 @@ WATER_TEXT: RGB = _fitted[0]  # a deeper blue in the ocean's hue
 _river_text = fit_gamut(0.42, 0.10, _ocean_hue)
 assert _river_text is not None
 RIVER_TEXT: RGB = _river_text[0]  # darker than WATER_TEXT: it sits on land, not water
-_land_text = fit_gamut(0.40, 0.07, 55)
-assert _land_text is not None
-LAND_TEXT: RGB = _land_text[0]  # landforms: a dark warm brown, terrain rather than water or a country's hue
-LAND_MIN_PT, LAND_MAX_PT = 6.5, 14.0  # sized to fill SEA_FILL of their curve, within these
 
 
 @dataclass(frozen=True)
