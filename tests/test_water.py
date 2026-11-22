@@ -218,6 +218,20 @@ def test_river_name_must_stay_within_an_em_of_its_river() -> None:
     assert not label.geom.contains(Point(x0 + 20 * em, y0 + 1.1 * em))
 
 
+def test_river_name_stays_off_drawn_lakes() -> None:
+    """Natural Earth's lines run on through lakes (Lake Centerline: the Jordan through the Dead Sea), hidden under
+    the lake fill: the name goes on the river where it shows."""
+    frame = make_frame()
+    em = river_size(1) * PX_PER_PT
+    x0, y0 = 3000.0, 1500.0
+    mx, my = frame.px_to_map(np.array([x0, x0 + 100 * em]), np.array([y0, y0]))
+    line = LineString(np.column_stack([mx, my]))
+    lx, ly = frame.px_to_map(np.array([x0 + 20 * em, x0 + 60 * em]), np.array([y0 - 5 * em, y0 + 5 * em]))
+    lake = shapely.box(lx[0], ly[0], lx[1], ly[1])  # the middle, where the name would go
+    label = river_label(WaterBody("Straight", "rivers", 1, line, 100.0), frame, lake)
+    assert label is not None and label.anchor_x > x0 + 60 * em
+
+
 def test_longest_paths_joins_gaps_and_takes_the_trunk() -> None:
     trunk = [LineString([(0, 0), (10, 0)]), LineString([(10.5, 0), (20, 0)])]  # a 0.5 gap (a lake)
     tributary = LineString([(10, 0), (10, 3)])

@@ -469,12 +469,16 @@ def height_above(points: np.ndarray, curve: np.ndarray) -> float:
     return max(0.0, float(((points[beside] - base) * normal).sum(axis=1).max()))
 
 
-def river_label(body: WaterBody, frame: MapFrame) -> WaterLabel | None:
+def river_label(body: WaterBody, frame: MapFrame, lakes: BaseGeometry | None = None) -> WaterLabel | None:
     """A river's name just above the best stretch of it (best_stretch) for a name its size plus half an em each side,
-    clear of its wiggles there; None if the river is shorter than that."""
+    clear of its wiggles there; None if the river is shorter than that. Only its longest piece outside the drawn
+    `lakes` (map units) counts: Natural Earth's lines run on through lakes, hidden under them."""
     size = river_size(body.rank)
     em = size * PX_PER_PT
-    line = largest_line(frame.to_px(body.geom))
+    dry = body.geom if lakes is None else body.geom.difference(lakes)
+    if dry.is_empty:
+        return None
+    line = largest_line(frame.to_px(dry))
     pts = np.asarray(line.coords)
     need = text_width(body.text, font(size, True)) * PX_PER_PT + em
     if line.length < need:
@@ -490,14 +494,15 @@ def largest_line(geom: BaseGeometry) -> LineString:
     return max(shapely.get_parts(geom), key=lambda g: g.length)
 
 
-def make_water_labels(bodies: list[WaterBody], frame: MapFrame) -> list[WaterLabel | Unplaced]:
+def make_water_labels(bodies: list[WaterBody], frame: MapFrame, lakes: BaseGeometry | None = None) -> list[WaterLabel | Unplaced]:
     """A curved label per body, in the same order; an Unplaced for those with under WATER_MIN_INSIDE of their glyph
-    boxes over their body to start with (most small bays: no room for their name), and rivers too short for theirs."""
+    boxes over their body to start with (most small bays: no room for their name), and rivers too short for theirs
+    outside the drawn `lakes` (map units)."""
     ppu = frame.px_per_unit
     labels: list[WaterLabel | None] = []
     for body in bodies:
         if body.kind == "rivers":
-            labels.append(river_label(body, frame))
+            labels.append(river_label(body, frame, lakes))
             continue
         assert isinstance(body.geom, Polygon)
         curve = (body_curve(body) - np.array([frame.xmin, frame.ymin])) * ppu
