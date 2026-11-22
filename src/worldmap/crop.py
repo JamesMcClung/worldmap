@@ -231,8 +231,7 @@ def centre_frame(crop: CentreCrop, azimuthal: bool | None = None) -> MapFrame:
 
 
 def default_size_in(frame: MapFrame) -> float:
-    """A crop's default long side (inches): POSTER_WIDTH_IN x (s / POSTER_WIDTH_IN) ** CROP_SIZE_POWER, where s is its long
-    side measured on the world poster, at least CROP_MIN_IN and at most POSTER_WIDTH_IN."""
+    """A crop's default long side (inches), from its long side s on the world poster (CROP_SIZE_POWER)."""
     s = POSTER_WIDTH_IN * max(frame.width, frame.height) / make_frame().width  # both in metres
     return float(min(POSTER_WIDTH_IN, max(CROP_MIN_IN, POSTER_WIDTH_IN * (s / POSTER_WIDTH_IN) ** CROP_SIZE_POWER)))
 
