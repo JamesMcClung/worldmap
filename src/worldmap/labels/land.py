@@ -56,7 +56,7 @@ def features(regions: gpd.GeoDataFrame) -> list[int]:
     ones (the Sierra Nevadas of Spain and the US)."""
     sets = DisjointSets(len(regions))
     geoms = list(regions.geometry)
-    for rows in regions.reset_index(drop=True).groupby("text").indices.values():
+    for rows in regions.groupby("text").indices.values():
         for a, i in enumerate(rows):
             for j in rows[a + 1:]:
                 if min(geoms[i].distance(translate(geoms[j], shift)) for shift in (-360, 0, 360)) <= JOIN_DEG:
