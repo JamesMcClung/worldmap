@@ -10,9 +10,9 @@ from worldmap.frame import MapFrame, make_frame
 from worldmap.labels.label import Label, new_label
 from worldmap.labels.placement import FIXED, FREE, NUDGE, Placement, clashes, place_labels, rects, subset
 from worldmap.labels import placement
-from worldmap.labels.water import OCEAN_MIN_PT, WATER_MIN_PT, WaterLabel
+from worldmap.labels.curved import OCEAN_MIN_PT, WATER_MIN_PT, CurvedLabel
 
-T = TypeVar("T", Label, WaterLabel)
+T = TypeVar("T", Label, CurvedLabel)
 
 
 @pytest.fixture(scope="module")
@@ -29,11 +29,11 @@ def country_label(frame: MapFrame, name: str, lon: float, lat: float, half_px: f
 
 
 def of_kind(p: Placement, kind: type[T]) -> list[T]:
-    """Its labels of `kind` (Label, WaterLabel), in order."""
+    """Its labels of `kind` (Label, CurvedLabel), in order."""
     return [item for _, item in p.each(kind)]
 
 
-def placed(items: Sequence[Label | WaterLabel], frame: MapFrame, start: tuple[np.ndarray, np.ndarray] | None = None,
+def placed(items: Sequence[Label | CurvedLabel], frame: MapFrame, start: tuple[np.ndarray, np.ndarray] | None = None,
            **solve: object) -> Placement:
     """A Placement of the labels, from `start` (default: their anchors), placed (place_labels)."""
     p = Placement.of(items)
@@ -53,28 +53,28 @@ def one_label(frame: MapFrame) -> list[Label]:
     return [country_label(frame, "Atlantis", -35, 30, 500)]
 
 
-def water_label(text: str, anchor: tuple[float, float], geom: shapely.Geometry, parts: np.ndarray, size: float, kind: str = "seas") -> WaterLabel:
+def water_label(text: str, anchor: tuple[float, float], geom: shapely.Geometry, parts: np.ndarray, size: float, kind: str = "seas") -> CurvedLabel:
     x0, y0, x1, y1 = parts.min(axis=0)[0], parts.min(axis=0)[1], parts.max(axis=0)[2], parts.max(axis=0)[3]
     glyphs = Path([(x0, y0), (x1, y0), (x1, y1), (x0, y1), (x0, y0)], closed=True)
-    return WaterLabel(text, kind, geom, anchor[0], anchor[1], size, glyphs, parts)  # type: ignore[arg-type]
+    return CurvedLabel(text, kind, geom, anchor[0], anchor[1], size, glyphs, parts)  # type: ignore[arg-type]
 
 
 @pytest.fixture
-def water_on_top_of_it(one_label: list[Label]) -> WaterLabel:
+def water_on_top_of_it(one_label: list[Label]) -> CurvedLabel:
     label = one_label[0]
     w, h = label.width, label.height
     parts = np.array([[-w / 2 + k * w / 3, -h / 2, -w / 2 + (k + 1) * w / 3, h / 2] for k in range(3)])
     return water_label("Sea", (label.anchor_x, label.anchor_y), label.geom, parts, 10)
 
 
-def test_country_can_shrink_for_water(frame: MapFrame, one_label: list[Label], water_on_top_of_it: WaterLabel) -> None:
+def test_country_can_shrink_for_water(frame: MapFrame, one_label: list[Label], water_on_top_of_it: CurvedLabel) -> None:
     """A sea fixed over a country's label: the country label gives way, by moving or shrinking."""
     start = (np.array([one_label[0].anchor_x, water_on_top_of_it.anchor_x]), np.array([one_label[0].anchor_y, water_on_top_of_it.anchor_y]))
     p = placed([*one_label, water_on_top_of_it], frame, start=start, freedom=np.array([FREE, FIXED]))
     assert clashes(p) == [] or p.size[0] <= one_label[0].min_size
 
 
-def test_clash_is_symmetric(frame: MapFrame, one_label: list[Label], water_on_top_of_it: WaterLabel) -> None:
+def test_clash_is_symmetric(frame: MapFrame, one_label: list[Label], water_on_top_of_it: CurvedLabel) -> None:
     start = (np.array([one_label[0].anchor_x, water_on_top_of_it.anchor_x]), np.array([one_label[0].anchor_y, water_on_top_of_it.anchor_y]))
     p = placed([*one_label, water_on_top_of_it], frame, start=start, freedom=np.array([FIXED, FIXED]))
     assert clashes(p) == [0, 1]
@@ -96,7 +96,7 @@ def mid_atlantic_px(frame: MapFrame) -> tuple[float, float]:
     return (x - frame.xmin) * frame.px_per_unit, (y - frame.ymin) * frame.px_per_unit
 
 
-def crossing_water_labels(frame: MapFrame) -> tuple[WaterLabel, WaterLabel]:
+def crossing_water_labels(frame: MapFrame) -> tuple[CurvedLabel, CurvedLabel]:
     """Two minimum-size labels wanting the same small water body (exactly their glyph boxes), "Sea" first."""
     x, y = mid_atlantic_px(frame)
     parts = np.array([[-30.0, -7, 0, 7], [0, -7, 30, 7]])
@@ -116,7 +116,7 @@ def test_oceans_shrink_no_smaller_than_ocean_floor(frame: MapFrame, monkeypatch:
     assert p.size[0] == pytest.approx(OCEAN_MIN_PT) and ocean.size == 20  # the label itself stays as laid out
 
 
-def test_fixed_labels_stay_put(frame: MapFrame, one_label: list[Label], water_on_top_of_it: WaterLabel) -> None:
+def test_fixed_labels_stay_put(frame: MapFrame, one_label: list[Label], water_on_top_of_it: CurvedLabel) -> None:
     start = (np.array([one_label[0].anchor_x, water_on_top_of_it.anchor_x]), np.array([one_label[0].anchor_y, water_on_top_of_it.anchor_y]))
     p = placed([*one_label, water_on_top_of_it], frame, start=start, freedom=np.array([FIXED, FREE]))
     assert p.x[0] == start[0][0] and p.y[0] == start[1][0]
@@ -157,7 +157,7 @@ def test_subset(frame: MapFrame, one_label: list[Label]) -> None:
     q = subset(p, np.array([True, False, True]))
     assert q.n == 2 and q.owner.tolist() == [0, *[1] * len(bay.parts)] and q.water.tolist() == [False, True]
     assert np.array_equal(rects(q), rects(p)[p.owner != 1])
-    assert of_kind(q, Label) == one_label and of_kind(q, WaterLabel) == [bay] and [i for i, _ in q.each(WaterLabel)] == [1]
+    assert of_kind(q, Label) == one_label and of_kind(q, CurvedLabel) == [bay] and [i for i, _ in q.each(CurvedLabel)] == [1]
 
 
 def test_shrink_step_stops_at_the_floor() -> None:

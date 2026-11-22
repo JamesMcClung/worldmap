@@ -9,7 +9,7 @@ from worldmap.frame import make_frame
 from worldmap.labels.label import Label
 from worldmap.labels.placement import Placement, clashes, overhang
 from worldmap.labels.priority import UNLABELED, Outcome, Unplaced, check_step, place_by_priority, ranks_by_quantile, saturated, steps
-from worldmap.labels.water import WATER_MIN_PT, WaterLabel
+from worldmap.labels.curved import WATER_MIN_PT, CurvedLabel
 
 
 def test_ranks_are_fifths_of_every_kind_together() -> None:
@@ -43,7 +43,7 @@ def test_overhang_is_the_longer_end_off() -> None:
 # place_by_priority: the solver on small made-up maps (helpers from test_placement).
 
 FRAME = make_frame()
-T = TypeVar("T", Label, WaterLabel)
+T = TypeVar("T", Label, CurvedLabel)
 
 
 def sized(label: T, full_size: float) -> T:
@@ -55,7 +55,7 @@ def atlantis(full_size: float) -> Label:
     return sized(country_label(FRAME, "Atlantis", -35, 30, 500), full_size)
 
 
-def boxed_in() -> tuple[WaterLabel, object]:
+def boxed_in() -> tuple[CurvedLabel, object]:
     """A sea whose one glyph box (at its smallest size: it can't shrink) fills a crop's outline but for 5 px all
     round: no room for another label anywhere. (sea, frame)"""
     x, y = mid_atlantic_px(FRAME)
@@ -69,7 +69,7 @@ def boxed_in() -> tuple[WaterLabel, object]:
 def test_smaller_of_a_clashing_pair_is_skipped() -> None:
     sea, bay = crossing_water_labels(FRAME)
     p = place_by_priority([sized(sea, 100), sized(bay, 10)], FRAME, ["seas"]).placement
-    assert [w.text for w in of_kind(p, WaterLabel)] == ["Sea"] and of_kind(p, Label) == []
+    assert [w.text for w in of_kind(p, CurvedLabel)] == ["Sea"] and of_kind(p, Label) == []
     assert clashes(p) == []
 
 
@@ -77,17 +77,17 @@ def test_country_can_lose_to_a_bigger_sea() -> None:
     sea, frame = boxed_in()
     p = place_by_priority([atlantis(1), sized(sea, 1e6)], frame, ["countries", "seas"],
                           rank=lambda kinds, sizes: np.array([3, 1])).placement  # the sea two ranks up: fixed
-    assert of_kind(p, Label) == [] and [w.text for w in of_kind(p, WaterLabel)] == ["Sea"]
+    assert of_kind(p, Label) == [] and [w.text for w in of_kind(p, CurvedLabel)] == ["Sea"]
 
 
 def test_label_order_breaks_ties_within_a_rank() -> None:
     sea, frame = boxed_in()
     same = lambda kinds, sizes: np.array([1, 1])  # noqa: E731
     p = place_by_priority([atlantis(1), sized(sea, 1)], frame, ["countries", "seas"], rank=same).placement
-    assert [label.name for label in of_kind(p, Label)] == ["Atlantis"] and of_kind(p, WaterLabel) == []
+    assert [label.name for label in of_kind(p, Label)] == ["Atlantis"] and of_kind(p, CurvedLabel) == []
     sea, frame = boxed_in()
     p = place_by_priority([atlantis(1), sized(sea, 1)], frame, ["seas", "countries"], rank=same).placement
-    assert of_kind(p, Label) == [] and [w.text for w in of_kind(p, WaterLabel)] == ["Sea"]
+    assert of_kind(p, Label) == [] and [w.text for w in of_kind(p, CurvedLabel)] == ["Sea"]
 
 
 def test_two_ranks_down_is_fixed() -> None:
@@ -106,13 +106,13 @@ def test_crop_skips_water_labels_outside_the_outline() -> None:
     x, y = FRAME.px_to_map(np.array(mid_atlantic_px(FRAME)[0]), np.array(mid_atlantic_px(FRAME)[1]))
     half = 2000 / FRAME.px_per_unit  # an outline that leaves out the sea, far off to one side
     cropped = replace(FRAME, globe=False, outline=[(x + half, y - half), (x + 3 * half, y - half), (x + 3 * half, y + half), (x + half, y + half)])
-    assert of_kind(place_by_priority([sea], cropped, ["seas"]).placement, WaterLabel) == []
-    assert [w.text for w in of_kind(place_by_priority([crossing_water_labels(FRAME)[0]], FRAME, ["seas"]).placement, WaterLabel)] == ["Sea"]
+    assert of_kind(place_by_priority([sea], cropped, ["seas"]).placement, CurvedLabel) == []
+    assert [w.text for w in of_kind(place_by_priority([crossing_water_labels(FRAME)[0]], FRAME, ["seas"]).placement, CurvedLabel)] == ["Sea"]
 
 
 def test_nothing_to_place() -> None:
     p = place_by_priority([], FRAME, ["countries"]).placement
-    assert p.n == 0 and of_kind(p, Label) == [] and of_kind(p, WaterLabel) == []
+    assert p.n == 0 and of_kind(p, Label) == [] and of_kind(p, CurvedLabel) == []
 
 
 def test_water_label_mostly_off_its_water_is_skipped() -> None:
@@ -120,7 +120,7 @@ def test_water_label_mostly_off_its_water_is_skipped() -> None:
     x, y = mid_atlantic_px(FRAME)
     parts = np.array([[-30.0 + 10 * k, -7, -20 + 10 * k, 7] for k in range(6)])  # wherever it goes, 2 of 6 glyphs off one end
     sea = water_label("Sea", (x, y), shapely.box(x - 12, y - 7, x + 12, y + 7), parts, WATER_MIN_PT)
-    assert of_kind(place_by_priority([sized(sea, 1)], FRAME, ["seas"]).placement, WaterLabel) == []
+    assert of_kind(place_by_priority([sized(sea, 1)], FRAME, ["seas"]).placement, CurvedLabel) == []
 
 
 def test_country_with_no_room_gets_a_leader() -> None:
@@ -131,7 +131,7 @@ def test_country_with_no_room_gets_a_leader() -> None:
     sea = water_label("Sea", (x, y), shapely.box(x - 130, y - 130, x + 130, y + 130), np.array([[-130.0, -130, 130, 130]]), WATER_MIN_PT)
     p = place_by_priority([country, sized(sea, 1e6)], FRAME, ["countries", "seas"], rank=lambda kinds, sizes: np.array([3, 1])).placement
     assert of_kind(p, Label) == [country] and bool(p.out[0])
-    assert [w.text for w in of_kind(p, WaterLabel)] == ["Sea"] and clashes(p) == []
+    assert [w.text for w in of_kind(p, CurvedLabel)] == ["Sea"] and clashes(p) == []
 
 
 def test_centred_label_may_hang_off_both_ends() -> None:
@@ -139,7 +139,7 @@ def test_centred_label_may_hang_off_both_ends() -> None:
     x, y = mid_atlantic_px(FRAME)
     parts = np.array([[-50.0 + 5 * k, -7, -45 + 5 * k, 7] for k in range(20)])
     sea = water_label("Sea", (x, y), shapely.box(x - 24, y - 20, x + 24, y + 20), parts, WATER_MIN_PT)
-    assert [w.text for w in of_kind(place_by_priority([sized(sea, 1)], FRAME, ["seas"]).placement, WaterLabel)] == ["Sea"]
+    assert [w.text for w in of_kind(place_by_priority([sized(sea, 1)], FRAME, ["seas"]).placement, CurvedLabel)] == ["Sea"]
 
 
 def test_water_label_on_a_narrow_lake_is_kept() -> None:
@@ -147,7 +147,7 @@ def test_water_label_on_a_narrow_lake_is_kept() -> None:
     x, y = mid_atlantic_px(FRAME)
     parts = np.array([[-50.0 + 10 * k, -7, -40 + 10 * k, 7] for k in range(10)])
     lake = water_label("Lake", (x, y), shapely.box(x - 52, y - 2.5, x + 52, y + 2.5), parts, WATER_MIN_PT, kind="lakes")
-    assert [w.text for w in of_kind(place_by_priority([sized(lake, 1)], FRAME, ["lakes"]).placement, WaterLabel)] == ["Lake"]
+    assert [w.text for w in of_kind(place_by_priority([sized(lake, 1)], FRAME, ["lakes"]).placement, CurvedLabel)] == ["Lake"]
 
 
 def test_check_step_puts_a_clashing_country_out_without_touching_the_placement() -> None:
@@ -202,7 +202,7 @@ def test_countries_are_cut_too() -> None:
     assert out.cut == {"countries": 1} and not out.kept[0]
 
 
-def sea_on(label: Label) -> WaterLabel:
+def sea_on(label: Label) -> CurvedLabel:
     """A sea wanting to sit right on `label`, its body a wide box round it."""
     x, y = label.anchor_x, label.anchor_y
     return water_label("Sea", (x, y), shapely.box(x - 400, y - 400, x + 400, y + 400), np.array([[-60.0, -10, 60, 10]]), WATER_MIN_PT)
@@ -252,4 +252,4 @@ def test_entries_keep_the_callers_order() -> None:
                             rank=lambda k, s: np.array([2, 1, 3]))
     assert list(out.kept) == [False, True, False] and list(out.ranks) == [2, 1, 3]
     assert list(out.ranks_of([out.entries[2], out.entries[0]])) == [3, 2] and len(out.ranks_of([])) == 0
-    assert [w.text for w in of_kind(out.placement, WaterLabel)] == ["Sea"]
+    assert [w.text for w in of_kind(out.placement, CurvedLabel)] == ["Sea"]

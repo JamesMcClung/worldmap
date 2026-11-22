@@ -24,7 +24,8 @@ from worldmap.earth import Fill, Regions
 from worldmap.frame import DPI, MapFrame
 from worldmap.labels.label import Label
 from worldmap.labels.placement import Placement, leader_ends
-from worldmap.labels.water import RIVER_HALO, RIVER_TEXT, river_width, WATER_HALO, WATER_HALO_PX, WATER_TEXT, WaterLabel
+from worldmap.labels.curved import CURVED_HALO_PX, CurvedLabel
+from worldmap.labels.water import RIVER_HALO, RIVER_TEXT, river_width, WATER_HALO, WATER_TEXT
 
 BORDER, STATE_LINE = "#3a3a3a", "#7d7d7d"
 ANTARCTICA_FILL = "#ffffff"  # Antarctica is drawn white and left unlabelled
@@ -190,9 +191,9 @@ def draw_labels(ax: Axes, placement: Placement, frame: MapFrame) -> None:
 def draw_water_labels(ax: Axes, placement: Placement, frame: MapFrame) -> None:
     """Each water label's bent glyphs at its placed position and size, blue with a water-coloured halo (rivers:
     darker, with the country labels' halo), just under the country labels."""
-    halo = [pe.withStroke(linewidth=WATER_HALO_PX * 72 / DPI, foreground=WATER_HALO)]
-    river_halo = [pe.withStroke(linewidth=WATER_HALO_PX * 72 / DPI, foreground=RIVER_HALO)]
-    for i, label in placement.each(WaterLabel):
+    halo = [pe.withStroke(linewidth=CURVED_HALO_PX * 72 / DPI, foreground=WATER_HALO)]
+    river_halo = [pe.withStroke(linewidth=CURVED_HALO_PX * 72 / DPI, foreground=RIVER_HALO)]
+    for i, label in placement.each(CurvedLabel):
         river = label.kind == "rivers"
         ax.add_patch(glyph_patch(label.glyphs, placement.size[i] / label.size, placement.x[i], placement.y[i], frame,
                                  fc=RIVER_TEXT if river else WATER_TEXT, zorder=LABEL_ZORDER - 0.1, path_effects=river_halo if river else halo))

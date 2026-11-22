@@ -32,7 +32,8 @@ from worldmap.labels.placeable import Placeable
 from worldmap.labels.priority import Outcome, Unplaced, place_by_priority
 from worldmap.labels.regions import child_regions
 from worldmap.labels.report import progress, summary
-from worldmap.labels.water import WATER_KINDS, Kind, WaterBody, WaterLabel, kinds_from_labels, load_water_bodies, make_water_labels, river_ranks
+from worldmap.labels.curved import Body, CurvedLabel
+from worldmap.labels.water import WATER_KINDS, Kind, kinds_from_labels, load_water_bodies, make_water_labels, river_ranks
 from worldmap.pins import draw_pins, fit_to_render, load_pins, pick_pins, pin_sprite
 from worldmap.render import draw_borders, draw_countries, draw_labels, draw_lakes, drawable_lakes, draw_rivers, draw_states, draw_stripes, draw_water_labels, Lakes, new_figure, subtract_lakes
 from worldmap.rivers import river_flow
@@ -212,7 +213,7 @@ def main(argv: list[str] | None = None) -> None:
     print("wrote", out, "labels:", int((~placement.water).sum()), "leaders:", int(placement.out.sum()), "water labels:", int(placement.water.sum()))
 
 
-def water_labels(kinds: set[Kind], lakes: Lakes, frame: MapFrame) -> tuple[list[WaterBody], list[WaterLabel | Unplaced]]:
+def water_labels(kinds: set[Kind], lakes: Lakes, frame: MapFrame) -> tuple[list[Body], list[CurvedLabel | Unplaced]]:
     """The water bodies of `kinds` and their labels, one per body (make_water_labels: an Unplaced where the name
     doesn't fit; river names kept off the drawn `lakes`)."""
     if not kinds:
@@ -221,7 +222,7 @@ def water_labels(kinds: set[Kind], lakes: Lakes, frame: MapFrame) -> tuple[list[
     return bodies, make_water_labels(bodies, frame, lakes.merged)
 
 
-def shown_rivers(frame: MapFrame, bodies: list[WaterBody], water: list[WaterLabel | Unplaced], outcome: Outcome | None) -> gpd.GeoDataFrame:
+def shown_rivers(frame: MapFrame, bodies: list[Body], water: list[CurvedLabel | Unplaced], outcome: Outcome | None) -> gpd.GeoDataFrame:
     """The river pieces to draw, projected: those whose rank (water.river_ranks; the bodies' are those of their
     labels, `water`, in `outcome`), or that of a piece upstream (RiverFlow.downstream), rivers weren't cut at;
     every one if no labels were placed at all (`outcome` None)."""

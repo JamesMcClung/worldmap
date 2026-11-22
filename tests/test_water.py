@@ -8,9 +8,9 @@ from shapely.geometry import LineString, Point
 from worldmap.curves import arc_lengths, bend
 from worldmap.frame import MapFrame, make_frame
 from worldmap.labels.text import PX_PER_PT
-from worldmap.labels.water import (OCEAN_MIN_PT, OCEAN_PT, RIVER_MAX_PT, RIVER_MIN_PT, SEA_MAX_PT, WATER_MIN_INSIDE, WATER_MIN_PT,
-                                   WATER_TEXT, best_stretch, classify, fit_curve, kinds_from_labels, load_water_bodies,
-                                   longest_paths, make_water_labels, river_label, river_name, river_size, WaterBody, WaterLabel)
+from worldmap.labels.curved import CURVED_MIN_INSIDE, OCEAN_MIN_PT, WATER_MIN_PT, Body, CurvedLabel
+from worldmap.labels.water import (OCEAN_PT, RIVER_MAX_PT, RIVER_MIN_PT, SEA_MAX_PT, WATER_TEXT, best_stretch, classify, kinds_from_labels,
+                                   load_water_bodies, longest_paths, make_water_labels, river_label, river_name, river_size)
 from worldmap.labels.priority import Unplaced
 from worldmap.render import drawable_lakes
 
@@ -64,55 +64,6 @@ def test_bend_straight_and_circle() -> None:
     assert np.allclose(pts, [[0, 12]], atol=1e-2)  # left of rightward travel over the top is up, away from the centre
 
 
-def test_fit_curve_horizontal_and_reading_direction() -> None:
-    ellipse = shapely.affinity.scale(Point(0, 0).buffer(1), 10, 2)
-    c = fit_curve(ellipse, 90)
-    assert c[0, 0] < c[-1, 0] and np.ptp(c[:, 1]) < 0.5
-
-
-def test_fit_curve_steep_never_upside_down() -> None:
-    red_sea_like = shapely.affinity.rotate(shapely.affinity.scale(Point(0, 0).buffer(1), 10, 1), -60)
-    c = fit_curve(red_sea_like, 90)
-    assert c[0, 0] < c[-1, 0]  # never right to left (upside down)
-    assert c[0, 1] > c[-1, 1]  # this one runs down to the right
-
-
-def test_fit_curve_vertical_reads_bottom_to_top() -> None:
-    tall = shapely.affinity.scale(Point(0, 0).buffer(1), 1, 10)
-    c = fit_curve(tall, 90)
-    assert c[0, 1] < c[-1, 1]
-
-
-def test_fit_curve_tilt_clamped() -> None:
-    tall = shapely.affinity.scale(Point(0, 0).buffer(1), 1, 10)
-    c = fit_curve(tall, 20)
-    angle = np.degrees(np.arctan2(c[-1, 1] - c[0, 1], c[-1, 0] - c[0, 0]))
-    assert abs(angle) <= 20 + 1e-6
-
-
-def test_fit_curve_follows_a_bend() -> None:
-    ring = Point(0, 0).buffer(10).difference(Point(0, 0).buffer(8))
-    upper = ring.intersection(shapely.box(-10, 2, 10, 10))  # an upward arch
-    c = fit_curve(upper, 90)
-    assert c[len(c) // 2, 1] > c[0, 1] and c[len(c) // 2, 1] > c[-1, 1]
-
-
-
-def test_fit_curve_round_a_ring_follows_it_below_its_middle() -> None:
-    ring = Point(0, 0).buffer(10).difference(Point(0, 0).buffer(8))  # the Southern Ocean round the pole
-    c = fit_curve(ring, 90)
-    radius = np.hypot(c[:, 0], c[:, 1])
-    assert np.all((radius > 8.5) & (radius < 9.5))  # along the ring, never across its hole
-    assert c[0, 0] < c[-1, 0] and c[len(c) // 2, 1] < -8  # reads left to right, under the hole
-
-
-
-def test_fit_curve_island_at_the_middle_is_not_a_ring() -> None:
-    lake = shapely.affinity.scale(Point(0, 0).buffer(1), 10, 2).difference(Point(0, 0).buffer(0.5))  # Lake Kivu's island
-    c = fit_curve(lake, 90)
-    assert np.ptp(c[:, 0]) > 10 and np.ptp(c[:, 1]) < 0.5  # straight along it, as without the island
-
-
 @pytest.fixture(scope="module")
 def frame() -> MapFrame:
     return make_frame()
@@ -120,20 +71,20 @@ def frame() -> MapFrame:
 
 def test_water_label_layout(frame: MapFrame, lakes_projected: gpd.GeoDataFrame) -> None:
     bodies = load_water_bodies({"oceans", "seas"}, lakes_projected, make_frame())
-    labels = [l for l in make_water_labels(bodies, frame) if isinstance(l, WaterLabel)]
+    labels = [l for l in make_water_labels(bodies, frame) if isinstance(l, CurvedLabel)]
     med = next(l for l in labels if l.text == "Mediterranean Sea")
     atlantic = next(l for l in labels if l.text == "ATLANTIC OCEAN")
     assert OCEAN_MIN_PT <= atlantic.size <= OCEAN_PT and WATER_MIN_PT <= med.size <= SEA_MAX_PT
     assert len(med.parts) == len("MediterraneanSea")
-    assert med.inside_share(med.anchor_x, med.anchor_y) >= WATER_MIN_INSIDE
+    assert med.inside_share(med.anchor_x, med.anchor_y) >= CURVED_MIN_INSIDE
 
 
 def test_hopeless_bodies_have_no_label(frame: MapFrame, lakes_projected: gpd.GeoDataFrame) -> None:
     bodies = load_water_bodies({"oceans", "seas", "lakes", "straits"}, lakes_projected, make_frame())
     fits = make_water_labels(bodies, frame)
-    labels = [l for l in fits if isinstance(l, WaterLabel)]
+    labels = [l for l in fits if isinstance(l, CurvedLabel)]
     assert len(fits) == len(bodies) and 0 < len(labels) < len(bodies)
-    assert all(l.inside_share(l.anchor_x, l.anchor_y) >= WATER_MIN_INSIDE for l in labels)
+    assert all(l.inside_share(l.anchor_x, l.anchor_y) >= CURVED_MIN_INSIDE for l in labels)
 
 
 def test_make_water_labels_one_per_body(frame: MapFrame, lakes_projected: gpd.GeoDataFrame) -> None:
@@ -150,7 +101,7 @@ def test_draw_water_labels(frame: MapFrame, lakes_projected: gpd.GeoDataFrame) -
     from test_placement import placed
     from worldmap.render import draw_water_labels, new_figure
 
-    med = [l for l in make_water_labels(load_water_bodies({"seas"}, lakes_projected, make_frame()), frame) if isinstance(l, WaterLabel) and l.text == "Mediterranean Sea"]
+    med = [l for l in make_water_labels(load_water_bodies({"seas"}, lakes_projected, make_frame()), frame) if isinstance(l, CurvedLabel) and l.text == "Mediterranean Sea"]
     p = placed(med, frame)
     p.x[0] += 100  # somewhere other than its anchor
     fig, ax = new_figure(frame)
@@ -163,13 +114,6 @@ def test_draw_water_labels(frame: MapFrame, lakes_projected: gpd.GeoDataFrame) -
     gx0, gy0, gx1, gy1 = med[0].glyphs.get_extents().extents
     px, py = frame.px_to_map(np.array([p.x[0] + (gx0 + gx1) / 2]), np.array([p.y[0] + (gy0 + gy1) / 2]))
     assert abs((ext.x0 + ext.x1) / 2 - px[0]) * frame.px_per_unit < 1 and abs((ext.y0 + ext.y1) / 2 - py[0]) * frame.px_per_unit < 1
-
-
-def test_fit_curve_steep_and_bent_never_tips_past_vertical() -> None:
-    ring = Point(0, 0).buffer(10).difference(Point(0, 0).buffer(8))
-    arch = shapely.affinity.rotate(ring.intersection(shapely.box(-10, 2, 10, 10)), 80, origin=(0, 0))  # chord at ~80 degrees
-    c = fit_curve(arch, 90)
-    assert (np.diff(c[:, 0]) >= -1e-9).all()  # every step still goes right: no glyph leans upside down
 
 
 def test_river_name() -> None:
@@ -202,7 +146,7 @@ def test_river_name_must_stay_within_an_em_of_its_river() -> None:
     em = river_size(1) * PX_PER_PT
     x0, y0 = 3000.0, 1500.0
     mx, my = frame.px_to_map(np.array([x0, x0 + 40 * em]), np.array([y0, y0]))
-    label = river_label(WaterBody("Straight", "rivers", 1, LineString(np.column_stack([mx, my])), 100.0), frame)
+    label = river_label(Body("Straight", "rivers", 1, LineString(np.column_stack([mx, my])), 100.0), frame)
     assert label is not None
     assert label.geom.contains(Point(x0 + 20 * em, y0 + 0.9 * em))
     assert not label.geom.contains(Point(x0 + 20 * em, y0 + 1.1 * em))
@@ -218,7 +162,7 @@ def test_river_name_stays_off_drawn_lakes() -> None:
     line = LineString(np.column_stack([mx, my]))
     lx, ly = frame.px_to_map(np.array([x0 + 20 * em, x0 + 60 * em]), np.array([y0 - 5 * em, y0 + 5 * em]))
     lake = shapely.box(lx[0], ly[0], lx[1], ly[1])  # the middle, where the name would go
-    label = river_label(WaterBody("Straight", "rivers", 1, line, 100.0), frame, lake)
+    label = river_label(Body("Straight", "rivers", 1, line, 100.0), frame, lake)
     assert label is not None and label.anchor_x > x0 + 60 * em
 
 
@@ -284,7 +228,7 @@ def test_water_full_size_is_frame_independent(world_bodies: dict[str, list]) -> 
     for name in ("Danube", "Adriatic Sea"):
         assert crop[name][0].full_size == pytest.approx(world_bodies[name][0].full_size, rel=1e-9)
     label = make_water_labels(world_bodies["Lake Victoria"], make_frame())[0]
-    assert isinstance(label, WaterLabel)
+    assert isinstance(label, CurvedLabel)
     assert label.full_size == world_bodies["Lake Victoria"][0].full_size
 
 

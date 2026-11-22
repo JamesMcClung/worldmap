@@ -92,7 +92,7 @@ class Placement:
         return len(self.x)
 
     def each(self, kind: type[T]) -> Iterator[tuple[int, T]]:
-        """The index and label of each of its labels of `kind` (label.Label, water.WaterLabel)."""
+        """The index and label of each of its labels of `kind` (label.Label, curved.CurvedLabel)."""
         return ((i, item) for i, item in enumerate(self.items) if isinstance(item, kind))
 
     def copy(self) -> "Placement":

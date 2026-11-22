@@ -1,4 +1,4 @@
-"""What the solvers ask of every label, country (label.Label) or water (water.WaterLabel)."""
+"""What the solvers ask of every label, country (label.Label) or water (curved.CurvedLabel)."""
 
 from typing import Protocol
 

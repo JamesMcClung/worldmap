@@ -20,7 +20,8 @@ from worldmap.frame import (ANTIMERIDIAN_EPS, OUTLINE_POINTS, PROJECT_PAD, SEGME
                             make_frame)
 from worldmap.labels.label import RENAME
 from worldmap.labels.regions import PARENT_SHORT, child_regions, polygons
-from worldmap.labels.water import WaterBody, kinds_from_labels, load_water_bodies
+from worldmap.labels.curved import Body
+from worldmap.labels.water import kinds_from_labels, load_water_bodies
 
 if TYPE_CHECKING:
     import questionary
@@ -357,7 +358,7 @@ def candidates(label: Collection[str], disputed: bool) -> list[Candidate]:
     kinds = kinds_from_labels(label)
     if kinds:
         bodies = load_water_bodies(kinds, frame.project(load_lakes()), frame)  # every lake: a crop draws ones too small for the world map
-        oceans: dict[str, list[WaterBody]] = {}
+        oceans: dict[str, list[Body]] = {}
         for b in bodies:  # the world map labels the Pacific twice, either side of +-180: one candidate
             if b.kind == "oceans":
                 oceans.setdefault(b.text, []).append(b)
