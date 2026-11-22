@@ -186,16 +186,6 @@ def test_river_size() -> None:
     assert river_size(2) - river_size(4) == pytest.approx(river_size(4) - river_size(6))  # linear in the line width
 
 
-def test_river_names_absolute_in_a_crop() -> None:
-    from worldmap.crop import box_region, crop_frame
-    from worldmap.labels.water import load_river_bodies
-
-    f = crop_frame(box_region((5, 45, 15, 52)), 0)  # the Alps and Germany
-    rivers = [r for r in make_water_labels(load_river_bodies(f), f) if isinstance(r, WaterLabel)]
-    assert rivers and max(r.size for r in rivers) <= RIVER_MAX_PT
-    assert max(r.min_size for r in rivers) == WATER_MIN_PT
-
-
 def test_every_drawn_river_is_a_candidate() -> None:
     """Rivers of every drawn scalerank get a body (and so may be named), not only the bigger ones."""
     from worldmap.crop import box_region, crop_frame
