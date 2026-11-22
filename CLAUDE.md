@@ -75,9 +75,9 @@ Importing any module has no side effects; only `cli.main` (after choosing the ba
 | `labels/text.py` | text as `TextPath` outlines, no figure needed: `font`, `text_width`, `lines`, `bent` (glyphs along a curve) |
 | `labels/label.py` | country labels: `Label`, `lay_out`, `make_labels` (anchors, sizes, exclaves), `decide_out_and_wrap` |
 | `labels/regions.py` | `--label territories`: `HAND_PICKED` (parent + lon/lat boxes), `child_regions` |
-| `labels/curved.py` | curved area labels (water and landforms): `Body`, `CurvedLabel`, `fit_curve`, `lay_out`, `area_label`, `Style`/`STYLES` (per kind: italic, tracking, colours, sizes), the water and land colours |
-| `labels/water.py` | water and river labels: `classify`, `load_water_bodies`, `load_river_bodies`, `river_label`, `make_water_labels`, `river_width` |
-| `labels/land.py` | landform labels: `LAND_KINDS`, `classify`, `text_of` (`NAMES`), `load_land_bodies`, `make_land_labels` |
+| `labels/curved.py` | curved area labels (water and landforms): `Body`, `CurvedLabel`, `fit_curve`, `lay_out`, `area_label`, `Style` (italic, tracking, colours, sizes; each `Body` carries its kind's), `WHITE_HALO`; no kinds of its own |
+| `labels/water.py` | water and river labels: `classify`, `STYLES` (per kind) and the water colours, `load_water_bodies`, `load_river_bodies`, `river_label`, `make_water_labels`, `river_width` |
+| `labels/land.py` | landform labels: `LAND_KINDS`, `STYLE` (every kind's), `classify`, `text_of` (`NAMES`), `load_land_bodies`, `make_land_labels` |
 | `labels/placement.py` | the solver: `Placement` (per-label arrays; knows labels only as `Placeable`s), `CostWeights`, `FIXED`/`NUDGE`/`FREE`, `place_labels`, `clash`/`clashes` |
 | `labels/placeable.py` | `Placeable`: what the solvers ask of a country or curved label (`curved`: on its feature by glyph centres, never 'out') |
 | `labels/kernels.py` | numba (`@njit(cache=True)`) loops behind the solver; weights passed as an array in `CostWeights` field order (`weight_array`) |
@@ -328,7 +328,7 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
   the whole ocean, so ATLANTIC and the left PACIFIC run pole to pole (a level label at the widest water put them in the
   south). A body round a hole holding its middle, >= `RING_HOLE_SHARE` of its outline (the Southern Ocean in a polar
   crop), gets an arc below the hole instead (`ring_arc`). Sizes fill `SEA_FILL` of the curve within `WATER_MIN_PT`..`SEA_MAX_PT` (oceans
-  `OCEAN_MIN_PT`..`OCEAN_PT`, letter-spaced caps; all upright). Style is by kind (`curved.STYLES`), never by size.
+  `OCEAN_MIN_PT`..`OCEAN_PT`, letter-spaced caps; all upright). Style is by kind (`water.STYLES`), never by size.
 - `CurvedLabel` (`curved.py`): one bent `Path` per label plus a halo-padded box per glyph (`parts`), both relative to its position.
   Bodies whose name doesn't sit >= `CURVED_MIN_INSIDE` over them at their anchor are left out up front (`inside_share`:
   glyph box area whose centres are on the water, as the solver counts it).
@@ -387,7 +387,7 @@ Labels ignore them.
   Rows of one name within `JOIN_DEG` = 1 degree (across +-180 too) are one feature (`features`: the Transantarctic
   Mountains' halves), ranked by their summed km2; further apart, separate labels of one name (the Sierra Nevadas).
   Labelled on the largest visible polygon.
-- Laid out like seas (`curved.area_label`); italic `LAND_TEXT` (dark warm brown) with the country labels' white halo,
+- Laid out like seas (`curved.area_label`); italic `LAND_TEXT` (dark warm brown) with the country labels' white halo (`land.STYLE`),
   `LAND_MIN_PT`..`LAND_MAX_PT`; both map types; `--crop NAME` finds them (`crop.LAND_KIND`).
 - Ranked with every other label by area, so the Sahara ranks with Russia: on the world map
   `--label countries,land` drops Bosnia & Herz., which the default map places.
