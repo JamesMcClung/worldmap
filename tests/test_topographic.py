@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 import numpy as np
 import pytest
 import shapely
@@ -5,7 +7,7 @@ from matplotlib.colors import to_rgb
 
 from worldmap.coloring import OCEAN
 from worldmap.data import load_ice, load_land
-from worldmap.frame import make_frame
+from worldmap.frame import POSTER_WIDTH_IN, make_frame
 from worldmap.topographic import (LAND_BELOW_SEA, LAND_TOP, Grid, PosterGrid, coastline, colorize, draw_topography, elevation_grid,
                                   polygon_mask, poster_grid, relief, sample, shade)
 
@@ -264,7 +266,7 @@ def test_crops_use_full_resolution() -> None:
     from worldmap.crop import box_region, crop_frame
     from worldmap.topographic import FINE_STEP_DEG, GRID_STEP_DEG, elevation_for
 
-    alps = crop_frame(box_region((5, 40, 17, 49)), 0)
+    alps = replace(crop_frame(box_region((5, 40, 17, 49)), 0), size_in=POSTER_WIDTH_IN)  # at the default ~9 in, the dpi would have to be higher
     assert elevation_for(alps, poster_grid(alps, 20)).step == FINE_STEP_DEG
     world = make_frame()
     assert elevation_for(world, poster_grid(world, 20)).step == GRID_STEP_DEG
@@ -296,7 +298,7 @@ def test_zoomed_crops_use_15s_tiles() -> None:
     from worldmap.topographic import TILE_STEP_DEG, elevation_for
 
     alps_tiles()
-    alps = crop_frame(box_region((5, 40, 17, 49)), 0)
+    alps = replace(crop_frame(box_region((5, 40, 17, 49)), 0), size_in=POSTER_WIDTH_IN)  # at the default ~9 in, the dpi would have to be higher
     assert elevation_for(alps, poster_grid(alps, 80)).step == TILE_STEP_DEG
 
 

@@ -223,6 +223,38 @@ def test_candidates_across_the_antimeridian_are_finite() -> None:
         assert not crop_frame(c.geom, 0.1).globe
 
 
+def long_side(f: MapFrame) -> float:
+    return max(f.width_in, f.height_in)
+
+
+def test_default_size_floor() -> None:
+    from worldmap.crop import CROP_MIN_IN
+
+    assert long_side(crop_frame(box_region((35.3, 31.0, 35.7, 31.8)), 0.1)) == CROP_MIN_IN  # the Dead Sea
+
+
+def test_default_size_grows_with_region() -> None:
+    france, europe, us = (long_side(crop_frame(box_region(b), 0.1)) for b in ((-5, 42, 9, 51), (-25, 34, 45, 72), (-179, 18, -66, 72)))
+    assert france < europe < us
+    assert 8 < france < 12
+
+
+def test_default_size_capped_at_poster_width() -> None:
+    from dataclasses import replace
+
+    from worldmap.crop import default_size_in
+    from worldmap.frame import POSTER_WIDTH_IN
+
+    w = make_frame()
+    assert default_size_in(replace(w, xmax=w.xmin + 1.1 * w.width)) == POSTER_WIDTH_IN  # wider than the globe
+
+
+def test_world_size_unchanged() -> None:
+    from worldmap.frame import POSTER_WIDTH_IN
+
+    assert make_frame().size_in == POSTER_WIDTH_IN
+
+
 def test_label_sizes_are_absolute_in_a_crop() -> None:
     from worldmap.labels.label import MAX_PT, MIN_PT, new_label
 

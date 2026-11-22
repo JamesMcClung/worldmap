@@ -184,8 +184,8 @@ or country labels run. `--color`, `--disputed`, `--recolor` and `--label countri
   (`coastline`) is the outline of the union of the land and ice polygons, as in the political map, minus the
   slivers the union leaves where ice shelves meet land (`SLIVER_M2`, `SLIVER_HOLE_M2`; they drew stray dashes).
   It takes ~3 s. Tracing it from the smoothed pixel mask instead rounded the coast and left river mouths inland.
-- Memory: at 200 dpi the world peaks ~3.3 GB, a square crop ~4.3 GB, the Alps test crop ~5 GB (crops have more
-  pixels than the world poster). Work in blocks or in place on the whole-poster arrays; don't use
+- Memory: at 200 dpi the world peaks ~3.3 GB; a square 36 in crop ~4.3 GB (more pixels than the world poster), a
+  default-size crop much less (it grows with size squared: a big `--size` crop can take many GB). Work in blocks or in place on the whole-poster arrays; don't use
   `ax.contour` (its ContourSet keeps a float64 copy of the grid per call, ~665 MB each), use `contour_lines` (contourpy).
 - Colour bars (`colorbars.py`): height bottom-right, depth top-right (`--ocean` only), ice bottom-left. Each is its
   corner quadrant minus the globe grown by `BAR_GAP_IN`, minus `BAR_MARGIN_IN`; signed labels in the gap with a white
@@ -213,7 +213,10 @@ oceans) gets Equal Earth centred on its longitude instead, clipped a hair either
   `PROJECT_PAD` (repairing invalid input: the marine areas). Layers whose rows split a feature at +-180 (the land:
   Wrangel Island) pass `dissolve=True`. `frame.visible` cuts to the canvas itself: labels use it,
   so a neighbour cut by the edge is labelled on its visible part.
-- Size: the long side is `POSTER_WIDTH_IN` (`width_in`/`height_in`).
+- Size: the long side (`size_in`, `width_in`/`height_in`) is `--size`, else `default_size_in`: 36 in x (s / 36 in) ^
+  `CROP_SIZE_POWER` = 0.4, at least `CROP_MIN_IN` = 6 and at most 36, where s is the crop's long side measured on
+  the world poster (Dead Sea 6 in, France ~10, Europe ~18, Pacific ~28). Bigger regions get bigger posters, but a
+  small one isn't blown up to 36 in, where its rivers and labels looked lost.
 - Labels: every text size is absolute (pt on the poster), the same limits as the world map's in any crop: a
   bigger poster fits more labels, it doesn't grow them.
 - `--crop W:E,S:N`: edges, lon then lat; any end may be left out (lon -180/180, lat -90/90, so `:,60:` is everything
