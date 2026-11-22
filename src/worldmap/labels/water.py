@@ -361,7 +361,7 @@ class WaterLabel:
     @property
     def min_size(self) -> float:
         """The smallest it may shrink to (pt): oceans stay bigger than any sea."""
-        return (OCEAN_MIN_PT if self.kind == "oceans" else WATER_MIN_PT)
+        return OCEAN_MIN_PT if self.kind == "oceans" else WATER_MIN_PT
 
     @property
     def name(self) -> str:
