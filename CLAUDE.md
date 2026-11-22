@@ -272,6 +272,8 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
   parent (so not Hong Kong/Macau), plus `HAND_PICKED` parts of a parent's polygons (Alaska, Kaliningrad, Tasmania...),
   selected by testing each polygon's representative point against lon/lat boxes. Child labels are anchored on and sized
   by their largest polygon (a hull-based size makes spread-out archipelagos huge).
+  A country whose every shown polygon belongs to a child region (a crop showing only Alaska of the US) gets no
+  label of its own (`make_labels`, matching polygons by WKB).
 - Anchor = centre of the largest inscribed circle of the biggest polygon; island-heavy countries (several significant
   polygons, largest < 65% of total, plus `FORCE_ISLAND`) use the convex-hull centroid and a hull-based size.
 - Font size scales with sqrt(area), clamped to 6-30 pt. A label covering >= 60% of its country (or much wider than a

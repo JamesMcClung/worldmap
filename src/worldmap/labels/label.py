@@ -122,16 +122,18 @@ def make_labels(countries_projected: gpd.GeoDataFrame, frame: MapFrame, fill_of:
     """One label per labelled country (if `countries`), plus an italic one per child region (--label territories),
     biggest first (full_size; see anchor_piece for where each goes). With `countries`, --disputed adds the self-governing areas:
     `relabel` labels these rows with this text even if they aren't is_labeled (Somaliland), and `extra` adds
-    (text, polygon, fill, km2) labels for breakaway areas with no row of their own. Each label's full_size is the
-    km2 of the whole row (countries_projected.km2), area or region."""
+    (text, polygon, fill, km2) labels for breakaway areas with no row of their own. A country whose every polygon
+    shown belongs to a child region (a crop showing only Alaska of the US) gets no label of its own. Each label's
+    full_size is the km2 of the whole row (countries_projected.km2), area or region."""
     relabel = relabel or {}
+    in_children = {p.wkb for child in children for p in child.polys}
     tolerance = frame.width / INSCRIBED_CIRCLE_DIVISOR
     labels, island_names = [], []
     for i, row in countries_projected.iterrows():
         if not countries or not (is_labeled(row) or i in relabel):
             continue
         polys = [p for p in (row.geometry.geoms if isinstance(row.geometry, MultiPolygon) else [row.geometry]) if not p.is_empty]
-        if not polys:
+        if not polys or all(p.wkb in in_children for p in polys):
             continue
         anchor, geom, area, island = anchor_piece(polys, frame, tolerance, row.NAME_EN in FORCE_ISLAND)
         if island:
