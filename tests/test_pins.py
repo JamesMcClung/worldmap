@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from worldmap.cli import main
-from worldmap.pins import PinStyle, load_pins, pin_sprite
+from worldmap.pins import PinStyle, load_pins, pin_sprite, rendered_size_in
 
 
 def write(tmp_path: Path, text: str) -> Path:
@@ -35,6 +35,15 @@ def test_pin_sprite_shape_and_alpha() -> None:
     assert sprite[n // 2, n // 2, 3] == pytest.approx(1)
     assert sprite[0, 0, 3] == 0
     assert np.isfinite(sprite).all()
+
+
+def test_rendered_size_in(tmp_path: Path) -> None:
+    from PIL import Image
+
+    Image.new("RGBA", (1800, 3600)).save(tmp_path / "tall.png", dpi=(200, 200))
+    assert rendered_size_in(str(tmp_path / "tall.png")) == pytest.approx(18, abs=1e-3)  # PNG stores dots per metre
+    Image.new("RGBA", (4, 4)).save(tmp_path / "bare.png")
+    assert rendered_size_in(str(tmp_path / "bare.png")) is None
 
 
 def test_pick_without_render_exits(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -79,6 +79,15 @@ def load_pins(path: str | Path) -> list[LonLat]:
     return pins
 
 
+def rendered_size_in(png: str) -> float | None:
+    """The long side (inches) of a map make_map saved: its pixels over the dpi it records; None if it records none."""
+    from PIL import Image
+
+    with Image.open(png) as im:
+        dpi = im.info.get("dpi")
+        return max(im.size) / float(dpi[0]) if dpi else None
+
+
 def smoothstep(edge0: float, edge1: float, x: np.ndarray) -> np.ndarray:
     t = np.clip((x - edge0) / (edge1 - edge0), 0, 1)
     return t * t * (3 - 2 * t)
