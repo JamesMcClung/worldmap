@@ -10,7 +10,7 @@ python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'   # deps in pyproject
 .venv/bin/make_map [out.png] [--type political|topographic] [--ocean] [--recolor] [--color colorblind|earth] [--label LIST] [--disputed] [--rivers] [--pins FILE] [--pin-size IN] [--size IN] [--dpi DPI] [--crop NAME[,NAME...]|W:E,S:N|LON,LAT/W,H] [--pick FILE]
 ```
 
-`--size` sets the poster's long side in inches (`MapFrame.size_in`; default 36 for the world): text sizes are
+`--size` sets the poster's long side in inches (`MapFrame.size_in`, None without it: `default_size_in`, 36 for the world): text sizes are
 absolute, so a bigger poster fits more labels. `--dpi` only changes the `savefig` dpi (and the pin sprite's pixel size): layout is always measured at
 `frame.DPI` = 200, so a low-res render is the poster scaled down. `examples/` is built at `--dpi 50`.
 A run takes ~7-12 s. Output goes to the current directory. After changing the entry point in `pyproject.toml`, re-run `pip install -e .`.
@@ -63,7 +63,7 @@ Importing any module has no side effects; only `cli.main` (after choosing the ba
 |---|---|
 | `cli.py` | `parse_args` (`--label`: an ordered list replacing the default `countries`; `water` expands in place; `none` = no labels), `main()` (the pipeline as a sequence of stage calls), `place` (placing with the progress line and summary), `shown_rivers` |
 | `data.py` | Natural Earth/ETOPO downloads (`fetch`, `fetch_all`, `etopo15_tile`), file names, `load_*`, which features are dependencies/labelled |
-| `frame.py` | `MapFrame`: projection, canvas, `project`/`visible`/`to_px`; `make_frame` (world), antimeridian helpers, `DPI`, `POSTER_WIDTH_IN` |
+| `frame.py` | `MapFrame`: projection, canvas, `project`/`visible`/`to_px`, `default_size_in`; `make_frame` (world), antimeridian helpers, `DPI`, `POSTER_WIDTH_IN` |
 | `crop.py` | `--crop`: box/centre/name specs (`parse_box`, `parse_centre`, `candidates`, `choose`) -> `crop_frame`/`centre_frame`, `centre_recipe` |
 | `colorspace.py` | OKLab/OKLCH conversions, `fit_gamut`, `darken` |
 | `coloring.py` | graph colouring (`adjacency`, `add_proximity_edges`, `color_graph`), `make_palette`, `load_or_compute_coloring` (cache), `OCEAN` |
@@ -213,9 +213,9 @@ oceans) gets Equal Earth centred on its longitude instead, clipped a hair either
   `PROJECT_PAD` (repairing invalid input: the marine areas). Layers whose rows split a feature at +-180 (the land:
   Wrangel Island) pass `dissolve=True`. `frame.visible` cuts to the canvas itself: labels use it,
   so a neighbour cut by the edge is labelled on its visible part.
-- Size: the long side (`size_in`, `width_in`/`height_in`) is `--size`, else `default_size_in`: 36 in x (s / 36 in) ^
-  `CROP_SIZE_POWER` = 0.4, at least `CROP_MIN_IN` = 6 and at most 36, where s is the crop's long side measured on
-  the world poster (Dead Sea 6 in, France 10, Europe box 19.6, US 24.9, Pacific ~28). Bigger regions get bigger posters, but a
+- Size: the long side (`long_side_in`, `width_in`/`height_in`) is `--size`, else `MapFrame.default_size_in`: 36 in x (s / 36 in) ^
+  `CROP_SIZE_POWER` = 0.4, at least `CROP_MIN_IN` = 6 and at most 36, where s is the map's long side measured on
+  the world poster (so the world's is 36) (Dead Sea 6 in, France 10, Europe box 19.6, US 24.9, Pacific ~28). Bigger regions get bigger posters, but a
   small one isn't blown up to 36 in, where its rivers and labels looked lost.
 - Labels: every text size is absolute (pt on the poster), the same limits as the world map's in any crop: a
   bigger poster fits more labels, it doesn't grow them.
@@ -261,7 +261,7 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
   reaches this session's pins). The picker runs right after the globe extent is computed, then exits, so it skips the label work.
 - `make_map [out.png] --pins pins.txt [--pin-size 0.24]` draws golden shaded spheres (`pin_sprite`, tuned through `PinStyle`: shaded by a reflected environment: cream sky, dark band above a domed horizon, gold ground, window strips at the sides; styled after `pin-example.png`
   environment for a chrome-like look, broad specular glare with a hot core, baked drop shadow) at zorder 10, above labels. Pins are drawn northernmost first so southern ones overlap them.
-  Diameter is in poster inches, whatever `--size`; `--pick` takes the render's size from the PNG (`rendered_size_in`: pixels over its recorded dpi) unless given `--size`, and exits if its aspect isn't the frame's (`check_render_shape`: a crop's render needs its `--crop`). Default output with `--pins` is `worldmap_pins.png`, so the bare map isn't overwritten.
+  Diameter is in poster inches, whatever `--size`; `--pick` takes the render's size from the PNG (`fit_to_render`: pixels over its recorded dpi) unless given `--size`, and exits if its aspect isn't the frame's (a crop's render needs its `--crop`). Default output with `--pins` is `worldmap_pins.png`, so the bare map isn't overwritten.
 - `--pick` skips `matplotlib.use("Agg")` to get the interactive backend. Pins on the antimeridian are clipped by the canvas edge.
 
 ## Label placement notes
