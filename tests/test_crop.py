@@ -344,3 +344,11 @@ def test_regions_round_a_pole_get_a_square_map_centred_on_it(name: str, lat: int
     f = crop_frame(c.geom, CROP_MARGIN)
     assert f"+lat_0={lat}" in f.crs.replace(".000000", "") and f.width == pytest.approx(f.height)
     assert f.xmin == pytest.approx(-f.xmax) and f.ymin == pytest.approx(-f.ymax)
+
+
+def test_candidates_land() -> None:
+    found = candidates({"mountains"}, False)
+    [alps] = [c for c in found if c.text == "Alps"]
+    x0, y0, x1, y1 = alps.geom.bounds
+    assert alps.kind == "mountain" and 4 <= x0 and x1 <= 17 and 43 <= y0 and y1 <= 49
+    assert {c.kind for c in found} == {"mountain"}
