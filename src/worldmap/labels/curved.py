@@ -42,7 +42,7 @@ RIVER_HALO = (1, 1, 1, 0.55)  # like the country labels'
 _land_text = fit_gamut(0.40, 0.07, 55)
 assert _land_text is not None
 LAND_TEXT: RGB = _land_text[0]  # landforms: a dark warm brown, terrain rather than water or a country's hue
-LAND_HALO = (1, 1, 1, 0.55)  # they sit on land: the country labels' halo
+LAND_HALO = RIVER_HALO  # they sit on land too
 LAND_MIN_PT, LAND_MAX_PT = 6.5, 14.0  # sized to fill SEA_FILL of their curve, within these
 
 
