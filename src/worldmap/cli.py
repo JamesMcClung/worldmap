@@ -111,8 +111,7 @@ def draws_rivers(args: argparse.Namespace) -> bool:
 
 def make_map_frame(args: argparse.Namespace) -> MapFrame:
     """The whole globe, or the --crop region, --size inches on its long side if given."""
-    frame = region_frame(args)
-    return dataclasses.replace(frame, size_in=args.size) if args.size else frame
+    return dataclasses.replace(region_frame(args), size_in=args.size)
 
 
 def region_frame(args: argparse.Namespace) -> MapFrame:
