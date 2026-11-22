@@ -279,6 +279,6 @@ def outline_coverage(frame: MapFrame) -> Coverage:
 
 
 def outside_outline(p: Placement, frame: MapFrame) -> set[int]:
-    """Water labels with a glyph box not wholly inside the frame's outline."""
+    """Curved labels with a glyph box not wholly inside the frame's outline."""
     inside = outline_coverage(frame).holds(rects(p))
     return {int(i) for i in p.owner[~inside & p.curved[p.owner]]}
