@@ -1,4 +1,4 @@
-"""Bending text (or any points) along a polyline: shared by the colour-bar titles and the water labels."""
+"""Bending text (or any points) along a polyline: shared by the colour-bar titles and the curved labels."""
 
 import numpy as np
 
