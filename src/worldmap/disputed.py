@@ -16,7 +16,7 @@ from worldmap.earth import Fill
 
 DISPUTED_GREY = (207 / 255, 207 / 255, 207 / 255)  # #cfcfcf; areas with 3+ countries, and the second stripe of breakaway areas
 SNAP_M = 500  # metres: a disputed outline this close to an involved country counts as their shared border
-STRIPE_WIDTH_IN = 0.035  # each stripe's width across, in inches on the 36 in poster
+STRIPE_WIDTH_IN = 0.035  # each stripe's width across, in poster inches
 
 # Names used in NOTE_BRK -> countries-file NAME_EN.
 ALIASES = {"China": "People's Republic of China", "U.S.A.": "United States of America", "U.S.A": "United States of America",
