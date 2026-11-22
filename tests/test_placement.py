@@ -11,6 +11,7 @@ from worldmap.labels.label import Label, new_label
 from worldmap.labels.placement import FIXED, FREE, NUDGE, Placement, clashes, place_labels, rects, subset
 from worldmap.labels import placement
 from worldmap.labels.curved import OCEAN_MIN_PT, WATER_MIN_PT, CurvedLabel
+from worldmap.labels.water import STYLES, Kind
 
 T = TypeVar("T", Label, CurvedLabel)
 
@@ -53,10 +54,10 @@ def one_label(frame: MapFrame) -> list[Label]:
     return [country_label(frame, "Atlantis", -35, 30, 500)]
 
 
-def water_label(text: str, anchor: tuple[float, float], geom: shapely.Geometry, parts: np.ndarray, size: float, kind: str = "seas") -> CurvedLabel:
+def water_label(text: str, anchor: tuple[float, float], geom: shapely.Geometry, parts: np.ndarray, size: float, kind: Kind = "seas") -> CurvedLabel:
     x0, y0, x1, y1 = parts.min(axis=0)[0], parts.min(axis=0)[1], parts.max(axis=0)[2], parts.max(axis=0)[3]
     glyphs = Path([(x0, y0), (x1, y0), (x1, y1), (x0, y1), (x0, y0)], closed=True)
-    return CurvedLabel(text, kind, geom, anchor[0], anchor[1], size, glyphs, parts)  # type: ignore[arg-type]
+    return CurvedLabel(text, kind, geom, anchor[0], anchor[1], size, glyphs, parts, STYLES[kind])
 
 
 @pytest.fixture

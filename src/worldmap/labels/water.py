@@ -16,7 +16,9 @@ from worldmap.curves import along, arc_lengths, bend
 from worldmap.data import EQUAL_AREA_CRS, load_marine, load_rivers
 from worldmap.disjoint import DisjointSets
 from worldmap.frame import MapFrame
-from worldmap.labels.curved import CURVED_MIN_INSIDE, MAX_TILT_DEG, Body, CurvedLabel, area_label, fit_curve, largest, lay_out
+from worldmap.labels.curved import (CURVED_MIN_INSIDE, MAX_TILT_DEG, OCEAN_MIN_PT, OCEAN_PT, OCEAN_TRACKING_EM, RIVER_HALO, RIVER_TEXT,
+                                    SEA_MAX_PT, WATER_HALO, WATER_MIN_PT, WATER_TEXT, Body, CurvedLabel, Style, area_label, fit_curve,
+                                    largest, lay_out)
 from worldmap.labels.priority import UNLABELED, Unplaced
 from worldmap.labels.text import PX_PER_PT, font, text_width
 
@@ -25,6 +27,12 @@ WATER_KINDS: tuple[Kind, ...] = ("oceans", "seas", "lakes", "straits", "rivers")
 SEA: Kind = "seas"
 CLASSES: dict[str, Kind] = {"ocean": "oceans", "strait": "straits", "channel": "straits"}
 CLASSES |= {c: SEA for c in ("sea", "gulf", "bay", "sound", "fjord", "lagoon", "inlet")}  # reefs, river mouths and the unnamed 'generic' areas are never labelled
+_SEA_STYLE = Style(False, 0.0, False, WATER_TEXT, WATER_HALO, WATER_MIN_PT, SEA_MAX_PT)
+STYLES: dict[Kind, Style] = {
+    "oceans": Style(False, OCEAN_TRACKING_EM, True, WATER_TEXT, WATER_HALO, OCEAN_MIN_PT, OCEAN_PT),
+    "seas": _SEA_STYLE, "lakes": _SEA_STYLE, "straits": _SEA_STYLE,
+    "rivers": Style(True, 0.0, False, RIVER_TEXT, RIVER_HALO, WATER_MIN_PT, SEA_MAX_PT),  # sized by river_size, not max_pt
+}
 RIVER_WIDTH_MAX, RIVER_WIDTH_MIN = 1.6, 0.3  # line widths (pt) at scalerank 0 and RIVER_THIN_RANK
 RIVER_THIN_RANK = 8  # rivers of this scalerank and beyond are drawn thinnest
 RIVER_MAX_PT, RIVER_MIN_PT = 8.5, 4.2  # river names: italic, linear in the river's line width, these at its widest and thinnest
@@ -76,13 +84,13 @@ def load_water_bodies(kinds: set[Kind], lakes_projected: gpd.GeoDataFrame, frame
             halves = [whole.intersection(shapely.box(x0, y0, 0, y1)), whole.intersection(shapely.box(0, y0, x1, y1))]
         else:
             halves = [whole]
-        bodies += [Body(OCEAN_TEXT[word], "oceans", 0, largest(h), float(ocean_km2[word])) for h in halves]
+        bodies += [Body(OCEAN_TEXT[word], "oceans", 0, largest(h), float(ocean_km2[word]), STYLES["oceans"]) for h in halves]
     for row in marine[marine.featurecla != "ocean"].itertuples():
         kind = classify(row.featurecla)
         assert kind is not None
-        bodies.append(Body(row.name, kind, int(row.scalerank), largest(row.geometry), float(row.km2)))
+        bodies.append(Body(row.name, kind, int(row.scalerank), largest(row.geometry), float(row.km2), STYLES[kind]))
     if "lakes" in kinds:
-        bodies += [Body(r.name, "lakes", int(r.scalerank), largest(r.geometry), float(r.km2)) for r in lakes_projected.itertuples() if isinstance(r.name, str) and not r.geometry.is_empty]
+        bodies += [Body(r.name, "lakes", int(r.scalerank), largest(r.geometry), float(r.km2), STYLES["lakes"]) for r in lakes_projected.itertuples() if isinstance(r.name, str) and not r.geometry.is_empty]
     if "rivers" in kinds:
         bodies += load_river_bodies(frame)
     bodies.sort(key=lambda b: -b.full_size)
@@ -196,7 +204,7 @@ def load_river_bodies(frame: MapFrame) -> list[Body]:
                 kept.append(part)
         for part in kept:
             rank = int(group.scalerank[shapely.dwithin(group.geometry.values, part, 1.0)].min())
-            bodies.append(Body(str(text), "rivers", rank, part, river_length(str(text), part, frame)))
+            bodies.append(Body(str(text), "rivers", rank, part, river_length(str(text), part, frame), STYLES["rivers"]))
     return bodies
 
 

@@ -48,7 +48,7 @@ LAND_MIN_PT, LAND_MAX_PT = 6.5, 14.0  # sized to fill SEA_FILL of their curve, w
 
 @dataclass(frozen=True)
 class Style:
-    """How a kind's names look: a curved label's style is its kind's (STYLES), never its size's."""
+    """How a kind's names look: a curved label's style is its kind's (water.STYLES, land.STYLE), never its size's."""
     italic: bool
     tracking_em: float  # extra space after each letter, in ems
     cap_centred: bool  # the cap height (else the x-height) is centred on the curve
@@ -58,16 +58,6 @@ class Style:
     max_pt: float
 
 
-_SEA = Style(False, 0.0, False, WATER_TEXT, WATER_HALO, WATER_MIN_PT, SEA_MAX_PT)
-STYLES: dict[str, Style] = {
-    "oceans": Style(False, OCEAN_TRACKING_EM, True, WATER_TEXT, WATER_HALO, OCEAN_MIN_PT, OCEAN_PT),
-    "seas": _SEA, "lakes": _SEA, "straits": _SEA,
-    "rivers": Style(True, 0.0, False, RIVER_TEXT, RIVER_HALO, WATER_MIN_PT, SEA_MAX_PT),  # sized by river_size, not max_pt
-}
-_LAND = Style(True, 0.0, False, LAND_TEXT, LAND_HALO, LAND_MIN_PT, LAND_MAX_PT)
-STYLES |= {kind: _LAND for kind in ("mountains", "uplands", "deserts", "lowlands")}  # land.LAND_KINDS (no capitals, whatever the size)
-
-
 @dataclass
 class Body:
     text: str
@@ -75,6 +65,7 @@ class Body:
     rank: int  # Natural Earth scalerank: 0 = oceans, 1 = major seas, ... lower is more important
     geom: Polygon | LineString  # the piece the label goes on (a river's line), in map units
     full_size: float  # km2 of the whole body, or km of the whole river, however much the frame shows: its priority
+    style: Style  # its kind's
 
 
 def largest(geom: BaseGeometry) -> Polygon:
@@ -181,12 +172,9 @@ class CurvedLabel:
     size: float  # pt
     glyphs: Path  # the bent text, in px relative to the label's position
     parts: np.ndarray  # (k, 4) x0, y0, x1, y1 per non-space glyph, px relative to the label's position, halo-padded
+    style: Style  # its body's
     full_size: float = 0.0  # its body's (Body.full_size)
     cover: Coverage | None = field(default=None, repr=False, compare=False)  # geom's, once needed (geometry.coverage)
-
-    @property
-    def style(self) -> Style:
-        return STYLES[self.kind]
 
     @property
     def min_size(self) -> float:
@@ -230,7 +218,7 @@ def extend(curve: np.ndarray, length: float) -> np.ndarray:
 def lay_out(body: Body, curve: np.ndarray, size: float, geom_px: BaseGeometry, rise: float | None = None) -> CurvedLabel:
     """`body`'s name at `size` pt in its kind's style, centred on `curve` (px), its x-height (or cap height) centred
     on it; or, given `rise` (px), its baseline that far to the left of the curve (above, reading left to right)."""
-    style = STYLES[body.kind]
+    style = body.style
     prop = font(size, style.italic)
     tracking = style.tracking_em * size
     text = body.text
@@ -248,14 +236,14 @@ def lay_out(body: Body, curve: np.ndarray, size: float, geom_px: BaseGeometry, r
     pad = CURVED_HALO_PX / 2
     parts = [[*(v.min(axis=0) - pad), *(v.max(axis=0) + pad)] for v in vertices]
     glyphs = Path(np.vstack(vertices), np.concatenate([codes for _, codes in laid]))
-    return CurvedLabel(body.text, body.kind, geom_px, float(anchor[0]), float(anchor[1]), size, glyphs, np.array(parts), body.full_size)
+    return CurvedLabel(body.text, body.kind, geom_px, float(anchor[0]), float(anchor[1]), size, glyphs, np.array(parts), style, body.full_size)
 
 
 def area_label(body: Body, frame: MapFrame) -> CurvedLabel | None:
     """`body`'s name along its polygon's curve (fit_curve), sized to fill SEA_FILL of it within its style's range;
     None if under CURVED_MIN_INSIDE of its glyph boxes are over the body at its anchor (no room for the name)."""
     assert isinstance(body.geom, Polygon)
-    style = STYLES[body.kind]
+    style = body.style
     curve = (fit_curve(body.geom, MAX_TILT_DEG) - np.array([frame.xmin, frame.ymin])) * frame.px_per_unit
     width_1pt = text_width(body.text, font(1, style.italic)) * PX_PER_PT + style.tracking_em * (len(body.text) - 1) * PX_PER_PT
     size = float(np.clip(SEA_FILL * arc_lengths(curve)[-1] / width_1pt, style.min_pt, style.max_pt))

@@ -9,7 +9,7 @@ from worldmap.curves import arc_lengths, bend
 from worldmap.frame import MapFrame, make_frame
 from worldmap.labels.text import PX_PER_PT
 from worldmap.labels.curved import CURVED_MIN_INSIDE, OCEAN_MIN_PT, OCEAN_PT, SEA_MAX_PT, WATER_MIN_PT, WATER_TEXT, Body, CurvedLabel
-from worldmap.labels.water import (RIVER_MAX_PT, RIVER_MIN_PT, best_stretch, classify, kinds_from_labels,
+from worldmap.labels.water import (RIVER_MAX_PT, RIVER_MIN_PT, STYLES, best_stretch, classify, kinds_from_labels,
                                    load_water_bodies, longest_paths, make_water_labels, river_label, river_name, river_size)
 from worldmap.labels.priority import Unplaced
 from worldmap.render import drawable_lakes
@@ -146,7 +146,7 @@ def test_river_name_must_stay_within_an_em_of_its_river() -> None:
     em = river_size(1) * PX_PER_PT
     x0, y0 = 3000.0, 1500.0
     mx, my = frame.px_to_map(np.array([x0, x0 + 40 * em]), np.array([y0, y0]))
-    label = river_label(Body("Straight", "rivers", 1, LineString(np.column_stack([mx, my])), 100.0), frame)
+    label = river_label(Body("Straight", "rivers", 1, LineString(np.column_stack([mx, my])), 100.0, STYLES["rivers"]), frame)
     assert label is not None
     assert label.geom.contains(Point(x0 + 20 * em, y0 + 0.9 * em))
     assert not label.geom.contains(Point(x0 + 20 * em, y0 + 1.1 * em))
@@ -162,7 +162,7 @@ def test_river_name_stays_off_drawn_lakes() -> None:
     line = LineString(np.column_stack([mx, my]))
     lx, ly = frame.px_to_map(np.array([x0 + 20 * em, x0 + 60 * em]), np.array([y0 - 5 * em, y0 + 5 * em]))
     lake = shapely.box(lx[0], ly[0], lx[1], ly[1])  # the middle, where the name would go
-    label = river_label(Body("Straight", "rivers", 1, line, 100.0), frame, lake)
+    label = river_label(Body("Straight", "rivers", 1, line, 100.0, STYLES["rivers"]), frame, lake)
     assert label is not None and label.anchor_x > x0 + 60 * em
 
 
