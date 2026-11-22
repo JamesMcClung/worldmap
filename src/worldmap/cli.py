@@ -210,7 +210,7 @@ def main(argv: list[str] | None = None) -> None:
     add_pins(ax, frame, args)
     # Layout above is measured at DPI; saving at another resolution only rescales it.
     fig.savefig(out, dpi=args.dpi, transparent=True)
-    print("wrote", out, "labels:", int((~placement.water).sum()), "leaders:", int(placement.out.sum()), "water labels:", int(placement.water.sum()))
+    print("wrote", out, "labels:", int((~placement.curved).sum()), "leaders:", int(placement.out.sum()), "curved labels:", int(placement.curved.sum()))
 
 
 def water_labels(kinds: set[Kind], lakes: Lakes, frame: MapFrame) -> tuple[list[Body], list[CurvedLabel | Unplaced]]:

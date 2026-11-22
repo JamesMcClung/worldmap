@@ -128,7 +128,7 @@ def on_feature(parts: np.ndarray, x: float, y: float, by_area: bool, table: np.n
                on: np.ndarray) -> float:
     """The share of a label's rects (`parts`, relative to its position (x, y)) on its feature (`table`...: its
     Coverage), and into `on` which of its pieces are: by_area (a country), the box round its rects by area, in
-    len(on) upright slices, each on it if at least half over it; else (a water label) each rect, on it if its
+    len(on) upright slices, each on it if at least half over it; else (a curved label) each rect, on it if its
     centre is, the share by their areas."""
     inside, total = 0.0, 0.0
     for p in range(len(parts)):

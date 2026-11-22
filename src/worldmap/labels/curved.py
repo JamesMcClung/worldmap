@@ -204,7 +204,7 @@ class CurvedLabel:
         return False
 
     @property
-    def water(self) -> bool:
+    def curved(self) -> bool:
         return True
 
     def inside_share(self, x: float, y: float) -> float:

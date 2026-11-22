@@ -105,7 +105,7 @@ def crossing_water_labels(frame: MapFrame) -> tuple[CurvedLabel, CurvedLabel]:
 
 
 def always_clashing(p: placement.Placement, among: np.ndarray | None = None) -> list[int]:
-    return [int(i) for i in np.flatnonzero(p.water)]
+    return [int(i) for i in np.flatnonzero(p.curved)]
 
 
 def test_oceans_shrink_no_smaller_than_ocean_floor(frame: MapFrame, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -146,7 +146,7 @@ def test_floors_hold(frame: MapFrame, monkeypatch: pytest.MonkeyPatch) -> None:
 def test_of_takes_labels_in_any_order(frame: MapFrame, one_label: list[Label]) -> None:
     sea, _ = crossing_water_labels(frame)
     p = Placement.of([sea, *one_label])
-    assert p.items == [sea, *one_label] and p.water.tolist() == [True, False]
+    assert p.items == [sea, *one_label] and p.curved.tolist() == [True, False]
     assert p.owner.tolist() == [0] * len(sea.parts) + [1] and np.array_equal(rects(p)[-1], rects(Placement.of(one_label))[0])
     assert (p.width[0], p.height[0]) == (sea.width, sea.height)
 
@@ -155,7 +155,7 @@ def test_subset(frame: MapFrame, one_label: list[Label]) -> None:
     sea, bay = crossing_water_labels(frame)
     p = placed([*one_label, sea, bay], frame)
     q = subset(p, np.array([True, False, True]))
-    assert q.n == 2 and q.owner.tolist() == [0, *[1] * len(bay.parts)] and q.water.tolist() == [False, True]
+    assert q.n == 2 and q.owner.tolist() == [0, *[1] * len(bay.parts)] and q.curved.tolist() == [False, True]
     assert np.array_equal(rects(q), rects(p)[p.owner != 1])
     assert of_kind(q, Label) == one_label and of_kind(q, CurvedLabel) == [bay] and [i for i, _ in q.each(CurvedLabel)] == [1]
 
