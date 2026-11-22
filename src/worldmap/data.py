@@ -25,8 +25,9 @@ GLACIERS = "ne_10m_glaciated_areas.zip"
 ICE_SHELVES = "ne_10m_antarctic_ice_shelves_polys.zip"
 LAND_OUTLINE = "ne_10m_land.zip"  # --type topographic: decides land vs water (heights alone get the Dead Sea wrong)
 MARINE = "ne_10m_geography_marine_polys.zip"  # named oceans, seas, bays, straits... (label areas, not coastlines)
+REGIONS = "ne_10m_geography_regions_polys.zip"  # named ranges, plateaus, deserts, plains... (label areas too)
 RIVERS = "ne_10m_rivers_lake_centerlines.zip"  # --rivers: centrelines, joined up through the lakes they cross
-PHYSICAL = {LAKES, GLACIERS, ICE_SHELVES, LAND_OUTLINE, MARINE, RIVERS}  # under physical/ rather than cultural/
+PHYSICAL = {LAKES, GLACIERS, ICE_SHELVES, LAND_OUTLINE, MARINE, REGIONS, RIVERS}  # under physical/ rather than cultural/
 # ETOPO 2022 (NOAA, public domain): land heights and sea depths in metres, 60 arc-second grid, top of the ice.
 ETOPO = "ETOPO_2022_v1_60s_N90W180_surface.tif"
 ETOPO_URL = "https://www.ngdc.noaa.gov/mgg/global/relief/ETOPO2022/data/60s/60s_surface_elev_gtif/" + ETOPO
@@ -222,3 +223,10 @@ def load_ice() -> gpd.GeoDataFrame:
 def load_land() -> gpd.GeoDataFrame:
     """Natural Earth's land polygons (no lakes cut out; the Caspian is water)."""
     return gpd.read_file(fetch(LAND_OUTLINE))[["geometry"]]
+
+
+def load_regions() -> gpd.GeoDataFrame:
+    """Natural Earth's land label areas (ranges, plateaus, deserts, plains, islands...), unfiltered: see
+    labels/land.py. The file's columns are upper case; these are lower-cased like the marine file's."""
+    regions = gpd.read_file(fetch(REGIONS))[["FEATURECLA", "NAME", "NAME_EN", "SCALERANK", "geometry"]]
+    return with_km2(regions.rename(columns={"FEATURECLA": "featurecla", "NAME": "name", "NAME_EN": "name_en", "SCALERANK": "scalerank"}))
