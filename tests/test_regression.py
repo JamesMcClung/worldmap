@@ -30,6 +30,10 @@ def test_render_water(tmp_path: Path) -> None:
     check_fingerprint("water", render(tmp_path, "--label", "countries,water"))
 
 
+def test_render_land(tmp_path: Path) -> None:
+    check_fingerprint("land", render(tmp_path, "--label", "countries,land"))
+
+
 def test_render_crop(tmp_path: Path) -> None:
     check_fingerprint("crop", render(tmp_path, "--crop", "France"))
 
@@ -53,6 +57,7 @@ def test_environment_includes_map_data() -> None:
     assert "raster" not in environment("default")
     assert "marine" in environment("water") and "marine" not in environment("default")
     assert "rivers" in environment("water") and "rivers" not in environment("default")
+    assert "regions" in environment("land") and "regions" not in environment("default") and "regions" not in environment("water")
 
 
 def tiny_png(tmp_path: Path) -> Path:
