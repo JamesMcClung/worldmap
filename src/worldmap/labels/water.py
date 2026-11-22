@@ -1,5 +1,5 @@
-"""Water labels (--label oceans, seas, lakes, water, rivers): which water bodies get a name, the curve each name
-follows, and its glyphs laid out along it. Bodies are in projected map units; labels are in poster pixels."""
+"""Water labels (--label oceans, seas, lakes, water, rivers): which water bodies get a name, and where along a
+river it goes (laid out by curved.py). Bodies are in projected map units; labels are in poster pixels."""
 
 import functools
 from collections.abc import Collection
