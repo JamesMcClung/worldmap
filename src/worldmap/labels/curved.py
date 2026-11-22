@@ -3,10 +3,9 @@ along it. Bodies are in projected map units; labels are in poster pixels."""
 
 from dataclasses import dataclass, field
 
-from matplotlib.colors import to_rgb
-
 import numpy as np
 import shapely
+from matplotlib.colors import to_rgb
 from matplotlib.path import Path
 from matplotlib.textpath import TextPath
 from shapely.geometry import LineString, Polygon
@@ -15,8 +14,8 @@ from shapely.geometry.base import BaseGeometry
 from worldmap.coloring import OCEAN
 from worldmap.colorspace import RGB, fit_gamut, srgb_to_oklch
 from worldmap.curves import arc_lengths, bend
-from worldmap.labels.geometry import Coverage, coverage, on_feature
 from worldmap.frame import MapFrame
+from worldmap.labels.geometry import Coverage, coverage, on_feature
 from worldmap.labels.text import PX_PER_PT, bent, font, text_width
 
 MAX_BEND_DEG = 40  # the most a label's curve may turn from one end to the other
