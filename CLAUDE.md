@@ -12,7 +12,7 @@ python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'   # deps in pyproject
 
 `--size` sets the poster's long side in inches (`MapFrame.size_in`, None without it: `default_size_in`, 36 for the world): text sizes are
 absolute, so a bigger poster fits more labels. `--dpi` only changes the `savefig` dpi (and the pin sprite's pixel size): layout is always measured at
-`frame.DPI` = 200, so a low-res render is the poster scaled down. `examples/` is built at `--dpi 50`.
+`frame.DPI` = 200, so a low-res render is the poster scaled down. `examples/` is built at `--dpi 50`, except the Alps crop (an 8 in poster: 200 dpi), with the commands in `README.md`.
 A run takes ~7-12 s. Output goes to the current directory. After changing the entry point in `pyproject.toml`, re-run `pip install -e .`.
 
 Natural Earth data (public domain) is downloaded by `data.fetch(name)` on first use into `.cache/` at the repo root, located
