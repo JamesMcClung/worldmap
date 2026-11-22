@@ -180,13 +180,6 @@ def test_shrinking_scales_a_labels_extent_and_rects(frame: MapFrame, monkeypatch
     assert p.parts == pytest.approx(0.5 * before.parts)
 
 
-def test_water_floor_scales_with_the_frame() -> None:
-    parts = np.array([[0.0, 0.0, 10.0, 10.0]])
-    sea = water_label("Sea", (0, 0), shapely.box(0, 0, 10, 10), parts, 20)
-    sea.label_scale = 2
-    assert sea.min_size == 2 * WATER_MIN_PT
-
-
 def test_nudge_goes_no_further_than_nudge_max(frame: MapFrame, one_label: list[Label]) -> None:
     """A tall sea fixed on top of a nudged country label (clearing it takes 3 heights): it gives way only so far."""
     label = one_label[0]

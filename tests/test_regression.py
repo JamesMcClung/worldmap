@@ -78,7 +78,6 @@ def test_version_mismatch_skips(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
         check_fingerprint("tiny", png, store=store)
 
 
-@pytest.mark.xdist_group("topographic_crop")  # 5 GB
 def test_render_topographic_crop(tmp_path: Path) -> None:
     check_fingerprint("topographic_crop", render(tmp_path, "--type", "topographic", "--ocean", "--crop", "5:17,40:49"))
 

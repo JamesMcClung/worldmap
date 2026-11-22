@@ -3,7 +3,7 @@
 import os
 import sys
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import numpy as np
@@ -79,6 +79,20 @@ def load_pins(path: str | Path) -> list[LonLat]:
     return pins
 
 
+def fit_to_render(png: str, frame: MapFrame) -> MapFrame:
+    """`frame` at the size of the map make_map saved as `png` (its pixels over the dpi it records), unless it has a
+    size_in (--size) or `png` records no dpi. Exits unless `png` has the frame's aspect ratio, to within its pixel
+    rounding: --pick on a crop's render needs the --crop it was rendered with."""
+    from PIL import Image
+
+    with Image.open(png) as im:
+        (w, h), dpi = im.size, im.info.get("dpi")
+    if abs(np.log(w / h * frame.height / frame.width)) > 2 / min(w, h):
+        sys.exit("--pick: %s is %d x %d px, not the shape of this map (%.1f x %.1f in): pass the --crop it was rendered with"
+                 % (png, w, h, frame.width_in, frame.height_in))
+    return replace(frame, size_in=max(w, h) / float(dpi[0])) if frame.size_in is None and dpi else frame
+
+
 def smoothstep(edge0: float, edge1: float, x: np.ndarray) -> np.ndarray:
     t = np.clip((x - edge0) / (edge1 - edge0), 0, 1)
     return t * t * (3 - 2 * t)
@@ -127,7 +141,7 @@ def pin_sprite(diameter_px: float, style: PinStyle = PinStyle()) -> np.ndarray:
 
 def draw_pins(ax: Axes, frame: MapFrame, pins: Sequence[LonLat], sprite: np.ndarray, diameter_in: float, style: PinStyle = PinStyle()) -> list[AxesImage]:
     """Draw pins northernmost first, so southern ones overlap them. Returns the image artists."""
-    half = style.pad * diameter_in / 2 * frame.width / frame.width_in
+    half = style.pad * diameter_in / 2 * frame.units_per_in
     out = []
     for lon, lat in sorted(pins, key=lambda p: -p[1]):
         x, y = frame.to_map.transform(lon, lat)

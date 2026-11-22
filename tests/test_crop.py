@@ -223,21 +223,34 @@ def test_candidates_across_the_antimeridian_are_finite() -> None:
         assert not crop_frame(c.geom, 0.1).globe
 
 
-def test_label_scale_grows_with_zoom() -> None:
-    from worldmap.crop import LABEL_SCALE_MAX
+def test_default_size_floor() -> None:
+    from worldmap.frame import CROP_MIN_IN
 
-    assert make_frame().label_scale == 1
-    assert crop_frame(box_region((-5, 42, 9, 51)), 0.1).label_scale == LABEL_SCALE_MAX  # France: zoom ~25
-    assert 1.3 < crop_frame(box_region((-179, 18, -66, 72)), 0.1).label_scale < 2  # US with Alaska and Hawaii: ~2.5
+    assert crop_frame(box_region((35.3, 31.0, 35.7, 31.8)), 0.1).long_side_in == CROP_MIN_IN  # the Dead Sea
 
 
-def test_label_sizes_scale_in_a_crop() -> None:
+def test_default_size_grows_with_region() -> None:
+    france, europe, us = (crop_frame(box_region(b), 0.1).long_side_in for b in ((-5, 42, 9, 51), (-25, 34, 45, 72), (-179, 18, -66, 72)))
+    assert france < europe < us
+    assert 8 < france < 12
+
+
+def test_default_size_capped_at_poster_width() -> None:
+    from dataclasses import replace
+
+    from worldmap.frame import POSTER_WIDTH_IN
+
+    w = make_frame()
+    assert replace(w, xmax=w.xmin + 1.1 * w.width).width_in == POSTER_WIDTH_IN  # wider than the globe
+
+
+def test_label_sizes_are_absolute_in_a_crop() -> None:
     from worldmap.labels.label import MAX_PT, MIN_PT, new_label
 
     f = crop_frame(box_region((-5, 42, 9, 51)), 0.1)
     huge, tiny = f.canvas, f.canvas.centroid.buffer(1)
-    assert new_label(f, "Big", (0, 0), huge, huge.area, (0, 0, 0)).size == pytest.approx(MAX_PT * f.label_scale)
-    assert new_label(f, "Small", (0, 0), tiny, tiny.area, (0, 0, 0)).size == pytest.approx(MIN_PT * f.label_scale)
+    assert new_label(f, "Big", (0, 0), huge, huge.area, (0, 0, 0)).size == pytest.approx(MAX_PT)
+    assert new_label(f, "Small", (0, 0), tiny, tiny.area, (0, 0, 0)).size == pytest.approx(MIN_PT)
 
 
 def test_wide_regions_use_equal_earth() -> None:

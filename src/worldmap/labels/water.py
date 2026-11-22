@@ -51,7 +51,6 @@ WATER_TEXT: RGB = _fitted[0]  # a deeper blue in the ocean's hue
 RIVER_WIDTH_MAX, RIVER_WIDTH_MIN = 1.6, 0.3  # line widths (pt) at scalerank 0 and RIVER_THIN_RANK
 RIVER_THIN_RANK = 8  # rivers of this scalerank and beyond are drawn thinnest
 RIVER_MAX_PT, RIVER_MIN_PT = 8.5, 4.2  # river names: italic, linear in the river's line width, these at its widest and thinnest
-RIVER_SCALE_MAX = 1.2  # river names grow with a crop's label_scale up to this, no more: they stay small
 RIVER_GAP_EM = 0.3  # baseline height over the river
 RIVER_CORRIDOR_EM = 1.0  # a river name's glyph centres should be within this of its river (more: it slid off where it was bent to fit)
 RIVER_JOIN_M = 30_000  # river pieces whose ends are this close are joined (lakes and reservoirs break them up)
@@ -356,14 +355,13 @@ class WaterLabel:
     size: float  # pt
     glyphs: Path  # the bent text, in px relative to the label's position
     parts: np.ndarray  # (k, 4) x0, y0, x1, y1 per non-space glyph, px relative to the label's position, halo-padded
-    label_scale: float = 1.0  # the frame's
     full_size: float = 0.0  # its body's (WaterBody.full_size)
     cover: Coverage | None = field(default=None, repr=False, compare=False)  # geom's, once needed (geometry.coverage)
 
     @property
     def min_size(self) -> float:
         """The smallest it may shrink to (pt): oceans stay bigger than any sea."""
-        return (OCEAN_MIN_PT if self.kind == "oceans" else WATER_MIN_PT) * self.label_scale
+        return OCEAN_MIN_PT if self.kind == "oceans" else WATER_MIN_PT
 
     @property
     def name(self) -> str:
@@ -399,7 +397,7 @@ def extend(curve: np.ndarray, length: float) -> np.ndarray:
     return np.vstack([step(curve[1], curve[0]), curve, step(curve[-2], curve[-1])])
 
 
-def lay_out(body: WaterBody, curve: np.ndarray, size: float, geom_px: BaseGeometry, label_scale: float, rise: float | None = None) -> WaterLabel:
+def lay_out(body: WaterBody, curve: np.ndarray, size: float, geom_px: BaseGeometry, rise: float | None = None) -> WaterLabel:
     """`body`'s name at `size` pt, centred on `curve` (px), its x-height (cap height for oceans) centred on it; or,
     given `rise` (px), its baseline that far to the left of the curve (above, reading left to right). Rivers in italic."""
     prop = font(size, body.kind == "rivers")
@@ -419,7 +417,7 @@ def lay_out(body: WaterBody, curve: np.ndarray, size: float, geom_px: BaseGeomet
     pad = WATER_HALO_PX / 2
     parts = [[*(v.min(axis=0) - pad), *(v.max(axis=0) + pad)] for v in vertices]
     glyphs = Path(np.vstack(vertices), np.concatenate([codes for _, codes in laid]))
-    return WaterLabel(body.text, body.kind, geom_px, float(anchor[0]), float(anchor[1]), size, glyphs, np.array(parts), label_scale, body.full_size)
+    return WaterLabel(body.text, body.kind, geom_px, float(anchor[0]), float(anchor[1]), size, glyphs, np.array(parts), body.full_size)
 
 
 def body_curve(body: WaterBody) -> np.ndarray:
@@ -471,13 +469,16 @@ def height_above(points: np.ndarray, curve: np.ndarray) -> float:
     return max(0.0, float(((points[beside] - base) * normal).sum(axis=1).max()))
 
 
-def river_label(body: WaterBody, frame: MapFrame) -> WaterLabel | None:
+def river_label(body: WaterBody, frame: MapFrame, lakes: BaseGeometry | None = None) -> WaterLabel | None:
     """A river's name just above the best stretch of it (best_stretch) for a name its size plus half an em each side,
-    clear of its wiggles there; None if the river is shorter than that. Sized by label_scale up to RIVER_SCALE_MAX."""
-    scale = min(frame.label_scale, RIVER_SCALE_MAX)
-    size = river_size(body.rank) * scale
+    clear of its wiggles there; None if the river is shorter than that. Only its longest piece outside the drawn
+    `lakes` (map units) counts: Natural Earth's lines run on through lakes, hidden under them."""
+    size = river_size(body.rank)
     em = size * PX_PER_PT
-    line = largest_line(frame.to_px(body.geom))
+    dry = body.geom if lakes is None else body.geom.difference(lakes)
+    if dry.is_empty:
+        return None
+    line = largest_line(frame.to_px(dry))
     pts = np.asarray(line.coords)
     need = text_width(body.text, font(size, True)) * PX_PER_PT + em
     if line.length < need:
@@ -485,7 +486,7 @@ def river_label(body: WaterBody, frame: MapFrame) -> WaterLabel | None:
     stretch = best_stretch(pts, need)
     curve = fit_curve(LineString(stretch).buffer(1.0), MAX_TILT_DEG)
     rise = RIVER_GAP_EM * em + height_above(stretch, curve)
-    label = lay_out(body, curve, size, line.buffer(RIVER_CORRIDOR_EM * em), scale, rise)
+    label = lay_out(body, curve, size, line.buffer(RIVER_CORRIDOR_EM * em), rise)
     return label if label.inside_share(label.anchor_x, label.anchor_y) >= WATER_MIN_INSIDE else None
 
 
@@ -493,14 +494,15 @@ def largest_line(geom: BaseGeometry) -> LineString:
     return max(shapely.get_parts(geom), key=lambda g: g.length)
 
 
-def make_water_labels(bodies: list[WaterBody], frame: MapFrame) -> list[WaterLabel | Unplaced]:
+def make_water_labels(bodies: list[WaterBody], frame: MapFrame, lakes: BaseGeometry | None = None) -> list[WaterLabel | Unplaced]:
     """A curved label per body, in the same order; an Unplaced for those with under WATER_MIN_INSIDE of their glyph
-    boxes over their body to start with (most small bays: no room for their name), and rivers too short for theirs."""
+    boxes over their body to start with (most small bays: no room for their name), and rivers too short for theirs
+    outside the drawn `lakes` (map units)."""
     ppu = frame.px_per_unit
     labels: list[WaterLabel | None] = []
     for body in bodies:
         if body.kind == "rivers":
-            labels.append(river_label(body, frame))
+            labels.append(river_label(body, frame, lakes))
             continue
         assert isinstance(body.geom, Polygon)
         curve = (body_curve(body) - np.array([frame.xmin, frame.ymin])) * ppu
@@ -508,7 +510,7 @@ def make_water_labels(bodies: list[WaterBody], frame: MapFrame) -> list[WaterLab
         if body.kind == "oceans":
             width_1pt += OCEAN_TRACKING_EM * (len(body.text) - 1) * PX_PER_PT
         low, high = (OCEAN_MIN_PT, OCEAN_PT) if body.kind == "oceans" else (WATER_MIN_PT, SEA_MAX_PT)
-        size = float(np.clip(SEA_FILL * arc_lengths(curve)[-1] / width_1pt, low * frame.label_scale, high * frame.label_scale))
-        label = lay_out(body, curve, size, frame.to_px(body.geom), frame.label_scale)
+        size = float(np.clip(SEA_FILL * arc_lengths(curve)[-1] / width_1pt, low, high))
+        label = lay_out(body, curve, size, frame.to_px(body.geom))
         labels.append(label if label.inside_share(label.anchor_x, label.anchor_y) >= WATER_MIN_INSIDE else None)
     return [Unplaced(b.text, b.kind, b.full_size) if label is None else label for b, label in zip(bodies, labels)]

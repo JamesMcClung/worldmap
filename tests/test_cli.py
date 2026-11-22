@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from worldmap.cli import draws_rivers, parse_args
+from worldmap.cli import draws_rivers, make_map_frame, parse_args
 from worldmap.frame import DPI
 
 
@@ -15,6 +15,16 @@ def test_dpi_flag() -> None:
         with pytest.raises(SystemExit) as e:
             parse_args(["--dpi", bad])
         assert e.value.code == 2
+
+
+def test_size_parses() -> None:
+    assert parse_args([]).size is None
+    assert parse_args(["--size", "12"]).size == 12
+
+
+def test_size_overrides_crop_default() -> None:
+    f = make_map_frame(parse_args(["--crop", "-5:9,42:51", "--size", "3"]))  # below the crop default's floor
+    assert f.long_side_in == pytest.approx(3)
 
 
 def test_console_script_help() -> None:
@@ -74,6 +84,20 @@ def test_pick_uses_crop_frame(tmp_path, monkeypatch) -> None:  # type: ignore[no
     assert len(seen) == 1 and not seen[0].globe and seen[0].azimuthal
 
 
+def test_pick_takes_the_size_of_the_render(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    from PIL import Image
+
+    from worldmap import cli
+
+    png = tmp_path / "map.png"
+    Image.new("RGBA", (1800, 923)).save(png, dpi=(100, 100))  # an 18 in world map
+    seen = []
+    monkeypatch.setattr(cli, "pick_pins", lambda path, out, frame, *rest: seen.append(frame))
+    cli.main(["--pick", str(tmp_path / "p.txt"), str(png)])
+    cli.main(["--pick", str(tmp_path / "p.txt"), "--size", "30", str(png)])
+    assert seen[0].width_in == pytest.approx(18, abs=1e-3) and seen[1].width_in == 30
+
+
 def test_centre_crop_from_the_command_line() -> None:
     from worldmap.cli import make_map_frame, parse_args
     from worldmap.crop import centre_frame
@@ -81,3 +105,18 @@ def test_centre_crop_from_the_command_line() -> None:
     assert make_map_frame(parse_args(["--crop", "-70,-30/1000km,800km"])).crs == centre_frame((-70, -30, 1000 / 111.19508, 800 / 111.19508)).crs
     with pytest.raises(SystemExit):
         make_map_frame(parse_args(["--crop", "10,50/20"]))
+
+
+def test_jordan_name_not_in_the_dead_sea() -> None:
+    from shapely.geometry import Point
+
+    from worldmap.cli import water_labels
+    from worldmap.crop import box_region, crop_frame
+    from worldmap.labels.water import WaterLabel
+    from worldmap.render import drawable_lakes
+
+    frame = crop_frame(box_region((35.3, 31.0, 35.7, 31.8)), 0.1)
+    lakes = drawable_lakes(frame)
+    _, labels = water_labels({"rivers"}, lakes, frame)
+    [jordan] = [lab for lab in labels if isinstance(lab, WaterLabel) and lab.text == "Jordan"]
+    assert not frame.to_px(lakes.merged, simplify=0).contains(Point(jordan.anchor_x, jordan.anchor_y))

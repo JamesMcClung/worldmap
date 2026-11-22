@@ -7,11 +7,12 @@ large countries, non-overlapping country labels), or with `--type topographic` a
 
 ```
 python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'   # deps in pyproject.toml; [dev] adds pytest, pytest-xdist, mypy
-.venv/bin/make_map [out.png] [--type political|topographic] [--ocean] [--recolor] [--color colorblind|earth] [--label LIST] [--disputed] [--rivers] [--pins FILE] [--pin-size IN] [--dpi DPI] [--crop NAME[,NAME...]|W:E,S:N|LON,LAT/W,H] [--pick FILE]
+.venv/bin/make_map [out.png] [--type political|topographic] [--ocean] [--recolor] [--color colorblind|earth] [--label LIST] [--disputed] [--rivers] [--pins FILE] [--pin-size IN] [--size IN] [--dpi DPI] [--crop NAME[,NAME...]|W:E,S:N|LON,LAT/W,H] [--pick FILE]
 ```
 
-`--dpi` only changes the `savefig` dpi (and the pin sprite's pixel size): layout is always measured at
-`frame.DPI` = 200, so a low-res render is the poster scaled down. `examples/` is built at `--dpi 50`.
+`--size` sets the poster's long side in inches (`MapFrame.size_in`, None without it: `default_size_in`, 36 for the world): text sizes are
+absolute, so a bigger poster fits more labels. `--dpi` only changes the `savefig` dpi (and the pin sprite's pixel size): layout is always measured at
+`frame.DPI` = 200, so a low-res render is the poster scaled down. `examples/` is built at `--dpi 50`, except the Alps crop (an 8 in poster: 200 dpi), with the commands in `README.md`.
 A run takes ~7-12 s. Output goes to the current directory. After changing the entry point in `pyproject.toml`, re-run `pip install -e .`.
 
 Natural Earth data (public domain) is downloaded by `data.fetch(name)` on first use into `.cache/` at the repo root, located
@@ -47,8 +48,8 @@ environment, so it skips where they aren't downloaded); `crop_pacific_water`: `-
 - `conftest.environment(mode)` keys data files per mode (`raster` for earth, ETOPO etc. for topographic*, `marine` for *water*, `rivers` for *water*):
   a new key on an existing mode would make it skip, so add keys only for the modes that use them.
 - Parallel runs: `pytest_collection_modifyitems` schedules the renders first (else the long ones start last). The
-  topographic renders take GBs (`--type topographic`, Memory), so each `xdist_group` (`topographic`,
-  `topographic_crop`) runs on one worker; the political ones peak near 0.5 GB. `UPDATE_REFERENCE` writes
+  world topographic renders take ~3.3 GB each (`--type topographic`, Memory), so their `xdist_group` (`topographic`)
+  runs them one at a time on one worker; the Alps crop (~9 in) peaks near 0.7 GB, the political ones near 0.5 GB. `UPDATE_REFERENCE` writes
   `fingerprints.json` under a lock in `.cache/reference/`.
 - The crop tests build `crop.candidates` once per set of kinds (`test_crop.candidates`, also patched into `cli`).
 
@@ -62,7 +63,7 @@ Importing any module has no side effects; only `cli.main` (after choosing the ba
 |---|---|
 | `cli.py` | `parse_args` (`--label`: an ordered list replacing the default `countries`; `water` expands in place; `none` = no labels), `main()` (the pipeline as a sequence of stage calls), `place` (placing with the progress line and summary), `shown_rivers` |
 | `data.py` | Natural Earth/ETOPO downloads (`fetch`, `fetch_all`, `etopo15_tile`), file names, `load_*`, which features are dependencies/labelled |
-| `frame.py` | `MapFrame`: projection, canvas, `project`/`visible`/`to_px`, `label_scale`; `make_frame` (world), antimeridian helpers, `DPI`, `POSTER_WIDTH_IN` |
+| `frame.py` | `MapFrame`: projection, canvas, `project`/`visible`/`to_px`, `default_size_in`; `make_frame` (world), antimeridian helpers, `DPI`, `POSTER_WIDTH_IN` |
 | `crop.py` | `--crop`: box/centre/name specs (`parse_box`, `parse_centre`, `candidates`, `choose`) -> `crop_frame`/`centre_frame`, `centre_recipe` |
 | `colorspace.py` | OKLab/OKLCH conversions, `fit_gamut`, `darken` |
 | `coloring.py` | graph colouring (`adjacency`, `add_proximity_edges`, `color_graph`), `make_palette`, `load_or_compute_coloring` (cache), `OCEAN` |
@@ -84,7 +85,7 @@ Importing any module has no side effects; only `cli.main` (after choosing the ba
 | `rivers.py` | `--rivers`: `river_flow` (cached): pieces split at junctions, oriented toward mouths |
 | `disjoint.py` | `DisjointSets` (union-find) |
 | `curves.py` | `arc_lengths`, `along`, `bend`: text bending for colour bar titles and water labels |
-| `render.py` | the `draw_*` layers (labels drawn from the `Placement` alone), `drawable_lakes`, `subtract_lakes`, line widths and z-orders |
+| `render.py` | the `draw_*` layers (labels drawn from the `Placement` alone), `drawable_lakes` (-> `Lakes`: the rows, and `merged` on first use), `subtract_lakes`, line widths and z-orders |
 
 Pipeline (`cli.main`):
 1. **Colouring** of all country features. Dependencies (`is_dependency`: `SOVEREIGNT != ADMIN`, not a lease or
@@ -183,8 +184,8 @@ or country labels run. `--color`, `--disputed`, `--recolor` and `--label countri
   (`coastline`) is the outline of the union of the land and ice polygons, as in the political map, minus the
   slivers the union leaves where ice shelves meet land (`SLIVER_M2`, `SLIVER_HOLE_M2`; they drew stray dashes).
   It takes ~3 s. Tracing it from the smoothed pixel mask instead rounded the coast and left river mouths inland.
-- Memory: at 200 dpi the world peaks ~3.3 GB, a square crop ~4.3 GB, the Alps test crop ~5 GB (crops have more
-  pixels than the world poster). Work in blocks or in place on the whole-poster arrays; don't use
+- Memory: at 200 dpi the world peaks ~3.3 GB; a square 36 in crop ~4.3 GB (more pixels than the world poster), a
+  default-size crop much less (the Alps test crop, ~9 in: 0.7 GB; it grows with size squared, so a big `--size` crop can take many GB). Work in blocks or in place on the whole-poster arrays; don't use
   `ax.contour` (its ContourSet keeps a float64 copy of the grid per call, ~665 MB each), use `contour_lines` (contourpy).
 - Colour bars (`colorbars.py`): height bottom-right, depth top-right (`--ocean` only), ice bottom-left. Each is its
   corner quadrant minus the globe grown by `BAR_GAP_IN`, minus `BAR_MARGIN_IN`; signed labels in the gap with a white
@@ -212,9 +213,11 @@ oceans) gets Equal Earth centred on its longitude instead, clipped a hair either
   `PROJECT_PAD` (repairing invalid input: the marine areas). Layers whose rows split a feature at +-180 (the land:
   Wrangel Island) pass `dissolve=True`. `frame.visible` cuts to the canvas itself: labels use it,
   so a neighbour cut by the edge is labelled on its visible part.
-- Size: the long side is `POSTER_WIDTH_IN` (`width_in`/`height_in`).
-- Labels: `frame.label_scale` = sqrt(zoom over the world map), 1..`LABEL_SCALE_MAX` = 2.5, multiplies every size
-  limit (country `MIN_PT`/`MAX_PT`, water and river sizes, `SHRINK_MIN_PT`, `WaterLabel.min_size`).
+- Size: the long side (`long_side_in`, `width_in`/`height_in`) is `--size`, else `MapFrame.default_size_in`: 36 in x (s / 36 in) ^
+  `CROP_SIZE_POWER` = 0.4, at least `CROP_MIN_IN` = 6 and at most 36, where s is the map's long side measured on
+  the world poster (so the world's is 36) (Dead Sea 6 in, France 10, Europe box 19.6, US 24.9, Pacific ~28). Bigger regions get bigger posters, but a
+  small one isn't blown up to 36 in, where its rivers and labels looked lost.
+- Labels: the world map's text sizes and limits, in pt on the poster (see `--size` above).
 - `--crop W:E,S:N`: edges, lon then lat; any end may be left out (lon -180/180, lat -90/90, so `:,60:` is everything
   north of 60N); west past east crosses +-180 (`170:-160,50:70`); no margin.
 - `--crop LON,LAT/W,H` (`parse_centre`, `centre_frame`): centred there, half of W (H) along the ground to the middle
@@ -257,7 +260,7 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
   reaches this session's pins). The picker runs right after the globe extent is computed, then exits, so it skips the label work.
 - `make_map [out.png] --pins pins.txt [--pin-size 0.24]` draws golden shaded spheres (`pin_sprite`, tuned through `PinStyle`: shaded by a reflected environment: cream sky, dark band above a domed horizon, gold ground, window strips at the sides; styled after `pin-example.png`
   environment for a chrome-like look, broad specular glare with a hot core, baked drop shadow) at zorder 10, above labels. Pins are drawn northernmost first so southern ones overlap them.
-  Diameter is in inches on the 36 in poster. Default output with `--pins` is `worldmap_pins.png`, so the bare map isn't overwritten.
+  Diameter is in poster inches, whatever `--size`; `--pick` takes the render's size from the PNG (`fit_to_render`: pixels over its recorded dpi) unless given `--size`, and exits if its aspect isn't the frame's (a crop's render needs its `--crop`). Default output with `--pins` is `worldmap_pins.png`, so the bare map isn't overwritten.
 - `--pick` skips `matplotlib.use("Agg")` to get the interactive backend. Pins on the antimeridian are clipped by the canvas edge.
 
 ## Label placement notes
@@ -268,11 +271,13 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
   parent (so not Hong Kong/Macau), plus `HAND_PICKED` parts of a parent's polygons (Alaska, Kaliningrad, Tasmania...),
   selected by testing each polygon's representative point against lon/lat boxes. Child labels are anchored on and sized
   by their largest polygon (a hull-based size makes spread-out archipelagos huge).
+  A country whose every shown polygon belongs to a child region (a crop showing only Alaska of the US) gets no
+  label of its own (`make_labels`, matching polygons by WKB).
 - Anchor = centre of the largest inscribed circle of the biggest polygon; island-heavy countries (several significant
   polygons, largest < 65% of total, plus `FORCE_ISLAND`) use the convex-hull centroid and a hull-based size.
 - Font size scales with sqrt(area), clamped to 6-30 pt. A label covering >= 60% of its country (or much wider than a
   short narrow one) becomes an "out" label with a leader line. Long names wrap onto 2 lines when much wider than their
-  country; stuck labels shrink (floor `SHRINK_MIN_PT` x `label_scale`) before being skipped.
+  country; stuck labels shrink (floor `SHRINK_MIN_PT`) before being skipped.
 - Country labels are outlines like water labels (`lay_out`: `TextPath`, box = advance width x line height, padded),
   drawn as `PathPatch`es (`render.glyph_patch`, round joins or the halo spikes at sharp corners) for the kept labels only.
 - Cost terms: label must lie inside the globe outline, label-label overlap, covering another leader's dot, leader/label and leader/leader crossings,
@@ -365,9 +370,9 @@ Labels ignore them.
   networks `RIVER_REPEAT_M` apart are labelled separately (Colorado US/Argentina). `WaterBody.geom` is the line.
 - `river_label`: italic, `river_size` linear in its line width (`river_width` of its thickest piece's scalerank: `RIVER_MAX_PT` 8.5 down to `RIVER_MIN_PT` 4.2); `best_stretch` picks the straightest, most level stretch near the middle
   for the name + an em; `fit_curve` on it; `lay_out(rise=)` puts the baseline `RIVER_GAP_EM` above the curve plus
-  however far the river wiggles above it (`height_above`). Its `geom` is a `RIVER_CORRIDOR_EM` buffer of the whole river.
+  however far the river wiggles above it (`height_above`). Only the river's longest piece outside the drawn lakes counts (its line runs on under them); `geom` is a `RIVER_CORRIDOR_EM` buffer of that piece.
 - Placement: by priority like every label (a river ranks by its whole length). Drawn in `RIVER_TEXT` with the
-  country labels' white halo; capped at `RIVER_MAX_PT` and `RIVER_SCALE_MAX` x the crop's scale.
+  country labels' white halo.
 - `--label countries,rivers` takes ~11 s.
 
 ## Gotchas

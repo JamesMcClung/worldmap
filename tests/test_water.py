@@ -8,7 +8,7 @@ from shapely.geometry import LineString, Point
 from worldmap.curves import arc_lengths, bend
 from worldmap.frame import MapFrame, make_frame
 from worldmap.labels.text import PX_PER_PT
-from worldmap.labels.water import (OCEAN_MIN_PT, OCEAN_PT, RIVER_MAX_PT, RIVER_MIN_PT, RIVER_SCALE_MAX, SEA_MAX_PT, WATER_MIN_INSIDE, WATER_MIN_PT,
+from worldmap.labels.water import (OCEAN_MIN_PT, OCEAN_PT, RIVER_MAX_PT, RIVER_MIN_PT, SEA_MAX_PT, WATER_MIN_INSIDE, WATER_MIN_PT,
                                    WATER_TEXT, best_stretch, classify, fit_curve, kinds_from_labels, load_water_bodies,
                                    longest_paths, make_water_labels, river_label, river_name, river_size, WaterBody, WaterLabel)
 from worldmap.labels.priority import Unplaced
@@ -17,7 +17,7 @@ from worldmap.render import drawable_lakes
 
 @pytest.fixture(scope="module")
 def lakes_projected() -> gpd.GeoDataFrame:
-    return drawable_lakes(make_frame())
+    return drawable_lakes(make_frame()).shapes
 
 
 def test_classify() -> None:
@@ -186,17 +186,6 @@ def test_river_size() -> None:
     assert river_size(2) - river_size(4) == pytest.approx(river_size(4) - river_size(6))  # linear in the line width
 
 
-def test_river_names_stay_small_in_a_crop() -> None:
-    from worldmap.crop import box_region, crop_frame
-    from worldmap.labels.water import load_river_bodies
-
-    f = crop_frame(box_region((5, 45, 15, 52)), 0)  # the Alps and Germany: label_scale near the cap
-    assert f.label_scale > RIVER_SCALE_MAX
-    rivers = [r for r in make_water_labels(load_river_bodies(f), f) if isinstance(r, WaterLabel)]
-    assert rivers and max(r.size for r in rivers) <= RIVER_MAX_PT * RIVER_SCALE_MAX
-    assert max(r.min_size for r in rivers) <= WATER_MIN_PT * RIVER_SCALE_MAX
-
-
 def test_every_drawn_river_is_a_candidate() -> None:
     """Rivers of every drawn scalerank get a body (and so may be named), not only the bigger ones."""
     from worldmap.crop import box_region, crop_frame
@@ -217,6 +206,20 @@ def test_river_name_must_stay_within_an_em_of_its_river() -> None:
     assert label is not None
     assert label.geom.contains(Point(x0 + 20 * em, y0 + 0.9 * em))
     assert not label.geom.contains(Point(x0 + 20 * em, y0 + 1.1 * em))
+
+
+def test_river_name_stays_off_drawn_lakes() -> None:
+    """Natural Earth's lines run on through lakes (Lake Centerline: the Jordan through the Dead Sea), hidden under
+    the lake fill: the name goes on the river where it shows."""
+    frame = make_frame()
+    em = river_size(1) * PX_PER_PT
+    x0, y0 = 3000.0, 1500.0
+    mx, my = frame.px_to_map(np.array([x0, x0 + 100 * em]), np.array([y0, y0]))
+    line = LineString(np.column_stack([mx, my]))
+    lx, ly = frame.px_to_map(np.array([x0 + 20 * em, x0 + 60 * em]), np.array([y0 - 5 * em, y0 + 5 * em]))
+    lake = shapely.box(lx[0], ly[0], lx[1], ly[1])  # the middle, where the name would go
+    label = river_label(WaterBody("Straight", "rivers", 1, line, 100.0), frame, lake)
+    assert label is not None and label.anchor_x > x0 + 60 * em
 
 
 def test_longest_paths_joins_gaps_and_takes_the_trunk() -> None:
@@ -247,13 +250,13 @@ def test_crop_without_marine_areas() -> None:
     from worldmap.crop import box_region, crop_frame
 
     f = crop_frame(box_region((10, 10, 20, 20)), 0)  # Chad and Nigeria: no sea in sight
-    bodies = load_water_bodies({"oceans", "seas", "straits", "lakes"}, drawable_lakes(f), f)
+    bodies = load_water_bodies({"oceans", "seas", "straits", "lakes"}, drawable_lakes(f).shapes, f)
     assert all(b.kind == "lakes" for b in bodies)
 
 
 def bodies_by_text(frame: MapFrame) -> dict[str, list]:
     out: dict[str, list] = {}
-    for b in load_water_bodies({"oceans", "seas", "lakes", "straits", "rivers"}, drawable_lakes(frame), frame):
+    for b in load_water_bodies({"oceans", "seas", "lakes", "straits", "rivers"}, drawable_lakes(frame).shapes, frame):
         out.setdefault(b.text, []).append(b)
     return out
 

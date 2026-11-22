@@ -1,6 +1,8 @@
 """Drawing the map with matplotlib: globe, country fills and borders, state lines, lakes, labels."""
 
 from collections.abc import Callable, Iterator
+from dataclasses import dataclass
+from functools import cached_property
 
 import geopandas as gpd
 import matplotlib.patheffects as pe
@@ -14,7 +16,6 @@ from matplotlib.path import Path
 from shapely.geometry import MultiPolygon, Point
 from shapely.geometry.base import BaseGeometry
 from shapely.geometry.polygon import orient
-from shapely.ops import unary_union
 
 from worldmap.coloring import OCEAN
 from worldmap.data import load_lakes
@@ -123,16 +124,27 @@ def draw_states(ax: Axes, states_projected: gpd.GeoDataFrame, disputed: bool = F
         states_projected.plot(ax=ax, color=STATE_LINE, linewidth=STATE_LINE_WIDTH, zorder=Z_STATES_UNDER_BORDERS if disputed else Z_STATES)
 
 
-def drawable_lakes(frame: MapFrame) -> gpd.GeoDataFrame:
+@dataclass
+class Lakes:
+    """The drawn lakes (drawable_lakes)."""
+    shapes: gpd.GeoDataFrame  # projected, one row per lake
+
+    @cached_property
+    def merged(self) -> BaseGeometry:
+        """As one shape: what subtract_lakes cuts out and river names keep off."""
+        return shapely.union_all(self.shapes.geometry.values)
+
+
+def drawable_lakes(frame: MapFrame) -> Lakes:
     """The lakes, projected, that cover at least LAKE_MIN_IN2 of the poster in the frame."""
     lakes = frame.project(load_lakes())
-    return lakes[lakes.area / frame.units_per_in ** 2 >= LAKE_MIN_IN2]
+    return Lakes(lakes[lakes.area / frame.units_per_in ** 2 >= LAKE_MIN_IN2])
 
 
-def draw_lakes(ax: Axes, lakes_projected: gpd.GeoDataFrame) -> None:
+def draw_lakes(ax: Axes, lakes: Lakes) -> None:
     """The country polygons include the lakes; paint the big ones back as water (borders through them then run on
     the shore), above the state lines, which also cross them."""
-    for g in lakes_projected.geometry:
+    for g in lakes.shapes.geometry:
         ax.add_collection(PatchCollection(list(holed_patches(g)), fc=OCEAN, ec=BORDER, lw=BORDER_WIDTH, zorder=Z_LAKES))
 
 
@@ -147,10 +159,10 @@ def draw_rivers(ax: Axes, rivers_projected: gpd.GeoDataFrame) -> None:
     ax.add_collection(LineCollection(lines, colors=RIVER, linewidths=widths, capstyle="round", joinstyle="round", zorder=Z_RIVERS))
 
 
-def subtract_lakes(countries_projected: gpd.GeoDataFrame, lakes_projected: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+def subtract_lakes(countries_projected: gpd.GeoDataFrame, lakes: Lakes) -> gpd.GeoDataFrame:
     """Countries minus the drawn lakes, so label placement treats the lakes as water."""
     out = countries_projected.copy()
-    out["geometry"] = countries_projected.geometry.difference(unary_union(list(lakes_projected.geometry)))
+    out["geometry"] = countries_projected.geometry.difference(lakes.merged)
     return out
 
 

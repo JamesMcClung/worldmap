@@ -41,18 +41,18 @@ def test_full_size_of_territories(countries: gpd.GeoDataFrame) -> None:
     assert 6e4 <= labels["Tasmania (Australia)"].full_size <= 7.5e4
 
 
+def test_country_shown_only_as_territories_has_no_label_of_its_own(countries: gpd.GeoDataFrame) -> None:
+    """A crop showing only Alaska of the US labels it "Alaska (US)", not "United States" on the same land too."""
+    bering = by_name(labels_in(crop_frame(box_region((160, 48, -150, 72)), 0), countries, territories=True))
+    assert "Alaska (US)" in bering and "United States" not in bering
+    assert "Russia" in bering
+    plain = by_name(labels_in(crop_frame(box_region((160, 48, -150, 72)), 0), countries))
+    assert "United States" in plain  # without --label territories, the US is labelled on Alaska
+    world = by_name(labels_in(make_frame(), countries, territories=True))
+    assert "Alaska (US)" in world and "United States" in world
+
+
 def test_full_size_of_breakaways(countries: gpd.GeoDataFrame) -> None:
     labels = by_name(labels_in(make_frame(), countries, disputed=True))
     for name in ("Abkhazia", "Transnistria"):
         assert labels[name].full_size > 0
-
-
-def test_label_min_size() -> None:
-    from test_placement import country_label
-
-    from worldmap.labels.label import SHRINK_MIN_PT
-
-    label = country_label(make_frame(), "Atlantis", -35, 30, 500)
-    assert label.min_size == SHRINK_MIN_PT  # the world frame: label_scale 1
-    label.label_scale = 2
-    assert label.min_size == 2 * SHRINK_MIN_PT
