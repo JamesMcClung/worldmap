@@ -2,7 +2,6 @@ import warnings
 
 import geopandas as gpd
 import matplotlib
-import shapely
 from shapely.geometry import LineString
 
 from worldmap.frame import make_frame
@@ -36,11 +35,11 @@ def test_drawable_lakes_by_poster_area() -> None:
 def test_drawable_lakes_may_be_none() -> None:
     from worldmap.crop import centre_frame, parse_centre
     from worldmap.data import load_countries
-    from worldmap.render import drawable_lakes, subtract_lakes
+    from worldmap.render import drawable_lakes, merged_lakes, subtract_lakes
 
     centre = parse_centre("-30,0/2,2")  # mid-Atlantic
     assert centre is not None
     sea = centre_frame(centre)
     lakes = drawable_lakes(sea)
     assert lakes.empty
-    subtract_lakes(sea.project(load_countries()), shapely.union_all(lakes.geometry.values))
+    subtract_lakes(sea.project(load_countries()), merged_lakes(lakes))

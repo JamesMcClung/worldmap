@@ -128,6 +128,11 @@ def drawable_lakes(frame: MapFrame) -> gpd.GeoDataFrame:
     return lakes[lakes.area / frame.units_per_in ** 2 >= LAKE_MIN_IN2]
 
 
+def merged_lakes(lakes_projected: gpd.GeoDataFrame) -> BaseGeometry:
+    """The drawn lakes as one shape: what subtract_lakes cuts out and river names keep off."""
+    return shapely.union_all(lakes_projected.geometry.values)
+
+
 def draw_lakes(ax: Axes, lakes_projected: gpd.GeoDataFrame) -> None:
     """The country polygons include the lakes; paint the big ones back as water (borders through them then run on
     the shore), above the state lines, which also cross them."""

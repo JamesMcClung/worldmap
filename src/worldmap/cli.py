@@ -35,7 +35,7 @@ from worldmap.labels.regions import child_regions
 from worldmap.labels.report import progress, summary
 from worldmap.labels.water import WATER_KINDS, Kind, WaterBody, WaterLabel, kinds_from_labels, load_water_bodies, make_water_labels, river_ranks
 from worldmap.pins import check_render_shape, draw_pins, load_pins, pick_pins, pin_sprite, rendered_size_in
-from worldmap.render import draw_borders, draw_countries, draw_labels, draw_lakes, drawable_lakes, draw_rivers, draw_states, draw_stripes, draw_water_labels, new_figure, subtract_lakes
+from worldmap.render import draw_borders, draw_countries, draw_labels, draw_lakes, drawable_lakes, draw_rivers, merged_lakes, draw_states, draw_stripes, draw_water_labels, new_figure, subtract_lakes
 from worldmap.rivers import river_flow
 from worldmap.topographic import ICE, ICE_CONTOURS, LAND, LAND_CONTOURS, SEA, SEA_CONTOURS, draw_topography
 
@@ -192,7 +192,7 @@ def main(argv: list[str] | None = None) -> None:
         draw_borders(ax, *border_lines(countries_p, disputes, parent_index(countries)))
     draw_states(ax, states_p, args.disputed)
     draw_lakes(ax, lakes_p)
-    lakes = shapely.union_all(lakes_p.geometry.values)
+    lakes = merged_lakes(lakes_p)
     countries_p = subtract_lakes(countries_p, lakes)
     ax.set_xlim(frame.xmin, frame.xmax)
     ax.set_ylim(frame.ymin, frame.ymax)
@@ -273,7 +273,7 @@ def draw_topographic(args: argparse.Namespace, out: str, frame: MapFrame) -> Non
         draw_colorbar(ax, frame, "tr", SEA, "Depth", SEA_CONTOURS)
     draw_colorbar(ax, frame, "bl", ICE, "Ice", ICE_CONTOURS)
     kinds = kinds_from_labels(args.label)
-    bodies, water = water_labels(kinds, lakes_p, shapely.union_all(lakes_p.geometry.values), frame)
+    bodies, water = water_labels(kinds, lakes_p, merged_lakes(lakes_p), frame)
     outcome = None
     if kinds:  # without water kinds no label stage runs
         # A crop's bars sit over the map: keep the labels off them.
