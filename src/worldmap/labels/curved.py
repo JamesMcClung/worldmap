@@ -40,6 +40,11 @@ _river_text = fit_gamut(0.42, 0.10, _ocean_hue)
 assert _river_text is not None
 RIVER_TEXT: RGB = _river_text[0]  # darker than WATER_TEXT: it sits on land, not water
 RIVER_HALO = (1, 1, 1, 0.55)  # like the country labels'
+_land_text = fit_gamut(0.40, 0.07, 55)
+assert _land_text is not None
+LAND_TEXT: RGB = _land_text[0]  # landforms: a dark warm brown, terrain rather than water or a country's hue
+LAND_HALO = (1, 1, 1, 0.55)  # they sit on land: the country labels' halo
+LAND_MIN_PT, LAND_MAX_PT = 6.5, 14.0  # sized to fill SEA_FILL of their curve, within these
 
 
 @dataclass(frozen=True)
@@ -60,6 +65,8 @@ STYLES: dict[str, Style] = {
     "seas": _SEA, "lakes": _SEA, "straits": _SEA,
     "rivers": Style(True, 0.0, False, RIVER_TEXT, RIVER_HALO, WATER_MIN_PT, SEA_MAX_PT),  # sized by river_size, not max_pt
 }
+_LAND = Style(True, 0.0, False, LAND_TEXT, LAND_HALO, LAND_MIN_PT, LAND_MAX_PT)
+STYLES |= {kind: _LAND for kind in ("mountains", "uplands", "deserts", "lowlands")}  # land.LAND_KINDS (no capitals, whatever the size)
 
 
 @dataclass
