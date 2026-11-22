@@ -217,8 +217,7 @@ oceans) gets Equal Earth centred on its longitude instead, clipped a hair either
   `CROP_SIZE_POWER` = 0.4, at least `CROP_MIN_IN` = 6 and at most 36, where s is the map's long side measured on
   the world poster (so the world's is 36) (Dead Sea 6 in, France 10, Europe box 19.6, US 24.9, Pacific ~28). Bigger regions get bigger posters, but a
   small one isn't blown up to 36 in, where its rivers and labels looked lost.
-- Labels: every text size is absolute (pt on the poster), the same limits as the world map's in any crop: a
-  bigger poster fits more labels, it doesn't grow them.
+- Labels: the world map's text sizes and limits, in pt on the poster (see `--size` above).
 - `--crop W:E,S:N`: edges, lon then lat; any end may be left out (lon -180/180, lat -90/90, so `:,60:` is everything
   north of 60N); west past east crosses +-180 (`170:-160,50:70`); no margin.
 - `--crop LON,LAT/W,H` (`parse_centre`, `centre_frame`): centred there, half of W (H) along the ground to the middle
