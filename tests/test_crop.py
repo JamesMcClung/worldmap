@@ -223,18 +223,14 @@ def test_candidates_across_the_antimeridian_are_finite() -> None:
         assert not crop_frame(c.geom, 0.1).globe
 
 
-def long_side(f: MapFrame) -> float:
-    return max(f.width_in, f.height_in)
-
-
 def test_default_size_floor() -> None:
     from worldmap.frame import CROP_MIN_IN
 
-    assert long_side(crop_frame(box_region((35.3, 31.0, 35.7, 31.8)), 0.1)) == CROP_MIN_IN  # the Dead Sea
+    assert crop_frame(box_region((35.3, 31.0, 35.7, 31.8)), 0.1).long_side_in == CROP_MIN_IN  # the Dead Sea
 
 
 def test_default_size_grows_with_region() -> None:
-    france, europe, us = (long_side(crop_frame(box_region(b), 0.1)) for b in ((-5, 42, 9, 51), (-25, 34, 45, 72), (-179, 18, -66, 72)))
+    france, europe, us = (crop_frame(box_region(b), 0.1).long_side_in for b in ((-5, 42, 9, 51), (-25, 34, 45, 72), (-179, 18, -66, 72)))
     assert france < europe < us
     assert 8 < france < 12
 
