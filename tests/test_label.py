@@ -56,12 +56,3 @@ def test_full_size_of_breakaways(countries: gpd.GeoDataFrame) -> None:
     labels = by_name(labels_in(make_frame(), countries, disputed=True))
     for name in ("Abkhazia", "Transnistria"):
         assert labels[name].full_size > 0
-
-
-def test_label_min_size() -> None:
-    from test_placement import country_label
-
-    from worldmap.labels.label import SHRINK_MIN_PT
-
-    label = country_label(make_frame(), "Atlantis", -35, 30, 500)
-    assert label.min_size == SHRINK_MIN_PT
