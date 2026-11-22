@@ -4,9 +4,12 @@ along their long direction like the seas (curved.area_label). Bodies are in proj
 from collections.abc import Collection
 from typing import Literal
 
+import geopandas as gpd
 import shapely
+from shapely.affinity import translate
 
 from worldmap.data import load_regions
+from worldmap.disjoint import DisjointSets
 from worldmap.frame import MapFrame
 from worldmap.labels.curved import Body, CurvedLabel, area_label, largest
 from worldmap.labels.priority import Unplaced
@@ -23,6 +26,7 @@ NAMES = {  # Natural Earth NAME -> label, where its NAME_EN is wrong: cut short 
     "CRYSTAL MOUNTAINS": "Crystal Mountains", "COLUMBIA MTS.": "Columbia Mountains", "STANOVOY UPLAND": "Stanovoy Upland",
 }
 GENERIC_WORDS = {"mountains", "basin", "steppe", "coastal", "plain"}  # capitalised after the first word ('Amazon basin')
+JOIN_DEG = 1.0  # rows of one name this close (degrees) are one feature (split at +-180, or in pieces); further, separate ones
 
 
 def classify(featurecla: str) -> Kind | None:
@@ -46,27 +50,40 @@ def text_of(name_en: object, name: str) -> str:
     return " ".join(w.lower() if k and w.lower() in SMALL_WORDS else w[:1].upper() + w[1:].lower() for k, w in enumerate(words))
 
 
+def features(regions: gpd.GeoDataFrame) -> list[int]:
+    """Each row's feature (an index into the rows): rows of one text within JOIN_DEG of each other, across +-180 too,
+    are one feature (the Transantarctic Mountains' halves, the Brazilian Highlands' parts); further apart, separate
+    ones (the Sierra Nevadas of Spain and the US)."""
+    sets = DisjointSets(len(regions))
+    geoms = list(regions.geometry)
+    for rows in regions.reset_index(drop=True).groupby("text").indices.values():
+        for a, i in enumerate(rows):
+            for j in rows[a + 1:]:
+                if min(geoms[i].distance(translate(geoms[j], shift)) for shift in (-360, 0, 360)) <= JOIN_DEG:
+                    sets.union(int(j), int(i))
+    return [sets.find(i) for i in range(len(regions))]
+
+
 def load_land_bodies(kinds: set[Kind], frame: MapFrame) -> list[Body]:
     """The landforms of `kinds` the frame shows, biggest first (full_size: the whole feature's km2, however much is
-    shown), each labelled on its largest visible polygon; of two with one name, the bigger."""
+    shown), each labelled on its largest visible polygon; a feature in several rows (`features`) is one body."""
     regions = load_regions()
-    regions = regions[regions.featurecla.map(classify).isin(kinds)]  # not a list: an empty one would select columns
+    regions = regions[regions.featurecla.map(classify).isin(kinds)].reset_index(drop=True)  # not a list: an empty one would select columns
+    regions["text"] = [text_of(e, n) for e, n in zip(regions.name_en, regions.name)]
+    regions["feature"] = features(regions)
     shown = frame.visible(frame.project(regions))
     shown = shown[~shown.geometry.is_empty]
     shown["geometry"] = shapely.make_valid(shown.geometry.values)
     bodies = []
-    for row in shown.itertuples():
-        kind = classify(row.featurecla)
+    for feature, rows in shown.groupby("feature"):
+        whole = regions[regions.feature == feature]
+        biggest = whole.loc[whole.km2.idxmax()]
+        kind = classify(biggest.featurecla)
         assert kind is not None
-        bodies.append(Body(text_of(row.name_en, row.name), kind, int(row.scalerank), largest(row.geometry), float(row.km2)))
+        polygon = largest(shapely.union_all(rows.geometry.values))
+        bodies.append(Body(biggest.text, kind, int(whole.scalerank.min()), polygon, float(whole.km2.sum())))
     bodies.sort(key=lambda b: -b.full_size)
-    seen: set[str] = set()
-    unique = []
-    for b in bodies:
-        if b.text not in seen:
-            unique.append(b)
-            seen.add(b.text)
-    return unique
+    return bodies
 
 
 def make_land_labels(bodies: list[Body], frame: MapFrame) -> list[CurvedLabel | Unplaced]:

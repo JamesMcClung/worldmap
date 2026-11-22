@@ -45,7 +45,6 @@ def test_text_of() -> None:
 def test_load_land_bodies(world_bodies: list[Body]) -> None:
     texts = [b.text for b in world_bodies]
     assert {b.kind for b in world_bodies} == {"mountains", "deserts"}
-    assert len(texts) == len(set(texts))
     sizes = [b.full_size for b in world_bodies]
     assert sizes == sorted(sizes, reverse=True)
     sahara = next(b for b in world_bodies if b.text == "Sahara")
@@ -69,3 +68,16 @@ def test_make_land_labels(frame: MapFrame) -> None:
     dy = (last[1] + last[3]) / 2 - (first[1] + first[3]) / 2
     assert abs(dy) > abs(dx)  # along the range, not across it
 
+
+def test_same_name_pieces_are_one_feature(world_bodies: list[Body]) -> None:
+    """Rows of one name that touch (the Transantarctic Mountains, split at +-180) are one feature, ranked by their
+    whole km2; far apart (the Sierra Nevadas of Spain and the US) they are two."""
+    from worldmap.data import load_regions
+
+    regions = load_regions()
+    split = regions[regions.name_en == "Transantarctic Mountains"].km2.sum()
+    [transantarctic] = [b for b in load_land_bodies({"mountains"}, make_frame()) if b.text == "Transantarctic Mountains"]
+    assert transantarctic.full_size == pytest.approx(split)
+    sierras = [b for b in load_land_bodies({"mountains"}, make_frame()) if b.text == "Sierra Nevada"]
+    assert len(sierras) == 2
+    assert len([b for b in world_bodies if b.text == "Sahara"]) == 1
