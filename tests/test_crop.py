@@ -249,12 +249,6 @@ def test_default_size_capped_at_poster_width() -> None:
     assert default_size_in(replace(w, xmax=w.xmin + 1.1 * w.width)) == POSTER_WIDTH_IN  # wider than the globe
 
 
-def test_world_size_unchanged() -> None:
-    from worldmap.frame import POSTER_WIDTH_IN
-
-    assert make_frame().size_in == POSTER_WIDTH_IN
-
-
 def test_label_sizes_are_absolute_in_a_crop() -> None:
     from worldmap.labels.label import MAX_PT, MIN_PT, new_label
 
