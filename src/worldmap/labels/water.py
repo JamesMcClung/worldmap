@@ -8,17 +8,18 @@ from typing import Literal
 import geopandas as gpd
 import numpy as np
 import shapely
+from matplotlib.colors import to_rgb
 from pyproj import Geod, Transformer
 from shapely.geometry import LineString
 from shapely.geometry.base import BaseGeometry
 
+from worldmap.coloring import OCEAN
+from worldmap.colorspace import RGB, fit_gamut, srgb_to_oklch
 from worldmap.curves import along, arc_lengths, bend
 from worldmap.data import EQUAL_AREA_CRS, load_marine, load_rivers
 from worldmap.disjoint import DisjointSets
 from worldmap.frame import MapFrame
-from worldmap.labels.curved import (CURVED_MIN_INSIDE, MAX_TILT_DEG, OCEAN_MIN_PT, OCEAN_PT, OCEAN_TRACKING_EM, WHITE_HALO, RIVER_TEXT,
-                                    SEA_MAX_PT, WATER_HALO, WATER_MIN_PT, WATER_TEXT, Body, CurvedLabel, Style, area_label, fit_curve,
-                                    largest, lay_out)
+from worldmap.labels.curved import CURVED_MIN_INSIDE, MAX_TILT_DEG, WHITE_HALO, Body, CurvedLabel, Style, area_label, fit_curve, largest, lay_out
 from worldmap.labels.priority import UNLABELED, Unplaced
 from worldmap.labels.text import PX_PER_PT, font, text_width
 
@@ -27,6 +28,19 @@ WATER_KINDS: tuple[Kind, ...] = ("oceans", "seas", "lakes", "straits", "rivers")
 SEA: Kind = "seas"
 CLASSES: dict[str, Kind] = {"ocean": "oceans", "strait": "straits", "channel": "straits"}
 CLASSES |= {c: SEA for c in ("sea", "gulf", "bay", "sound", "fjord", "lagoon", "inlet")}  # reefs, river mouths and the unnamed 'generic' areas are never labelled
+OCEAN_PT = 30  # oceans: letter-spaced, sized like seas but within these (the Arctic and Southern bands are narrow)
+OCEAN_MIN_PT = 18
+OCEAN_TRACKING_EM = 0.6  # extra space after each letter, in ems
+SEA_MAX_PT = 14  # seas, lakes, straits: sized to fill curved.SEA_FILL of their curve, within these
+WATER_MIN_PT = 6.5
+WATER_HALO = OCEAN  # the trim: the water colour itself
+_ocean_hue = srgb_to_oklch(to_rgb(OCEAN))[2]
+_fitted = fit_gamut(0.50, 0.08, _ocean_hue)
+assert _fitted is not None
+WATER_TEXT: RGB = _fitted[0]  # a deeper blue in the ocean's hue
+_river_text = fit_gamut(0.42, 0.10, _ocean_hue)
+assert _river_text is not None
+RIVER_TEXT: RGB = _river_text[0]  # darker than WATER_TEXT: it sits on land, not water
 _SEA_STYLE = Style(False, 0.0, False, WATER_TEXT, WATER_HALO, WATER_MIN_PT, SEA_MAX_PT)
 STYLES: dict[Kind, Style] = {
     "oceans": Style(False, OCEAN_TRACKING_EM, True, WATER_TEXT, WATER_HALO, OCEAN_MIN_PT, OCEAN_PT),

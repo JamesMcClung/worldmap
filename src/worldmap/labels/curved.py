@@ -5,14 +5,12 @@ from dataclasses import dataclass, field
 
 import numpy as np
 import shapely
-from matplotlib.colors import to_rgb
 from matplotlib.path import Path
 from matplotlib.textpath import TextPath
 from shapely.geometry import LineString, Polygon
 from shapely.geometry.base import BaseGeometry
 
-from worldmap.coloring import OCEAN
-from worldmap.colorspace import RGB, fit_gamut, srgb_to_oklch
+from worldmap.colorspace import RGB
 from worldmap.curves import arc_lengths, bend
 from worldmap.frame import MapFrame
 from worldmap.labels.geometry import Coverage, coverage, on_feature
@@ -22,23 +20,10 @@ MAX_BEND_DEG = 40  # the most a label's curve may turn from one end to the other
 MAX_TILT_DEG = 90  # labels follow their body's shape up to vertical (oceans too: the Atlantic's runs pole to pole)
 CURVE_SAMPLES = 2000  # interior points sampled to find a body's long direction
 RING_HOLE_SHARE = 0.25  # a body round a hole holding its middle, this share of its outline or more, is labelled along it
-OCEAN_PT = 30  # oceans: letter-spaced, sized like seas but within these (the Arctic and Southern bands are narrow)
-OCEAN_MIN_PT = 18
-OCEAN_TRACKING_EM = 0.6  # extra space after each letter, in ems
-SEA_MAX_PT = 14  # seas, lakes, straits: sized to fill SEA_FILL of their curve, within these
-WATER_MIN_PT = 6.5
-SEA_FILL = 0.8
+SEA_FILL = 0.8  # a name fills this share of its curve, within its style's sizes
 CURVED_MIN_INSIDE = 0.35  # a curved label with less of its glyph boxes over its body than this is dropped
 CURVED_HALO_PX = 2.4  # halo width (poster px); glyph boxes are padded by half of it
 WHITE_HALO = (1, 1, 1, 0.55)  # the country labels': for names on land (rivers, landforms)
-WATER_HALO = OCEAN  # the trim: the water colour itself
-_ocean_hue = srgb_to_oklch(to_rgb(OCEAN))[2]
-_fitted = fit_gamut(0.50, 0.08, _ocean_hue)
-assert _fitted is not None
-WATER_TEXT: RGB = _fitted[0]  # a deeper blue in the ocean's hue
-_river_text = fit_gamut(0.42, 0.10, _ocean_hue)
-assert _river_text is not None
-RIVER_TEXT: RGB = _river_text[0]  # darker than WATER_TEXT: it sits on land, not water
 
 
 @dataclass(frozen=True)
@@ -173,7 +158,7 @@ class CurvedLabel:
 
     @property
     def min_size(self) -> float:
-        """The smallest it may shrink to (pt): oceans stay bigger than any sea."""
+        """The smallest it may shrink to (pt): its style's (oceans stay bigger than any sea)."""
         return self.style.min_pt
 
     @property

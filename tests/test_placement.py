@@ -10,8 +10,8 @@ from worldmap.frame import MapFrame, make_frame
 from worldmap.labels.label import Label, new_label
 from worldmap.labels.placement import FIXED, FREE, NUDGE, Placement, clashes, place_labels, rects, subset
 from worldmap.labels import placement
-from worldmap.labels.curved import OCEAN_MIN_PT, WATER_MIN_PT, CurvedLabel
-from worldmap.labels.water import STYLES, Kind
+from worldmap.labels.curved import CurvedLabel
+from worldmap.labels.water import OCEAN_MIN_PT, STYLES, WATER_MIN_PT, Kind
 
 T = TypeVar("T", Label, CurvedLabel)
 
