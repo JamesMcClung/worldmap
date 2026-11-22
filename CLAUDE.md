@@ -48,8 +48,8 @@ environment, so it skips where they aren't downloaded); `crop_pacific_water`: `-
 - `conftest.environment(mode)` keys data files per mode (`raster` for earth, ETOPO etc. for topographic*, `marine` for *water*, `rivers` for *water*):
   a new key on an existing mode would make it skip, so add keys only for the modes that use them.
 - Parallel runs: `pytest_collection_modifyitems` schedules the renders first (else the long ones start last). The
-  topographic renders take GBs (`--type topographic`, Memory), so each `xdist_group` (`topographic`,
-  `topographic_crop`) runs on one worker; the political ones peak near 0.5 GB. `UPDATE_REFERENCE` writes
+  world topographic renders take ~3.3 GB each (`--type topographic`, Memory), so their `xdist_group` (`topographic`)
+  runs them one at a time on one worker; the Alps crop (~9 in) peaks near 0.7 GB, the political ones near 0.5 GB. `UPDATE_REFERENCE` writes
   `fingerprints.json` under a lock in `.cache/reference/`.
 - The crop tests build `crop.candidates` once per set of kinds (`test_crop.candidates`, also patched into `cli`).
 
@@ -185,7 +185,7 @@ or country labels run. `--color`, `--disputed`, `--recolor` and `--label countri
   slivers the union leaves where ice shelves meet land (`SLIVER_M2`, `SLIVER_HOLE_M2`; they drew stray dashes).
   It takes ~3 s. Tracing it from the smoothed pixel mask instead rounded the coast and left river mouths inland.
 - Memory: at 200 dpi the world peaks ~3.3 GB; a square 36 in crop ~4.3 GB (more pixels than the world poster), a
-  default-size crop much less (it grows with size squared: a big `--size` crop can take many GB). Work in blocks or in place on the whole-poster arrays; don't use
+  default-size crop much less (the Alps test crop, ~9 in: 0.7 GB; it grows with size squared, so a big `--size` crop can take many GB). Work in blocks or in place on the whole-poster arrays; don't use
   `ax.contour` (its ContourSet keeps a float64 copy of the grid per call, ~665 MB each), use `contour_lines` (contourpy).
 - Colour bars (`colorbars.py`): height bottom-right, depth top-right (`--ocean` only), ice bottom-left. Each is its
   corner quadrant minus the globe grown by `BAR_GAP_IN`, minus `BAR_MARGIN_IN`; signed labels in the gap with a white
@@ -215,7 +215,7 @@ oceans) gets Equal Earth centred on its longitude instead, clipped a hair either
   so a neighbour cut by the edge is labelled on its visible part.
 - Size: the long side (`size_in`, `width_in`/`height_in`) is `--size`, else `default_size_in`: 36 in x (s / 36 in) ^
   `CROP_SIZE_POWER` = 0.4, at least `CROP_MIN_IN` = 6 and at most 36, where s is the crop's long side measured on
-  the world poster (Dead Sea 6 in, France ~10, Europe ~18, Pacific ~28). Bigger regions get bigger posters, but a
+  the world poster (Dead Sea 6 in, France 10, Europe box 19.6, US 24.9, Pacific ~28). Bigger regions get bigger posters, but a
   small one isn't blown up to 36 in, where its rivers and labels looked lost.
 - Labels: every text size is absolute (pt on the poster), the same limits as the world map's in any crop: a
   bigger poster fits more labels, it doesn't grow them.
@@ -261,7 +261,7 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
   reaches this session's pins). The picker runs right after the globe extent is computed, then exits, so it skips the label work.
 - `make_map [out.png] --pins pins.txt [--pin-size 0.24]` draws golden shaded spheres (`pin_sprite`, tuned through `PinStyle`: shaded by a reflected environment: cream sky, dark band above a domed horizon, gold ground, window strips at the sides; styled after `pin-example.png`
   environment for a chrome-like look, broad specular glare with a hot core, baked drop shadow) at zorder 10, above labels. Pins are drawn northernmost first so southern ones overlap them.
-  Diameter is in inches on the 36 in poster. Default output with `--pins` is `worldmap_pins.png`, so the bare map isn't overwritten.
+  Diameter is in poster inches, whatever `--size`; `--pick` needs the render's `--size` too, or its preview pins come out the wrong size (they land right either way). Default output with `--pins` is `worldmap_pins.png`, so the bare map isn't overwritten.
 - `--pick` skips `matplotlib.use("Agg")` to get the interactive backend. Pins on the antimeridian are clipped by the canvas edge.
 
 ## Label placement notes
