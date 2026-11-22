@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from worldmap.cli import draws_rivers, parse_args
+from worldmap.cli import draws_rivers, make_map_frame, parse_args
 from worldmap.frame import DPI
 
 
@@ -15,6 +15,24 @@ def test_dpi_flag() -> None:
         with pytest.raises(SystemExit) as e:
             parse_args(["--dpi", bad])
         assert e.value.code == 2
+
+
+def test_size_parses() -> None:
+    assert parse_args([]).size is None
+    assert parse_args(["--size", "12"]).size == 12
+    for bad in ["0", "-3", "x"]:
+        with pytest.raises(SystemExit) as e:
+            parse_args(["--size", bad])
+        assert e.value.code == 2
+
+
+def test_size_sets_the_world_frame() -> None:
+    assert make_map_frame(parse_args(["--size", "18"])).width_in == 18
+
+
+def test_size_overrides_crop_default() -> None:
+    f = make_map_frame(parse_args(["--crop", "-5:9,42:51", "--size", "3"]))  # below the crop default's floor
+    assert max(f.width_in, f.height_in) == pytest.approx(3)
 
 
 def test_console_script_help() -> None:

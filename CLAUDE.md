@@ -7,10 +7,11 @@ large countries, non-overlapping country labels), or with `--type topographic` a
 
 ```
 python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'   # deps in pyproject.toml; [dev] adds pytest, pytest-xdist, mypy
-.venv/bin/make_map [out.png] [--type political|topographic] [--ocean] [--recolor] [--color colorblind|earth] [--label LIST] [--disputed] [--rivers] [--pins FILE] [--pin-size IN] [--dpi DPI] [--crop NAME[,NAME...]|W:E,S:N|LON,LAT/W,H] [--pick FILE]
+.venv/bin/make_map [out.png] [--type political|topographic] [--ocean] [--recolor] [--color colorblind|earth] [--label LIST] [--disputed] [--rivers] [--pins FILE] [--pin-size IN] [--size IN] [--dpi DPI] [--crop NAME[,NAME...]|W:E,S:N|LON,LAT/W,H] [--pick FILE]
 ```
 
-`--dpi` only changes the `savefig` dpi (and the pin sprite's pixel size): layout is always measured at
+`--size` sets the poster's long side in inches (`MapFrame.size_in`; default 36 for the world): text sizes are
+absolute, so a bigger poster fits more labels. `--dpi` only changes the `savefig` dpi (and the pin sprite's pixel size): layout is always measured at
 `frame.DPI` = 200, so a low-res render is the poster scaled down. `examples/` is built at `--dpi 50`.
 A run takes ~7-12 s. Output goes to the current directory. After changing the entry point in `pyproject.toml`, re-run `pip install -e .`.
 

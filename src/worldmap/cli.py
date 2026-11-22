@@ -87,9 +87,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--rivers", action="store_true", help="draw the major rivers")
     p.add_argument("--pins", metavar="FILE", help="draw the pins listed in FILE (one lon,lat per line)")
     p.add_argument("--pin-size", metavar="INCHES", type=float, default=DEFAULT_PIN_SIZE_IN,
-                   help="pin diameter in inches on the 36 in poster (default %(default)s)")
+                   help="pin diameter in inches on the poster (default %(default)s)")
+    p.add_argument("--size", metavar="IN", type=positive_float,
+                   help="the poster's long side in inches (default 36 for the world map; a crop's grows with its "
+                        "region, at least 6); text sizes are fixed, so a bigger poster fits more labels")
     p.add_argument("--dpi", metavar="DPI", type=positive_float, default=DPI,
-                   help="output dots per inch on the 36 in poster (default %(default)s); "
+                   help="output dots per inch on the poster (default %(default)s); "
                         "the layout is the same at any resolution, only the pixel count changes")
     p.add_argument("--crop", metavar="SPEC",
                    help="zoom in on a region, redrawn in a projection centred on it: label names, comma-separated (or parts of "
@@ -107,7 +110,13 @@ def draws_rivers(args: argparse.Namespace) -> bool:
 
 
 def make_map_frame(args: argparse.Namespace) -> MapFrame:
-    """The whole globe, or the --crop region."""
+    """The whole globe, or the --crop region, --size inches on its long side if given."""
+    frame = region_frame(args)
+    return dataclasses.replace(frame, size_in=args.size) if args.size else frame
+
+
+def region_frame(args: argparse.Namespace) -> MapFrame:
+    """The whole globe, or the --crop region, at its default size."""
     if not args.crop:
         return make_frame()
     try:
