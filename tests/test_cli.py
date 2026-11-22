@@ -88,6 +88,20 @@ def test_pick_uses_crop_frame(tmp_path, monkeypatch) -> None:  # type: ignore[no
     assert len(seen) == 1 and not seen[0].globe and seen[0].azimuthal
 
 
+def test_pick_takes_the_size_of_the_render(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    from PIL import Image
+
+    from worldmap import cli
+
+    png = tmp_path / "map.png"
+    Image.new("RGBA", (1800, 923)).save(png, dpi=(100, 100))  # an 18 in world map
+    seen = []
+    monkeypatch.setattr(cli, "pick_pins", lambda path, out, frame, *rest: seen.append(frame))
+    cli.main(["--pick", str(tmp_path / "p.txt"), str(png)])
+    cli.main(["--pick", str(tmp_path / "p.txt"), "--size", "30", str(png)])
+    assert seen[0].width_in == pytest.approx(18, abs=1e-3) and seen[1].width_in == 30
+
+
 def test_centre_crop_from_the_command_line() -> None:
     from worldmap.cli import make_map_frame, parse_args
     from worldmap.crop import centre_frame

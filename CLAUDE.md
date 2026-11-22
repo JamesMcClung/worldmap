@@ -261,7 +261,7 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
   reaches this session's pins). The picker runs right after the globe extent is computed, then exits, so it skips the label work.
 - `make_map [out.png] --pins pins.txt [--pin-size 0.24]` draws golden shaded spheres (`pin_sprite`, tuned through `PinStyle`: shaded by a reflected environment: cream sky, dark band above a domed horizon, gold ground, window strips at the sides; styled after `pin-example.png`
   environment for a chrome-like look, broad specular glare with a hot core, baked drop shadow) at zorder 10, above labels. Pins are drawn northernmost first so southern ones overlap them.
-  Diameter is in poster inches, whatever `--size`; `--pick` needs the render's `--size` too, or its preview pins come out the wrong size (they land right either way). Default output with `--pins` is `worldmap_pins.png`, so the bare map isn't overwritten.
+  Diameter is in poster inches, whatever `--size`; `--pick` takes the render's size from the PNG (`rendered_size_in`: pixels over its recorded dpi) unless given `--size`. Default output with `--pins` is `worldmap_pins.png`, so the bare map isn't overwritten.
 - `--pick` skips `matplotlib.use("Agg")` to get the interactive backend. Pins on the antimeridian are clipped by the canvas edge.
 
 ## Label placement notes
