@@ -85,7 +85,7 @@ Importing any module has no side effects; only `cli.main` (after choosing the ba
 | `rivers.py` | `--rivers`: `river_flow` (cached): pieces split at junctions, oriented toward mouths |
 | `disjoint.py` | `DisjointSets` (union-find) |
 | `curves.py` | `arc_lengths`, `along`, `bend`: text bending for colour bar titles and water labels |
-| `render.py` | the `draw_*` layers (labels drawn from the `Placement` alone), `drawable_lakes`, `merged_lakes`, `subtract_lakes`, line widths and z-orders |
+| `render.py` | the `draw_*` layers (labels drawn from the `Placement` alone), `drawable_lakes` (-> `Lakes`: the rows, and `merged` on first use), `subtract_lakes`, line widths and z-orders |
 
 Pipeline (`cli.main`):
 1. **Colouring** of all country features. Dependencies (`is_dependency`: `SOVEREIGNT != ADMIN`, not a lease or
