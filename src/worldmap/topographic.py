@@ -24,7 +24,7 @@ from worldmap.data import (
     load_land,
 )
 from worldmap.frame import DPI, MapFrame, lon_ranges
-from worldmap.render import BORDER, BORDER_WIDTH, Z_BORDERS, Z_COUNTRY, draw_lakes
+from worldmap.render import BORDER, BORDER_WIDTH, Z_BORDERS, Z_COUNTRY, Lakes, draw_lakes
 
 GRID_STEP_DEG = 0.05  # 3 arc-minutes: about one poster pixel at 200 dpi
 FINE_STEP_DEG = 1 / 60  # ETOPO's own cells, read for a crop whose 3' cells would span over FINE_ABOVE_PX pixels
@@ -405,7 +405,7 @@ def elevation_for(frame: MapFrame, pg: PosterGrid) -> Grid:
     return fine
 
 
-def draw_topography(ax: Axes, frame: MapFrame, dpi: float, ocean: bool, lakes_projected: gpd.GeoDataFrame) -> None:
+def draw_topography(ax: Axes, frame: MapFrame, dpi: float, ocean: bool, lakes: Lakes) -> None:
     """Everything on the globe for --type topographic: the coloured, hill-shaded heights (sea depths with `ocean`),
     contours, the coastline and the lakes (render.drawable_lakes)."""
     pg = poster_grid(frame, dpi)
@@ -438,4 +438,4 @@ def draw_topography(ax: Axes, frame: MapFrame, dpi: float, ocean: bool, lakes_pr
     if ocean:
         contours(sea, -np.arange(SEA_CONTOURS.step, -z.min() + 1, SEA_CONTOURS.step)[::-1], SEA_CONTOURS)
     ax.add_collection(LineCollection(coastline(land_shapes, ice_shapes), colors=BORDER, linewidths=BORDER_WIDTH, zorder=Z_BORDERS))
-    draw_lakes(ax, lakes_projected)
+    draw_lakes(ax, lakes)

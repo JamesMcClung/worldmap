@@ -17,7 +17,7 @@ from worldmap.render import drawable_lakes
 
 @pytest.fixture(scope="module")
 def lakes_projected() -> gpd.GeoDataFrame:
-    return drawable_lakes(make_frame())
+    return drawable_lakes(make_frame()).shapes
 
 
 def test_classify() -> None:
@@ -250,13 +250,13 @@ def test_crop_without_marine_areas() -> None:
     from worldmap.crop import box_region, crop_frame
 
     f = crop_frame(box_region((10, 10, 20, 20)), 0)  # Chad and Nigeria: no sea in sight
-    bodies = load_water_bodies({"oceans", "seas", "straits", "lakes"}, drawable_lakes(f), f)
+    bodies = load_water_bodies({"oceans", "seas", "straits", "lakes"}, drawable_lakes(f).shapes, f)
     assert all(b.kind == "lakes" for b in bodies)
 
 
 def bodies_by_text(frame: MapFrame) -> dict[str, list]:
     out: dict[str, list] = {}
-    for b in load_water_bodies({"oceans", "seas", "lakes", "straits", "rivers"}, drawable_lakes(frame), frame):
+    for b in load_water_bodies({"oceans", "seas", "lakes", "straits", "rivers"}, drawable_lakes(frame).shapes, frame):
         out.setdefault(b.text, []).append(b)
     return out
 

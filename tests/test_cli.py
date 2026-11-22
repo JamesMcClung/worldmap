@@ -117,11 +117,10 @@ def test_jordan_name_not_in_the_dead_sea() -> None:
     from worldmap.cli import water_labels
     from worldmap.crop import box_region, crop_frame
     from worldmap.labels.water import WaterLabel
-    from worldmap.render import drawable_lakes, merged_lakes
+    from worldmap.render import drawable_lakes
 
     frame = crop_frame(box_region((35.3, 31.0, 35.7, 31.8)), 0.1)
     lakes = drawable_lakes(frame)
-    merged = merged_lakes(lakes)
-    _, labels = water_labels({"rivers"}, lakes, merged, frame)
+    _, labels = water_labels({"rivers"}, lakes, frame)
     [jordan] = [lab for lab in labels if isinstance(lab, WaterLabel) and lab.text == "Jordan"]
-    assert not frame.to_px(merged, simplify=0).contains(Point(jordan.anchor_x, jordan.anchor_y))
+    assert not frame.to_px(lakes.merged, simplify=0).contains(Point(jordan.anchor_x, jordan.anchor_y))
