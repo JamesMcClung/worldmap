@@ -30,6 +30,7 @@ WATER_MIN_PT = 6.5
 SEA_FILL = 0.8
 CURVED_MIN_INSIDE = 0.35  # a curved label with less of its glyph boxes over its body than this is dropped
 CURVED_HALO_PX = 2.4  # halo width (poster px); glyph boxes are padded by half of it
+WHITE_HALO = (1, 1, 1, 0.55)  # the country labels': for names on land (rivers, landforms)
 WATER_HALO = OCEAN  # the trim: the water colour itself
 _ocean_hue = srgb_to_oklch(to_rgb(OCEAN))[2]
 _fitted = fit_gamut(0.50, 0.08, _ocean_hue)
@@ -38,11 +39,9 @@ WATER_TEXT: RGB = _fitted[0]  # a deeper blue in the ocean's hue
 _river_text = fit_gamut(0.42, 0.10, _ocean_hue)
 assert _river_text is not None
 RIVER_TEXT: RGB = _river_text[0]  # darker than WATER_TEXT: it sits on land, not water
-RIVER_HALO = (1, 1, 1, 0.55)  # like the country labels'
 _land_text = fit_gamut(0.40, 0.07, 55)
 assert _land_text is not None
 LAND_TEXT: RGB = _land_text[0]  # landforms: a dark warm brown, terrain rather than water or a country's hue
-LAND_HALO = RIVER_HALO  # they sit on land too
 LAND_MIN_PT, LAND_MAX_PT = 6.5, 14.0  # sized to fill SEA_FILL of their curve, within these
 
 

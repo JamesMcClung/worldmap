@@ -11,7 +11,7 @@ from shapely.affinity import translate
 from worldmap.data import load_regions
 from worldmap.disjoint import DisjointSets
 from worldmap.frame import MapFrame
-from worldmap.labels.curved import LAND_HALO, LAND_MAX_PT, LAND_MIN_PT, LAND_TEXT, Body, CurvedLabel, Style, area_label, largest
+from worldmap.labels.curved import WHITE_HALO, LAND_MAX_PT, LAND_MIN_PT, LAND_TEXT, Body, CurvedLabel, Style, area_label, largest
 from worldmap.labels.priority import Unplaced
 
 Kind = Literal["mountains", "uplands", "deserts", "lowlands"]
@@ -26,7 +26,7 @@ NAMES = {  # Natural Earth NAME -> label, where its NAME_EN is wrong: cut short 
     "CRYSTAL MOUNTAINS": "Crystal Mountains", "COLUMBIA MTS.": "Columbia Mountains", "STANOVOY UPLAND": "Stanovoy Upland",
 }
 GENERIC_WORDS = {"mountains", "basin", "steppe", "coastal", "plain"}  # capitalised after the first word ('Amazon basin')
-STYLE = Style(True, 0.0, False, LAND_TEXT, LAND_HALO, LAND_MIN_PT, LAND_MAX_PT)  # every kind's: no capitals, whatever the size
+STYLE = Style(True, 0.0, False, LAND_TEXT, WHITE_HALO, LAND_MIN_PT, LAND_MAX_PT)  # every kind's: no capitals, whatever the size
 JOIN_DEG = 1.0  # rows of one name this close (degrees) are one feature (split at +-180, or in pieces); further, separate ones
 
 
