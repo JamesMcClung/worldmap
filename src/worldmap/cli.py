@@ -17,6 +17,7 @@ import matplotlib
 import shapely
 from matplotlib.axes import Axes
 from shapely.geometry import Point
+from shapely.geometry.base import BaseGeometry
 
 from worldmap.colorbars import Corner, draw_colorbar, label_outline
 from worldmap.coloring import Coloring, load_or_compute_coloring, make_palette, spot_check
@@ -190,7 +191,8 @@ def main(argv: list[str] | None = None) -> None:
         draw_borders(ax, *border_lines(countries_p, disputes, parent_index(countries)))
     draw_states(ax, states_p, args.disputed)
     draw_lakes(ax, lakes_p)
-    countries_p = subtract_lakes(countries_p, lakes_p)
+    lakes = shapely.union_all(lakes_p.geometry.values)
+    countries_p = subtract_lakes(countries_p, lakes)
     ax.set_xlim(frame.xmin, frame.xmax)
     ax.set_ylim(frame.ymin, frame.ymax)
 
@@ -201,7 +203,7 @@ def main(argv: list[str] | None = None) -> None:
     relabel, extra = disputed_label_args(disputes, lambda i, pt: fill_of(i, pt) if regions else DISPUTED_GREY) if args.disputed else ({}, [])
     labels = make_labels(shown, frame, fill_of, children, "countries" in args.label, relabel, extra)
     decide_out_and_wrap(labels)
-    bodies, water = water_labels(kinds_from_labels(args.label), lakes_p, frame)
+    bodies, water = water_labels(kinds_from_labels(args.label), lakes_p, lakes, frame)
     outcome = place([*labels, *water], frame, args.label)
     if draws_rivers(args):
         draw_rivers(ax, shown_rivers(frame, bodies, water, outcome))
@@ -215,11 +217,11 @@ def main(argv: list[str] | None = None) -> None:
     print("wrote", out, "labels:", int((~placement.water).sum()), "leaders:", int(placement.out.sum()), "water labels:", int(placement.water.sum()))
 
 
-def water_labels(kinds: set[Kind], lakes_projected: gpd.GeoDataFrame, frame: MapFrame) -> tuple[list[WaterBody], list[WaterLabel | Unplaced]]:
+def water_labels(kinds: set[Kind], lakes_projected: gpd.GeoDataFrame, lakes: BaseGeometry, frame: MapFrame) -> tuple[list[WaterBody], list[WaterLabel | Unplaced]]:
     """The water bodies of `kinds` and their labels, one per body (make_water_labels: an Unplaced where the name
-    doesn't fit; river names kept off the drawn lakes)."""
+    doesn't fit; river names kept off the drawn `lakes`, merged)."""
     bodies = load_water_bodies(kinds, lakes_projected, frame) if kinds else []
-    return bodies, make_water_labels(bodies, frame, shapely.union_all(lakes_projected.geometry.values))
+    return bodies, make_water_labels(bodies, frame, lakes)
 
 
 def shown_rivers(frame: MapFrame, bodies: list[WaterBody], water: list[WaterLabel | Unplaced], outcome: Outcome | None) -> gpd.GeoDataFrame:
@@ -270,7 +272,7 @@ def draw_topographic(args: argparse.Namespace, out: str, frame: MapFrame) -> Non
         draw_colorbar(ax, frame, "tr", SEA, "Depth", SEA_CONTOURS)
     draw_colorbar(ax, frame, "bl", ICE, "Ice", ICE_CONTOURS)
     kinds = kinds_from_labels(args.label)
-    bodies, water = water_labels(kinds, lakes_p, frame)
+    bodies, water = water_labels(kinds, lakes_p, shapely.union_all(lakes_p.geometry.values), frame)
     outcome = None
     if kinds:  # without water kinds no label stage runs
         # A crop's bars sit over the map: keep the labels off them.

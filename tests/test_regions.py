@@ -2,6 +2,7 @@ from collections.abc import Callable
 
 import geopandas as gpd
 import pytest
+import shapely
 from shapely.geometry import Point
 
 from worldmap.data import CACHE, RASTER, is_labeled, load_countries
@@ -21,7 +22,7 @@ def countries() -> gpd.GeoDataFrame:
 @pytest.fixture(scope="module")
 def countries_projected(countries: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     """As cli.main passes it: projected, with the big lakes cut out."""
-    return subtract_lakes(make_frame().project(countries), drawable_lakes(make_frame()))
+    return subtract_lakes(make_frame().project(countries), shapely.union_all(drawable_lakes(make_frame()).geometry.values))
 
 
 @pytest.fixture(scope="module")

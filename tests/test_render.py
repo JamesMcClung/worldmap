@@ -2,6 +2,7 @@ import warnings
 
 import geopandas as gpd
 import matplotlib
+import shapely
 from shapely.geometry import LineString
 
 from worldmap.frame import make_frame
@@ -42,4 +43,4 @@ def test_drawable_lakes_may_be_none() -> None:
     sea = centre_frame(centre)
     lakes = drawable_lakes(sea)
     assert lakes.empty
-    subtract_lakes(sea.project(load_countries()), lakes)
+    subtract_lakes(sea.project(load_countries()), shapely.union_all(lakes.geometry.values))

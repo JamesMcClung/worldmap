@@ -14,7 +14,6 @@ from matplotlib.path import Path
 from shapely.geometry import MultiPolygon, Point
 from shapely.geometry.base import BaseGeometry
 from shapely.geometry.polygon import orient
-from shapely.ops import unary_union
 
 from worldmap.coloring import OCEAN
 from worldmap.data import load_lakes
@@ -147,10 +146,10 @@ def draw_rivers(ax: Axes, rivers_projected: gpd.GeoDataFrame) -> None:
     ax.add_collection(LineCollection(lines, colors=RIVER, linewidths=widths, capstyle="round", joinstyle="round", zorder=Z_RIVERS))
 
 
-def subtract_lakes(countries_projected: gpd.GeoDataFrame, lakes_projected: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
-    """Countries minus the drawn lakes, so label placement treats the lakes as water."""
+def subtract_lakes(countries_projected: gpd.GeoDataFrame, lakes: BaseGeometry) -> gpd.GeoDataFrame:
+    """Countries minus the drawn `lakes` (merged), so label placement treats the lakes as water."""
     out = countries_projected.copy()
-    out["geometry"] = countries_projected.geometry.difference(unary_union(list(lakes_projected.geometry)))
+    out["geometry"] = countries_projected.geometry.difference(lakes)
     return out
 
 
