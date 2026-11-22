@@ -383,8 +383,10 @@ Labels ignore them.
   ones, overlapping freely: the Taklamakan inside the Tarim Basin). `classify`: Range/mtn -> mountains; Plateau ->
   uplands; Desert -> deserts; Plain/Basin/Lowland/Valley/Gorge/Depression -> lowlands; islands, capes, coasts,
   continents, regions (Siberia), deltas, wetlands, foothills, tundra never. Peaks (the elevation points) are left for later.
-- Text (`text_of`): `NAME_EN` (`NAMES` fixes the wrong ones: 'Ahag'), else `NAME`; all-caps names title-cased.
-  Labelled on the largest visible polygon, ranked by the whole feature's km2; of two with one name, the bigger.
+- Text (`text_of`): `NAMES[NAME]` where `NAME_EN` is wrong ('Ahag'), else `NAME_EN`, else `NAME`; all-caps names title-cased.
+  Rows of one name within `JOIN_DEG` = 1 degree (across +-180 too) are one feature (`features`: the Transantarctic
+  Mountains' halves), ranked by their summed km2; further apart, separate labels of one name (the Sierra Nevadas).
+  Labelled on the largest visible polygon.
 - Laid out like seas (`curved.area_label`); italic `LAND_TEXT` (dark warm brown) with the country labels' white halo,
   `LAND_MIN_PT`..`LAND_MAX_PT`; both map types; `--crop NAME` finds them (`crop.LAND_KIND`).
 - Ranked with every other label by area, so the Sahara ranks with Russia: on the world map
