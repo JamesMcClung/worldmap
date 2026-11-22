@@ -305,7 +305,7 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
   a crop's outline, is skipped for good. A water label pushed off its water first looks for a smaller label of the
   step overlapping it at its anchor: that one is skipped instead and the step re-solved.
 - Saturation cut: features whose label can't be laid out at all (`Unplaced`: a river shorter than its name, a bay
-  under `WATER_MIN_INSIDE`) are ranked with the labels and count as failed in their step. The step after which a kind's
+  under `CURVED_MIN_INSIDE`) are ranked with the labels and count as failed in their step. The step after which a kind's
   failures so far reach `CUT_SHARE` = 30% of *all* its labels (every rank; and >= `CUT_MIN_DROPS` = 5) is undone (a
   `Settled.copy` snapshot, so what it nudged goes back) and the kind is *cut* at that rank: no later rank of it is
   tried (30% of the one rank cut too early: one crowded fifth dropped everything after it). The rank table shows
