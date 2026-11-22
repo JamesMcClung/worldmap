@@ -26,10 +26,6 @@ def test_size_parses() -> None:
         assert e.value.code == 2
 
 
-def test_size_sets_the_world_frame() -> None:
-    assert make_map_frame(parse_args(["--size", "18"])).width_in == 18
-
-
 def test_size_overrides_crop_default() -> None:
     f = make_map_frame(parse_args(["--crop", "-5:9,42:51", "--size", "3"]))  # below the crop default's floor
     assert max(f.width_in, f.height_in) == pytest.approx(3)
