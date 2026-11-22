@@ -3,6 +3,8 @@ along it. Bodies are in projected map units; labels are in poster pixels."""
 
 from dataclasses import dataclass, field
 
+from matplotlib.colors import to_rgb
+
 import numpy as np
 import shapely
 from matplotlib.path import Path
@@ -10,19 +12,54 @@ from matplotlib.textpath import TextPath
 from shapely.geometry import LineString, Polygon
 from shapely.geometry.base import BaseGeometry
 
+from worldmap.coloring import OCEAN
+from worldmap.colorspace import RGB, fit_gamut, srgb_to_oklch
 from worldmap.curves import arc_lengths, bend
 from worldmap.labels.geometry import Coverage, coverage, on_feature
+from worldmap.frame import MapFrame
 from worldmap.labels.text import PX_PER_PT, bent, font, text_width
 
 MAX_BEND_DEG = 40  # the most a label's curve may turn from one end to the other
 MAX_TILT_DEG = 90  # labels follow their body's shape up to vertical (oceans too: the Atlantic's runs pole to pole)
 CURVE_SAMPLES = 2000  # interior points sampled to find a body's long direction
 RING_HOLE_SHARE = 0.25  # a body round a hole holding its middle, this share of its outline or more, is labelled along it
+OCEAN_PT = 30  # oceans: letter-spaced, sized like seas but within these (the Arctic and Southern bands are narrow)
 OCEAN_MIN_PT = 18
 OCEAN_TRACKING_EM = 0.6  # extra space after each letter, in ems
+SEA_MAX_PT = 14  # seas, lakes, straits: sized to fill SEA_FILL of their curve, within these
 WATER_MIN_PT = 6.5
+SEA_FILL = 0.8
 CURVED_MIN_INSIDE = 0.35  # a curved label with less of its glyph boxes over its body than this is dropped
 CURVED_HALO_PX = 2.4  # halo width (poster px); glyph boxes are padded by half of it
+WATER_HALO = OCEAN  # the trim: the water colour itself
+_ocean_hue = srgb_to_oklch(to_rgb(OCEAN))[2]
+_fitted = fit_gamut(0.50, 0.08, _ocean_hue)
+assert _fitted is not None
+WATER_TEXT: RGB = _fitted[0]  # a deeper blue in the ocean's hue
+_river_text = fit_gamut(0.42, 0.10, _ocean_hue)
+assert _river_text is not None
+RIVER_TEXT: RGB = _river_text[0]  # darker than WATER_TEXT: it sits on land, not water
+RIVER_HALO = (1, 1, 1, 0.55)  # like the country labels'
+
+
+@dataclass(frozen=True)
+class Style:
+    """How a kind's names look: a curved label's style is its kind's (STYLES), never its size's."""
+    italic: bool
+    tracking_em: float  # extra space after each letter, in ems
+    cap_centred: bool  # the cap height (else the x-height) is centred on the curve
+    text: RGB
+    halo: tuple[float, ...] | str
+    min_pt: float  # sized to fill SEA_FILL of the curve within min_pt..max_pt; it shrinks no further than min_pt
+    max_pt: float
+
+
+_SEA = Style(False, 0.0, False, WATER_TEXT, WATER_HALO, WATER_MIN_PT, SEA_MAX_PT)
+STYLES: dict[str, Style] = {
+    "oceans": Style(False, OCEAN_TRACKING_EM, True, WATER_TEXT, WATER_HALO, OCEAN_MIN_PT, OCEAN_PT),
+    "seas": _SEA, "lakes": _SEA, "straits": _SEA,
+    "rivers": Style(True, 0.0, False, RIVER_TEXT, RIVER_HALO, WATER_MIN_PT, SEA_MAX_PT),  # sized by river_size, not max_pt
+}
 
 
 @dataclass
@@ -142,9 +179,13 @@ class CurvedLabel:
     cover: Coverage | None = field(default=None, repr=False, compare=False)  # geom's, once needed (geometry.coverage)
 
     @property
+    def style(self) -> Style:
+        return STYLES[self.kind]
+
+    @property
     def min_size(self) -> float:
         """The smallest it may shrink to (pt): oceans stay bigger than any sea."""
-        return OCEAN_MIN_PT if self.kind == "oceans" else WATER_MIN_PT
+        return self.style.min_pt
 
     @property
     def name(self) -> str:
@@ -181,13 +222,14 @@ def extend(curve: np.ndarray, length: float) -> np.ndarray:
 
 
 def lay_out(body: Body, curve: np.ndarray, size: float, geom_px: BaseGeometry, rise: float | None = None) -> CurvedLabel:
-    """`body`'s name at `size` pt, centred on `curve` (px), its x-height (cap height for oceans) centred on it; or,
-    given `rise` (px), its baseline that far to the left of the curve (above, reading left to right). Rivers in italic."""
-    prop = font(size, body.kind == "rivers")
-    tracking = OCEAN_TRACKING_EM * size if body.kind == "oceans" else 0.0
+    """`body`'s name at `size` pt in its kind's style, centred on `curve` (px), its x-height (or cap height) centred
+    on it; or, given `rise` (px), its baseline that far to the left of the curve (above, reading left to right)."""
+    style = STYLES[body.kind]
+    prop = font(size, style.italic)
+    tracking = style.tracking_em * size
     text = body.text
     total = text_width(text, prop) + tracking * (len(text) - 1)
-    middle = TextPath((0, 0), "H" if body.kind == "oceans" else "x", prop=prop).get_extents().ymax / 2
+    middle = TextPath((0, 0), "H" if style.cap_centred else "x", prop=prop).get_extents().ymax / 2
     length = arc_lengths(curve)[-1]
     reach = max(0.0, total * PX_PER_PT - length) / 2 + size * PX_PER_PT  # extend the curve if the text is longer (+ overhang)
     long_curve = extend(curve, reach)
@@ -201,3 +243,15 @@ def lay_out(body: Body, curve: np.ndarray, size: float, geom_px: BaseGeometry, r
     parts = [[*(v.min(axis=0) - pad), *(v.max(axis=0) + pad)] for v in vertices]
     glyphs = Path(np.vstack(vertices), np.concatenate([codes for _, codes in laid]))
     return CurvedLabel(body.text, body.kind, geom_px, float(anchor[0]), float(anchor[1]), size, glyphs, np.array(parts), body.full_size)
+
+
+def area_label(body: Body, frame: MapFrame) -> CurvedLabel | None:
+    """`body`'s name along its polygon's curve (fit_curve), sized to fill SEA_FILL of it within its style's range;
+    None if under CURVED_MIN_INSIDE of its glyph boxes are over the body at its anchor (no room for the name)."""
+    assert isinstance(body.geom, Polygon)
+    style = STYLES[body.kind]
+    curve = (fit_curve(body.geom, MAX_TILT_DEG) - np.array([frame.xmin, frame.ymin])) * frame.px_per_unit
+    width_1pt = text_width(body.text, font(1, style.italic)) * PX_PER_PT + style.tracking_em * (len(body.text) - 1) * PX_PER_PT
+    size = float(np.clip(SEA_FILL * arc_lengths(curve)[-1] / width_1pt, style.min_pt, style.max_pt))
+    label = lay_out(body, curve, size, frame.to_px(body.geom))
+    return label if label.inside_share(label.anchor_x, label.anchor_y) >= CURVED_MIN_INSIDE else None

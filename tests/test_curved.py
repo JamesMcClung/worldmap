@@ -58,3 +58,13 @@ def test_fit_curve_steep_and_bent_never_tips_past_vertical() -> None:
     arch = shapely.affinity.rotate(ring.intersection(shapely.box(-10, 2, 10, 10)), 80, origin=(0, 0))  # chord at ~80 degrees
     c = fit_curve(arch, 90)
     assert (np.diff(c[:, 0]) >= -1e-9).all()  # every step still goes right: no glyph leans upside down
+
+
+def test_styles_by_kind() -> None:
+    from worldmap.labels.curved import OCEAN_TRACKING_EM, STYLES
+    from worldmap.labels.water import WATER_KINDS
+
+    assert set(WATER_KINDS) <= STYLES.keys()
+    assert STYLES["oceans"].tracking_em == OCEAN_TRACKING_EM and STYLES["oceans"].cap_centred
+    assert STYLES["seas"].tracking_em == 0 and not STYLES["seas"].cap_centred
+    assert STYLES["rivers"].italic and not STYLES["seas"].italic

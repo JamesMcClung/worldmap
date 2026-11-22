@@ -8,8 +8,8 @@ from shapely.geometry import LineString, Point
 from worldmap.curves import arc_lengths, bend
 from worldmap.frame import MapFrame, make_frame
 from worldmap.labels.text import PX_PER_PT
-from worldmap.labels.curved import CURVED_MIN_INSIDE, OCEAN_MIN_PT, WATER_MIN_PT, Body, CurvedLabel
-from worldmap.labels.water import (OCEAN_PT, RIVER_MAX_PT, RIVER_MIN_PT, SEA_MAX_PT, WATER_TEXT, best_stretch, classify, kinds_from_labels,
+from worldmap.labels.curved import CURVED_MIN_INSIDE, OCEAN_MIN_PT, OCEAN_PT, SEA_MAX_PT, WATER_MIN_PT, WATER_TEXT, Body, CurvedLabel
+from worldmap.labels.water import (RIVER_MAX_PT, RIVER_MIN_PT, best_stretch, classify, kinds_from_labels,
                                    load_water_bodies, longest_paths, make_water_labels, river_label, river_name, river_size)
 from worldmap.labels.priority import Unplaced
 from worldmap.render import drawable_lakes
@@ -95,18 +95,18 @@ def test_make_water_labels_one_per_body(frame: MapFrame, lakes_projected: gpd.Ge
     assert Unplaced("Suez Canal", "rivers", suez.full_size) in fits
 
 
-def test_draw_water_labels(frame: MapFrame, lakes_projected: gpd.GeoDataFrame) -> None:
+def test_draw_curved_labels(frame: MapFrame, lakes_projected: gpd.GeoDataFrame) -> None:
     from matplotlib.patches import PathPatch
 
     from test_placement import placed
-    from worldmap.render import draw_water_labels, new_figure
+    from worldmap.render import draw_curved_labels, new_figure
 
     med = [l for l in make_water_labels(load_water_bodies({"seas"}, lakes_projected, make_frame()), frame) if isinstance(l, CurvedLabel) and l.text == "Mediterranean Sea"]
     p = placed(med, frame)
     p.x[0] += 100  # somewhere other than its anchor
     fig, ax = new_figure(frame)
     before = len(ax.patches)
-    draw_water_labels(ax, p, frame)
+    draw_curved_labels(ax, p, frame)
     added = ax.patches[before:]
     assert len(added) == 1 and isinstance(added[0], PathPatch)
     assert np.allclose(added[0].get_facecolor()[:3], WATER_TEXT)

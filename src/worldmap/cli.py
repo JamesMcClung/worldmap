@@ -35,7 +35,7 @@ from worldmap.labels.report import progress, summary
 from worldmap.labels.curved import Body, CurvedLabel
 from worldmap.labels.water import WATER_KINDS, Kind, kinds_from_labels, load_water_bodies, make_water_labels, river_ranks
 from worldmap.pins import draw_pins, fit_to_render, load_pins, pick_pins, pin_sprite
-from worldmap.render import draw_borders, draw_countries, draw_labels, draw_lakes, drawable_lakes, draw_rivers, draw_states, draw_stripes, draw_water_labels, Lakes, new_figure, subtract_lakes
+from worldmap.render import draw_borders, draw_countries, draw_labels, draw_lakes, drawable_lakes, draw_rivers, draw_states, draw_stripes, draw_curved_labels, Lakes, new_figure, subtract_lakes
 from worldmap.rivers import river_flow
 from worldmap.topographic import ICE, ICE_CONTOURS, LAND, LAND_CONTOURS, SEA, SEA_CONTOURS, draw_topography
 
@@ -205,7 +205,7 @@ def main(argv: list[str] | None = None) -> None:
         draw_rivers(ax, shown_rivers(frame, bodies, water, outcome))
     placement = outcome.placement
     draw_labels(ax, placement, frame)
-    draw_water_labels(ax, placement, frame)
+    draw_curved_labels(ax, placement, frame)
 
     add_pins(ax, frame, args)
     # Layout above is measured at DPI; saving at another resolution only rescales it.
@@ -277,7 +277,7 @@ def draw_topographic(args: argparse.Namespace, out: str, frame: MapFrame) -> Non
         bars: list[Corner] = ["br", "tr", "bl"] if args.ocean else ["br", "bl"]
         room = frame if frame.globe else dataclasses.replace(frame, outline=label_outline(frame, bars))
         outcome = place(water, room, args.label)
-        draw_water_labels(ax, outcome.placement, frame)
+        draw_curved_labels(ax, outcome.placement, frame)
     if draws_rivers(args):
         draw_rivers(ax, shown_rivers(frame, bodies, water, outcome))
     ax.set_xlim(frame.xmin, frame.xmax)

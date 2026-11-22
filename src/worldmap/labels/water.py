@@ -9,18 +9,14 @@ import geopandas as gpd
 import numpy as np
 import shapely
 from pyproj import Geod, Transformer
-from matplotlib.colors import to_rgb
-from shapely.geometry import LineString, Polygon
+from shapely.geometry import LineString
 from shapely.geometry.base import BaseGeometry
 
-from worldmap.coloring import OCEAN
-from worldmap.colorspace import RGB, fit_gamut, srgb_to_oklch
 from worldmap.curves import along, arc_lengths, bend
 from worldmap.data import EQUAL_AREA_CRS, load_marine, load_rivers
 from worldmap.disjoint import DisjointSets
 from worldmap.frame import MapFrame
-from worldmap.labels.curved import (CURVED_MIN_INSIDE, MAX_TILT_DEG, OCEAN_MIN_PT, OCEAN_TRACKING_EM, WATER_MIN_PT, Body, CurvedLabel,
-                                    fit_curve, largest, lay_out)
+from worldmap.labels.curved import CURVED_MIN_INSIDE, MAX_TILT_DEG, Body, CurvedLabel, area_label, fit_curve, largest, lay_out
 from worldmap.labels.priority import UNLABELED, Unplaced
 from worldmap.labels.text import PX_PER_PT, font, text_width
 
@@ -29,14 +25,6 @@ WATER_KINDS: tuple[Kind, ...] = ("oceans", "seas", "lakes", "straits", "rivers")
 SEA: Kind = "seas"
 CLASSES: dict[str, Kind] = {"ocean": "oceans", "strait": "straits", "channel": "straits"}
 CLASSES |= {c: SEA for c in ("sea", "gulf", "bay", "sound", "fjord", "lagoon", "inlet")}  # reefs, river mouths and the unnamed 'generic' areas are never labelled
-OCEAN_PT = 30  # oceans: letter-spaced, sized like seas but within these (the Arctic and Southern bands are narrow)
-SEA_MAX_PT = 14  # seas, lakes, straits: sized to fill SEA_FILL of their curve, within these
-SEA_FILL = 0.8
-WATER_HALO = OCEAN  # the trim: the water colour itself
-_ocean_hue = srgb_to_oklch(to_rgb(OCEAN))[2]
-_fitted = fit_gamut(0.50, 0.08, _ocean_hue)
-assert _fitted is not None
-WATER_TEXT: RGB = _fitted[0]  # a deeper blue in the ocean's hue
 RIVER_WIDTH_MAX, RIVER_WIDTH_MIN = 1.6, 0.3  # line widths (pt) at scalerank 0 and RIVER_THIN_RANK
 RIVER_THIN_RANK = 8  # rivers of this scalerank and beyond are drawn thinnest
 RIVER_MAX_PT, RIVER_MIN_PT = 8.5, 4.2  # river names: italic, linear in the river's line width, these at its widest and thinnest
@@ -49,10 +37,6 @@ RIVER_REPEAT_M = 1_500_000  # same-named rivers further apart than this are name
 RIVER_TILT_COST = 0.4  # choosing a river's stretch: steepness (0..1 from level to vertical) against wiggliness...
 RIVER_MIDDLE_COST = 0.3  # ...and distance from the river's middle (0..0.5 of its length)
 RIVER_NAMES = {"Grande": "Rio Grande", "Syr Dar": "Syr Darya"}  # Natural Earth name_en (after dropping " River") -> label
-_river_text = fit_gamut(0.42, 0.10, _ocean_hue)
-assert _river_text is not None
-RIVER_TEXT: RGB = _river_text[0]  # darker than WATER_TEXT: it sits on land, not water
-RIVER_HALO = (1, 1, 1, 0.55)  # like the country labels'
 OCEAN_TEXT = {"Atlantic": "ATLANTIC OCEAN", "Pacific": "PACIFIC OCEAN", "Indian": "INDIAN OCEAN", "Arctic": "ARCTIC OCEAN", "Southern": "SOUTHERN OCEAN"}
 
 
@@ -231,11 +215,6 @@ def river_ranks(rivers_projected: gpd.GeoDataFrame, bodies: list[Body], ranks: n
     return out
 
 
-def body_curve(body: Body) -> np.ndarray:
-    """The curve a body's name follows (map units): along its long direction, so the Atlantic's runs pole to pole."""
-    return fit_curve(body.geom, MAX_TILT_DEG)
-
-
 def river_width(rank: int) -> float:
     """Line width (pt) of a river of Natural Earth scalerank `rank`, thinning linearly to RIVER_THIN_RANK."""
     t = min(max(rank, 0), RIVER_THIN_RANK) / RIVER_THIN_RANK
@@ -309,19 +288,5 @@ def make_water_labels(bodies: list[Body], frame: MapFrame, lakes: BaseGeometry |
     """A curved label per body, in the same order; an Unplaced for those with under CURVED_MIN_INSIDE of their glyph
     boxes over their body to start with (most small bays: no room for their name), and rivers too short for theirs
     outside the drawn `lakes` (map units)."""
-    ppu = frame.px_per_unit
-    labels: list[CurvedLabel | None] = []
-    for body in bodies:
-        if body.kind == "rivers":
-            labels.append(river_label(body, frame, lakes))
-            continue
-        assert isinstance(body.geom, Polygon)
-        curve = (body_curve(body) - np.array([frame.xmin, frame.ymin])) * ppu
-        width_1pt = text_width(body.text, font(1)) * PX_PER_PT
-        if body.kind == "oceans":
-            width_1pt += OCEAN_TRACKING_EM * (len(body.text) - 1) * PX_PER_PT
-        low, high = (OCEAN_MIN_PT, OCEAN_PT) if body.kind == "oceans" else (WATER_MIN_PT, SEA_MAX_PT)
-        size = float(np.clip(SEA_FILL * arc_lengths(curve)[-1] / width_1pt, low, high))
-        label = lay_out(body, curve, size, frame.to_px(body.geom))
-        labels.append(label if label.inside_share(label.anchor_x, label.anchor_y) >= CURVED_MIN_INSIDE else None)
+    labels = [river_label(b, frame, lakes) if b.kind == "rivers" else area_label(b, frame) for b in bodies]
     return [Unplaced(b.text, b.kind, b.full_size) if label is None else label for b, label in zip(bodies, labels)]
