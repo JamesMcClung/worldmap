@@ -28,13 +28,13 @@ from worldmap.crop import (CROP_MARGIN, box_region, candidates, centre_frame, ce
 from worldmap.earth import Fill, build_regions, fill_at
 from worldmap.frame import DPI, MapFrame, make_frame
 from worldmap.labels import land
-from worldmap.labels.curved import Body, CurvedLabel
+from worldmap.labels.curved import Body, CurvedLabel, kinds_in
 from worldmap.labels.label import decide_out_and_wrap, make_labels
 from worldmap.labels.placeable import Placeable
 from worldmap.labels.priority import Outcome, Unplaced, place_by_priority
 from worldmap.labels.regions import child_regions
 from worldmap.labels.report import progress, summary
-from worldmap.labels.water import WATER_KINDS, Kind, kinds_from_labels, load_water_bodies, make_water_labels, river_ranks
+from worldmap.labels.water import WATER_KINDS, Kind, load_water_bodies, make_water_labels, river_ranks
 from worldmap.pins import draw_pins, fit_to_render, load_pins, pick_pins, pin_sprite
 from worldmap.render import draw_borders, draw_countries, draw_labels, draw_lakes, drawable_lakes, draw_rivers, draw_states, draw_stripes, draw_curved_labels, Lakes, new_figure, subtract_lakes
 from worldmap.rivers import river_flow
@@ -110,7 +110,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def draws_rivers(args: argparse.Namespace) -> bool:
     """--rivers, or --label rivers or water (a name needs its river)."""
-    return bool(args.rivers or "rivers" in kinds_from_labels(args.label))
+    return bool(args.rivers or "rivers" in args.label)
 
 
 def make_map_frame(args: argparse.Namespace) -> MapFrame:
@@ -202,7 +202,7 @@ def main(argv: list[str] | None = None) -> None:
     relabel, extra = disputed_label_args(disputes, lambda i, pt: fill_of(i, pt) if regions else DISPUTED_GREY) if args.disputed else ({}, [])
     labels = make_labels(shown, frame, fill_of, children, "countries" in args.label, relabel, extra)
     decide_out_and_wrap(labels)
-    bodies, water = water_labels(kinds_from_labels(args.label), lakes, frame)
+    bodies, water = water_labels(kinds_in(args.label, WATER_KINDS), lakes, frame)
     outcome = place([*labels, *water, *land_labels(land.kinds_from_labels(args.label), frame)], frame, args.label)
     if draws_rivers(args):
         draw_rivers(ax, shown_rivers(frame, bodies, water, outcome))
@@ -232,7 +232,7 @@ def land_labels(kinds: set[land.Kind], frame: MapFrame) -> list[CurvedLabel | Un
 
 def area_kinds(label: Sequence[str]) -> bool:
     """Whether --label asks for any curved area labels (water or land): without, --type topographic places none."""
-    return bool(kinds_from_labels(label) or land.kinds_from_labels(label))
+    return bool(kinds_in(label, WATER_KINDS) or land.kinds_from_labels(label))
 
 
 def shown_rivers(frame: MapFrame, bodies: list[Body], water: list[CurvedLabel | Unplaced], outcome: Outcome | None) -> gpd.GeoDataFrame:
@@ -282,7 +282,7 @@ def draw_topographic(args: argparse.Namespace, out: str, frame: MapFrame) -> Non
     if args.ocean:
         draw_colorbar(ax, frame, "tr", SEA, "Depth", SEA_CONTOURS)
     draw_colorbar(ax, frame, "bl", ICE, "Ice", ICE_CONTOURS)
-    bodies, water = water_labels(kinds_from_labels(args.label), lakes, frame)
+    bodies, water = water_labels(kinds_in(args.label, WATER_KINDS), lakes, frame)
     outcome = None
     if area_kinds(args.label):  # without water or land kinds no label stage runs
         # A crop's bars sit over the map: keep the labels off them.

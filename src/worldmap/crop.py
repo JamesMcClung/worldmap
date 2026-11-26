@@ -21,8 +21,8 @@ from worldmap.frame import (ANTIMERIDIAN_EPS, OUTLINE_POINTS, PROJECT_PAD, SEGME
 from worldmap.labels.label import RENAME
 from worldmap.labels.regions import PARENT_SHORT, child_regions, polygons
 from worldmap.labels import land
-from worldmap.labels.curved import Body
-from worldmap.labels.water import kinds_from_labels, load_water_bodies
+from worldmap.labels.curved import Body, kinds_in
+from worldmap.labels.water import WATER_KINDS, load_water_bodies
 
 if TYPE_CHECKING:
     import questionary
@@ -357,7 +357,7 @@ def candidates(label: Collection[str], disputed: bool) -> list[Candidate]:
             for c in children:  # so "united" finds Alaska (US) too
                 name = full.get(c.parent_name, c.parent_name)
                 found.append((c.text, "territory", shapely.union_all(c.polys), (RENAME.get(name, name), name), c.km2))
-    kinds = kinds_from_labels(label)
+    kinds = kinds_in(label, WATER_KINDS)
     if kinds:
         bodies = load_water_bodies(kinds, frame.project(load_lakes()), frame)  # every lake: a crop draws ones too small for the world map
         oceans: dict[str, list[Body]] = {}

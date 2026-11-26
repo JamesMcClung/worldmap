@@ -2,7 +2,6 @@
 river it goes (laid out by curved.py). Bodies are in projected map units; labels are in poster pixels."""
 
 import functools
-from collections.abc import Collection
 from typing import Literal
 
 import geopandas as gpd
@@ -60,11 +59,6 @@ RIVER_TILT_COST = 0.4  # choosing a river's stretch: steepness (0..1 from level 
 RIVER_MIDDLE_COST = 0.3  # ...and distance from the river's middle (0..0.5 of its length)
 RIVER_NAMES = {"Grande": "Rio Grande", "Syr Dar": "Syr Darya"}  # Natural Earth name_en (after dropping " River") -> label
 OCEAN_TEXT = {"Atlantic": "ATLANTIC OCEAN", "Pacific": "PACIFIC OCEAN", "Indian": "INDIAN OCEAN", "Arctic": "ARCTIC OCEAN", "Southern": "SOUTHERN OCEAN"}
-
-
-def kinds_from_labels(label: Collection[str]) -> set[Kind]:
-    """The water kinds asked for in --label (countries and territories are not water)."""
-    return {k for k in WATER_KINDS if k in label}
 
 
 def classify(featurecla: str) -> Kind | None:

@@ -10,7 +10,7 @@ from worldmap.frame import MapFrame, make_frame
 from worldmap.labels.text import PX_PER_PT
 from worldmap.labels.curved import CURVED_MIN_INSIDE, Body, CurvedLabel
 from worldmap.labels.water import (OCEAN_MIN_PT, OCEAN_PT, RIVER_MAX_PT, RIVER_MIN_PT, SEA_MAX_PT, STYLES,
-                                   WATER_MIN_PT, WATER_TEXT, best_stretch, classify, kinds_from_labels,
+                                   WATER_MIN_PT, WATER_TEXT, best_stretch, classify,
                                    load_water_bodies, longest_paths, make_water_labels, river_label, river_name, river_size)
 from worldmap.labels.priority import Unplaced
 from worldmap.render import drawable_lakes
@@ -26,12 +26,6 @@ def test_classify() -> None:
     assert classify("gulf") == "seas" and classify("fjord") == "seas"
     assert classify("channel") == "straits"
     assert classify("reef") is None and classify("river") is None and classify("generic") is None
-
-
-def test_kinds_from_labels() -> None:
-    assert kinds_from_labels({"countries"}) == set()
-    assert kinds_from_labels({"seas", "countries"}) == {"seas"}
-    assert kinds_from_labels({"straits"}) == {"straits"}
 
 
 def test_oceans(lakes_projected: gpd.GeoDataFrame) -> None:
