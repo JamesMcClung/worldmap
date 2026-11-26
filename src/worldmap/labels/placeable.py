@@ -1,4 +1,4 @@
-"""What the solvers ask of every label, country (label.Label) or water (water.WaterLabel)."""
+"""What the solvers ask of every label, country (label.Label) or curved (curved.CurvedLabel: water, landforms)."""
 
 from typing import Protocol
 
@@ -40,5 +40,5 @@ class Placeable(Covered, Protocol):
         ...
 
     @property
-    def water(self) -> bool:  # a water label: on its feature by its glyphs' centres, never 'out'
+    def curved(self) -> bool:  # a curved label (curved.CurvedLabel): on its feature by its glyphs' centres, never 'out'
         ...

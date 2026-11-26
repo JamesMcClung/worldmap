@@ -70,7 +70,7 @@ def steps(kinds: Sequence[str], sizes: Sequence[float], order: Sequence[str], ra
 
 def overhang_of(p: Placement, k: int) -> float:
     """overhang of label k where it is, its pieces judged as the solver does (geometry.on_feature)."""
-    _, on = on_feature(coverage(p.items[k]), p.parts[p.owner == k], p.x[k], p.y[k], not p.water[k], OVERHANG_SLICES)
+    _, on = on_feature(coverage(p.items[k]), p.parts[p.owner == k], p.x[k], p.y[k], not p.curved[k], OVERHANG_SLICES)
     return overhang(on)
 
 
@@ -91,15 +91,15 @@ def rival(p: Placement, k: int, smaller: list[int]) -> int | None:
 class Verdict:
     """What check_step decided. Unless `out` and `rival` are empty, the step is solved again."""
     out: list[int]  # country labels to put 'out', beside their country with a leader
-    rival: int | None  # a label of the step to skip, so that a bigger water label can keep to its water
+    rival: int | None  # a label of the step to skip, so that a bigger curved label can keep to its feature
     skip: list[int]  # labels to skip for good (once nothing else is left to try)
 
 
 def check_step(p: Placement, new: list[int], active: np.ndarray, frame: MapFrame) -> Verdict:
     """Check a solved step's labels (`new`, biggest first) smallest first, so of two clashing the smaller goes,
     against the `active` labels not skipped so far. A country label clashing, or hanging off its country by over
-    OVERHANG_MAX (overhang_of), goes 'out'. One already out and clashing, or a water label clashing, hanging off
-    its water or (in a crop) outside the outline, is skipped; but a water label off its water first looks for a
+    OVERHANG_MAX (overhang_of), goes 'out'. One already out and clashing, or a curved label clashing, hanging off
+    its feature or (in a crop) outside the outline, is skipped; but a curved label off its feature first looks for a
     smaller label of the step overlapping it at its anchor (rival): that one goes instead, and the check stops.
     Each check sees the labels checked before it as decided. `p` is left as it is."""
     q = replace(p, out=p.out.copy())
@@ -107,11 +107,11 @@ def check_step(p: Placement, new: list[int], active: np.ndarray, frame: MapFrame
     outside = set() if frame.globe else outside_outline(q, frame)
     verdict = Verdict([], None, [])
     for n, i in reversed(list(enumerate(new))):
-        if not q.water[i] and not q.out[i] and (overhang_of(q, i) > OVERHANG_MAX or clash(q, i, among)):
+        if not q.curved[i] and not q.out[i] and (overhang_of(q, i) > OVERHANG_MAX or clash(q, i, among)):
             q.out[i] = True
             verdict.out.append(i)
             continue
-        off = bool(q.water[i]) and (overhang_of(q, i) > OVERHANG_MAX or i in outside)
+        off = bool(q.curved[i]) and (overhang_of(q, i) > OVERHANG_MAX or i in outside)
         if off:
             verdict.rival = rival(q, i, [m for m in new[n + 1:] if among[m]])
             if verdict.rival is not None:

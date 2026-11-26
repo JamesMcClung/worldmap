@@ -24,7 +24,8 @@ from worldmap.earth import Fill, Regions
 from worldmap.frame import DPI, MapFrame
 from worldmap.labels.label import Label
 from worldmap.labels.placement import Placement, leader_ends
-from worldmap.labels.water import RIVER_HALO, RIVER_TEXT, river_width, WATER_HALO, WATER_HALO_PX, WATER_TEXT, WaterLabel
+from worldmap.labels.curved import CURVED_HALO_PX, WHITE_HALO, CurvedLabel
+from worldmap.labels.water import river_width
 
 BORDER, STATE_LINE = "#3a3a3a", "#7d7d7d"
 ANTARCTICA_FILL = "#ffffff"  # Antarctica is drawn white and left unlabelled
@@ -42,7 +43,7 @@ LAKE_MIN_IN2 = 0.002  # lakes covering at least this many square inches of the p
 Z_RIVERS = 2.2  # above the state lines, below the lakes (which hide the lake centrelines)
 Z_STATES_UNDER_BORDERS = 1.65  # --disputed: state lines above the stripes, below the (dashed) borders
 LABEL_ZORDER = 6
-HALO = [pe.withStroke(linewidth=2.2, foreground=(1, 1, 1, 0.55))]  # the country labels'
+HALO = [pe.withStroke(linewidth=2.2, foreground=WHITE_HALO)]  # the country labels'
 
 
 def patches(geom: BaseGeometry) -> Iterator[MplPolygon]:
@@ -187,12 +188,11 @@ def draw_labels(ax: Axes, placement: Placement, frame: MapFrame) -> None:
             ax.plot([x0], [y0], marker="o", ms=LEADER_DOT_SIZE, color=label.color, zorder=Z_LEADERS)
 
 
-def draw_water_labels(ax: Axes, placement: Placement, frame: MapFrame) -> None:
-    """Each water label's bent glyphs at its placed position and size, blue with a water-coloured halo (rivers:
-    darker, with the country labels' halo), just under the country labels."""
-    halo = [pe.withStroke(linewidth=WATER_HALO_PX * 72 / DPI, foreground=WATER_HALO)]
-    river_halo = [pe.withStroke(linewidth=WATER_HALO_PX * 72 / DPI, foreground=RIVER_HALO)]
-    for i, label in placement.each(WaterLabel):
-        river = label.kind == "rivers"
+def draw_curved_labels(ax: Axes, placement: Placement, frame: MapFrame) -> None:
+    """Each curved label's bent glyphs at its placed position and size, in its kind's colours (Style), just under
+    the country labels."""
+    for i, label in placement.each(CurvedLabel):
+        style = label.style
+        halo = [pe.withStroke(linewidth=CURVED_HALO_PX * 72 / DPI, foreground=style.halo)]
         ax.add_patch(glyph_patch(label.glyphs, placement.size[i] / label.size, placement.x[i], placement.y[i], frame,
-                                 fc=RIVER_TEXT if river else WATER_TEXT, zorder=LABEL_ZORDER - 0.1, path_effects=river_halo if river else halo))
+                                 fc=style.text, zorder=LABEL_ZORDER - 0.1, path_effects=halo))

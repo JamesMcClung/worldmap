@@ -20,7 +20,9 @@ from worldmap.frame import (ANTIMERIDIAN_EPS, OUTLINE_POINTS, PROJECT_PAD, SEGME
                             make_frame)
 from worldmap.labels.label import RENAME
 from worldmap.labels.regions import PARENT_SHORT, child_regions, polygons
-from worldmap.labels.water import WaterBody, kinds_from_labels, load_water_bodies
+from worldmap.labels import land
+from worldmap.labels.curved import Body, kinds_in
+from worldmap.labels.water import WATER_KINDS, load_water_bodies
 
 if TYPE_CHECKING:
     import questionary
@@ -312,8 +314,9 @@ def centre_spec(crop: CentreCrop) -> str:
     return f"{round(lon, 2):g},{round(lat, 2):g}/{width * KM_PER_DEG:.0f}km,{height * KM_PER_DEG:.0f}km"
 
 
-KINDS = ("country", "territory", "disputed", "ocean", "sea", "lake", "strait", "river")  # the order a match list is in
+KINDS = ("country", "territory", "disputed", "ocean", "sea", "lake", "strait", "river", "mountain", "upland", "desert", "lowland")  # the order a match list is in
 WATER_KIND = {"oceans": "ocean", "seas": "sea", "lakes": "lake", "straits": "strait", "rivers": "river"}
+LAND_KIND = {"mountains": "mountain", "uplands": "upland", "deserts": "desert", "lowlands": "lowland"}
 
 
 @dataclass(frozen=True)
@@ -354,15 +357,17 @@ def candidates(label: Collection[str], disputed: bool) -> list[Candidate]:
             for c in children:  # so "united" finds Alaska (US) too
                 name = full.get(c.parent_name, c.parent_name)
                 found.append((c.text, "territory", shapely.union_all(c.polys), (RENAME.get(name, name), name), c.km2))
-    kinds = kinds_from_labels(label)
+    kinds = kinds_in(label, WATER_KINDS)
     if kinds:
         bodies = load_water_bodies(kinds, frame.project(load_lakes()), frame)  # every lake: a crop draws ones too small for the world map
-        oceans: dict[str, list[WaterBody]] = {}
+        oceans: dict[str, list[Body]] = {}
         for b in bodies:  # the world map labels the Pacific twice, either side of +-180: one candidate
             if b.kind == "oceans":
                 oceans.setdefault(b.text, []).append(b)
         found += [(text, "ocean", shapely.union_all([b.geom for b in halves]), (), halves[0].full_size) for text, halves in oceans.items()]
         found += [(b.text, WATER_KIND[b.kind], b.geom, (), b.full_size) for b in bodies if b.kind != "oceans"]
+    if land_kinds := kinds_in(label, land.LAND_KINDS):
+        found += [(b.text, LAND_KIND[b.kind], b.geom, (), b.full_size) for b in land.load_land_bodies(land_kinds, frame)]
     return [Candidate(text, kind, to_lonlat(g, frame), aliases, size) for text, kind, g, aliases, size in found]
 
 
