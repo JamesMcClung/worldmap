@@ -55,7 +55,8 @@ def earth_values(countries: gpd.GeoDataFrame) -> list[list[list[float]]]:
             return cached["vals"]
     import rasterio
     from rasterio.features import rasterize
-    from rasterio.windows import Window, transform as window_transform
+    from rasterio.windows import Window
+    from rasterio.windows import transform as window_transform
 
     with rasterio.open(raster) as src:
         image = np.moveaxis(src.read(), 0, -1)  # (rows, cols, RGB)
@@ -79,8 +80,7 @@ def earth_values(countries: gpd.GeoDataFrame) -> list[list[list[float]]]:
             col0, col1 = max(0, int((lon0 + 180) / 360 * width)), min(width, int((lon1 + 180) / 360 * width) + 2)
             row0, row1 = max(0, int((90 - lat1) / 180 * height)), min(height, int((90 - lat0) / 180 * height) + 2)
             window = Window(col0, row0, col1 - col0, row1 - row0)
-            mask = rasterize([poly], out_shape=(row1 - row0, col1 - col0), transform=window_transform(window, transform),
-                             fill=0, default_value=1, dtype="uint8").astype(bool)  # pixel centres inside, holes cleared
+            mask = rasterize([poly], out_shape=(row1 - row0, col1 - col0), transform=window_transform(window, transform), fill=0, default_value=1, dtype="uint8").astype(bool)  # pixel centres inside, holes cleared
             pixels = image[row0:row1, col0:col1][mask]
             all_pixels.append(pixels)
             stats = pixel_stats(pixels)

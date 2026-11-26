@@ -49,6 +49,7 @@ OUT_SHORT_HEIGHTS = 6
 WRAP_WIDTH_RATIO = 0.9
 WRAP_MIN_HEIGHTS = 2.5
 
+
 @dataclass
 class Label:
     name: str
@@ -106,19 +107,16 @@ def anchor_piece(polys: list[Polygon], frame: MapFrame, tolerance: float, force_
     return maximum_inscribed_circle(largest, tolerance=tolerance).coords[0], largest, largest.area, False
 
 
-def new_label(frame: MapFrame, name: str, anchor: tuple[float, float], geom: BaseGeometry, area: float, color: RGB, italic: bool = False,
-              kind: str = "countries", full_size: float = 0.0) -> Label:
+def new_label(frame: MapFrame, name: str, anchor: tuple[float, float], geom: BaseGeometry, area: float, color: RGB, italic: bool = False, kind: str = "countries", full_size: float = 0.0) -> Label:
     """A label for `name` at `anchor` (map units), sized by `area`, laid out. Child regions are set in italics."""
     ppu = frame.px_per_unit
     x, y = anchor
     size = float(np.clip(FONT_SCALE * np.sqrt(area) * ppu / DPI * POINTS_PER_INCH / 10, MIN_PT, MAX_PT))
     glyphs, width, height = lay_out(name, size, italic)
-    return Label(name, color, name, width, height, (x - frame.xmin) * ppu, (y - frame.ymin) * ppu, frame.to_px(geom), size, glyphs,
-                 italic=italic, kind=kind, full_size=full_size)
+    return Label(name, color, name, width, height, (x - frame.xmin) * ppu, (y - frame.ymin) * ppu, frame.to_px(geom), size, glyphs, italic=italic, kind=kind, full_size=full_size)
 
 
-def make_labels(countries_projected: gpd.GeoDataFrame, frame: MapFrame, fill_of: Callable[[int, Point | None], Fill], children: Sequence["ChildRegion"] = (), countries: bool = True,
-                relabel: dict[int, str] | None = None, extra: Sequence[tuple[str, Polygon, Fill, float]] = ()) -> list[Label]:
+def make_labels(countries_projected: gpd.GeoDataFrame, frame: MapFrame, fill_of: Callable[[int, Point | None], Fill], children: Sequence["ChildRegion"] = (), countries: bool = True, relabel: dict[int, str] | None = None, extra: Sequence[tuple[str, Polygon, Fill, float]] = ()) -> list[Label]:
     """One label per labelled country (if `countries`), plus an italic one per child region (--label territories),
     biggest first (full_size; see anchor_piece for where each goes). With `countries`, --disputed adds the self-governing areas:
     `relabel` labels these rows with this text even if they aren't is_labeled (Somaliland), and `extra` adds

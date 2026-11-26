@@ -96,7 +96,7 @@ class MapFrame:
         """The long side (inches) without --size: POSTER_WIDTH_IN for the world, a crop's from its long side s on
         the world poster (CROP_SIZE_POWER), CROP_MIN_IN..POSTER_WIDTH_IN."""
         share = max(self.width, self.height) / world_width()  # s / POSTER_WIDTH_IN; both in metres
-        return min(max(POSTER_WIDTH_IN * share ** CROP_SIZE_POWER, CROP_MIN_IN), POSTER_WIDTH_IN)
+        return min(max(POSTER_WIDTH_IN * share**CROP_SIZE_POWER, CROP_MIN_IN), POSTER_WIDTH_IN)
 
     @property
     def long_side_in(self) -> float:

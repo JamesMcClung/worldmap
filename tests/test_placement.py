@@ -7,10 +7,19 @@ import shapely
 from matplotlib.path import Path
 
 from worldmap.frame import MapFrame, make_frame
-from worldmap.labels.label import Label, new_label
-from worldmap.labels.placement import FIXED, FREE, NUDGE, Placement, clashes, place_labels, rects, subset
 from worldmap.labels import placement
 from worldmap.labels.curved import CurvedLabel
+from worldmap.labels.label import Label, new_label
+from worldmap.labels.placement import (
+    FIXED,
+    FREE,
+    NUDGE,
+    Placement,
+    clashes,
+    place_labels,
+    rects,
+    subset,
+)
 from worldmap.labels.water import OCEAN_MIN_PT, STYLES, WATER_MIN_PT, Kind
 
 T = TypeVar("T", Label, CurvedLabel)
@@ -34,8 +43,7 @@ def of_kind(p: Placement, kind: type[T]) -> list[T]:
     return [item for _, item in p.each(kind)]
 
 
-def placed(items: Sequence[Label | CurvedLabel], frame: MapFrame, start: tuple[np.ndarray, np.ndarray] | None = None,
-           **solve: object) -> Placement:
+def placed(items: Sequence[Label | CurvedLabel], frame: MapFrame, start: tuple[np.ndarray, np.ndarray] | None = None, **solve: object) -> Placement:
     """A Placement of the labels, from `start` (default: their anchors), placed (place_labels)."""
     p = Placement.of(items)
     if start is not None:
@@ -277,8 +285,7 @@ def test_nearby_holds_every_label_that_costs(frame: MapFrame) -> None:
                     costs.add(j)
         env = kernels.envelope(cx, cy, p.parts[p.owner == i], bool(p.out[i]), p.anchor_x[i], p.anchor_y[i])
         placed_rects, obstacles, leaders = rects(p), np.empty((len(p.parts), 4)), np.empty(p.n, np.int64)
-        n_obs, n_lead = kernels.nearby(i, *env, placed_rects, p.owner, np.ones(p.n, bool), p.x, p.y, p.width, p.height,
-                                       p.anchor_x, p.anchor_y, p.out, weights.dot_radius, obstacles, leaders)
+        n_obs, n_lead = kernels.nearby(i, *env, placed_rects, p.owner, np.ones(p.n, bool), p.x, p.y, p.width, p.height, p.anchor_x, p.anchor_y, p.out, weights.dot_radius, obstacles, leaders)
         whose = {int(p.owner[g]) for o in obstacles[:n_obs] for g in np.flatnonzero((placed_rects == o).all(1))}
         near = whose | set(leaders[:n_lead].tolist())
         assert costs and costs <= near and len(near) < p.n - 1, (i, costs - near)

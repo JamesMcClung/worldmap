@@ -2,13 +2,24 @@ import geopandas as gpd
 import matplotlib
 import pytest
 from pyproj import Transformer
-from shapely.geometry.base import BaseGeometry
 from shapely.geometry import Point, box
+from shapely.geometry.base import BaseGeometry
 
 from worldmap.data import CRS, load_countries, load_disputed, parent_index
+from worldmap.disputed import (
+    DISPUTED_GREY,
+    Dispute,
+    Note,
+    border_lines,
+    dispute_edges,
+    dispute_fills,
+    disputed_label_args,
+    load_disputes,
+    parse_note,
+    stripe_parts,
+)
 from worldmap.frame import make_frame
 from worldmap.labels.label import make_labels
-from worldmap.disputed import DISPUTED_GREY, Dispute, Note, border_lines, dispute_edges, dispute_fills, disputed_label_args, load_disputes, parse_note, stripe_parts
 
 
 @pytest.fixture(scope="module")
@@ -21,18 +32,21 @@ def disputes(countries: gpd.GeoDataFrame) -> list[Dispute]:
     return load_disputes(countries, load_disputed())
 
 
-@pytest.mark.parametrize("note, expected", [
-    ("Admin. by India; Claimed by Pakistan", Note("India", ["Pakistan"], False)),
-    ("Admin. By Israel; Claimed by Syria", Note("Israel", ["Syria"], False)),
-    ("Admin by U.K.; Claimed by Ireland, Denmark, and Iceland", Note("U.K.", ["Ireland", "Denmark", "Iceland"], False)),
-    ("Admin. by American Samoa for U.S.A.; Claimed by Tokelau", Note("U.S.A.", ["Tokelau"], False)),
-    ("Admin. by China; Ceded to China by Pakistan; Claimed by India", Note("China", ["India"], False)),
-    ("Self admin.; Claimed by Azer.", Note(None, ["Azer."], True)),
-    ("Claimed by Chile and Argentina; under survey", Note(None, ["Chile", "Argentina"], False)),
-    ("Claimed by Colombia, Jamaica, Nicaragua and the United States", Note(None, ["Colombia", "Jamaica", "Nicaragua", "the United States"], False)),
-    ("Leased to Russia by Kazakhstan", Note("Russia", ["Kazakhstan"], False)),
-    ("Leased to U.S.A. by Cuba; Claimed by Cuba", Note("U.S.A.", ["Cuba", "Cuba"], False)),
-])
+@pytest.mark.parametrize(
+    "note, expected",
+    [
+        ("Admin. by India; Claimed by Pakistan", Note("India", ["Pakistan"], False)),
+        ("Admin. By Israel; Claimed by Syria", Note("Israel", ["Syria"], False)),
+        ("Admin by U.K.; Claimed by Ireland, Denmark, and Iceland", Note("U.K.", ["Ireland", "Denmark", "Iceland"], False)),
+        ("Admin. by American Samoa for U.S.A.; Claimed by Tokelau", Note("U.S.A.", ["Tokelau"], False)),
+        ("Admin. by China; Ceded to China by Pakistan; Claimed by India", Note("China", ["India"], False)),
+        ("Self admin.; Claimed by Azer.", Note(None, ["Azer."], True)),
+        ("Claimed by Chile and Argentina; under survey", Note(None, ["Chile", "Argentina"], False)),
+        ("Claimed by Colombia, Jamaica, Nicaragua and the United States", Note(None, ["Colombia", "Jamaica", "Nicaragua", "the United States"], False)),
+        ("Leased to Russia by Kazakhstan", Note("Russia", ["Kazakhstan"], False)),
+        ("Leased to U.S.A. by Cuba; Claimed by Cuba", Note("U.S.A.", ["Cuba", "Cuba"], False)),
+    ],
+)
 def test_parse_note(note: str, expected: Note) -> None:
     assert parse_note(note) == expected
 
@@ -61,8 +75,7 @@ def test_examples(disputes: list[Dispute], countries: gpd.GeoDataFrame) -> None:
 
 
 def test_labels(disputes: list[Dispute]) -> None:
-    assert {d.label for d in disputes if d.label} == {"Taiwan", "Somaliland", "Northern Cyprus", "Western Sahara", "Abkhazia",
-                                                      "South Ossetia", "Transnistria", "Nagorno-Karabakh", "Donetsk", "Luhansk"}
+    assert {d.label for d in disputes if d.label} == {"Taiwan", "Somaliland", "Northern Cyprus", "Western Sahara", "Abkhazia", "South Ossetia", "Transnistria", "Nagorno-Karabakh", "Donetsk", "Luhansk"}
 
 
 def test_unknown_claimant_is_an_error(countries: gpd.GeoDataFrame) -> None:
@@ -152,8 +165,7 @@ def disputed_labels(countries: gpd.GeoDataFrame, disputes: list[Dispute], with_c
 def test_disputed_labels(countries: gpd.GeoDataFrame, disputes_projected: list[Dispute]) -> None:
     found = disputed_labels(countries, disputes_projected, True)
     labels = dict(found)
-    assert {"Somaliland", "Northern Cyprus", "Abkhazia", "South Ossetia", "Transnistria", "Nagorno-Karabakh",
-            "Donetsk", "Luhansk", "Taiwan", "Western Sahara", "Kosovo"} <= labels.keys()
+    assert {"Somaliland", "Northern Cyprus", "Abkhazia", "South Ossetia", "Transnistria", "Nagorno-Karabakh", "Donetsk", "Luhansk", "Taiwan", "Western Sahara", "Kosovo"} <= labels.keys()
     assert "Kashmir" not in labels and "Crimean Peninsula" not in labels and "Turkish Republic of Northern Cyprus" not in labels
     assert labels["Abkhazia"] == labels["Donetsk"] == "normal"
     assert [name for name, _ in found].count("Taiwan") == 1
@@ -169,8 +181,10 @@ def test_state_lines_below_dashed_borders() -> None:
     from shapely.geometry import LineString
 
     from worldmap.render import Z_BORDERS, Z_STRIPES, draw_states
+
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+
     fig, ax = plt.subplots()
     draw_states(ax, gpd.GeoDataFrame(geometry=[LineString([(0, 0), (1, 1)])]), disputed=True)
     (z,) = {c.get_zorder() for c in ax.collections}

@@ -8,8 +8,21 @@ from matplotlib.colors import to_rgb
 from worldmap.coloring import OCEAN
 from worldmap.data import load_ice, load_land
 from worldmap.frame import POSTER_WIDTH_IN, make_frame
-from worldmap.topographic import (LAND_BELOW_SEA, LAND_TOP, Grid, PosterGrid, coastline, colorize, draw_topography, elevation_grid,
-                                  polygon_mask, poster_grid, relief, sample, shade)
+from worldmap.topographic import (
+    LAND_BELOW_SEA,
+    LAND_TOP,
+    Grid,
+    PosterGrid,
+    coastline,
+    colorize,
+    draw_topography,
+    elevation_grid,
+    polygon_mask,
+    poster_grid,
+    relief,
+    sample,
+    shade,
+)
 
 
 @pytest.fixture(scope="module")
@@ -21,14 +34,17 @@ def test_grid_shape(grid: Grid) -> None:
     assert grid.z.shape == (3600, 7200) and grid.z.dtype == np.int16
 
 
-@pytest.mark.parametrize("lon, lat, lo, hi", [
-    (86.925, 27.988, 7000, 9000),  # Everest (3' means lower the peak)
-    (142.2, 11.35, -11100, -9000),  # Mariana Trench
-    (10.0, 25.0, 100, 2000),  # Sahara
-    (51.0, 42.0, -900, -20),  # Caspian Sea floor: below 0, so water
-    (35.5, 31.5, -800, -100),  # Dead Sea
-    (-30.0, 0.0, -6000, -2000),  # mid-Atlantic
-])
+@pytest.mark.parametrize(
+    "lon, lat, lo, hi",
+    [
+        (86.925, 27.988, 7000, 9000),  # Everest (3' means lower the peak)
+        (142.2, 11.35, -11100, -9000),  # Mariana Trench
+        (10.0, 25.0, 100, 2000),  # Sahara
+        (51.0, 42.0, -900, -20),  # Caspian Sea floor: below 0, so water
+        (35.5, 31.5, -800, -100),  # Dead Sea
+        (-30.0, 0.0, -6000, -2000),  # mid-Atlantic
+    ],
+)
 def test_known_places(grid: Grid, lon: float, lat: float, lo: float, hi: float) -> None:
     assert lo <= sample(grid, np.array([lon]), np.array([lat]))[0] <= hi
 
@@ -207,6 +223,7 @@ def test_draw_topography_holds_little_memory() -> None:
     import tracemalloc
 
     import matplotlib
+
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 

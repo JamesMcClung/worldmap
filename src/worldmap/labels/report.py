@@ -12,8 +12,7 @@ DROPPED_MIN = 20  # on a terminal, the dropped column fills the rest of the line
 GREEN, YELLOW, RED, PLAIN = "\x1b[32m", "\x1b[33m", "\x1b[31m", "\x1b[0m"
 
 
-def rank_table(plan: list[tuple[int, list[int]]], kinds: Sequence[str], order: Sequence[str], placed: Collection[int], color: bool,
-               names: Sequence[str] = (), columns: int | None = None, cut: Mapping[str, tuple[int, int]] = {}) -> str:
+def rank_table(plan: list[tuple[int, list[int]]], kinds: Sequence[str], order: Sequence[str], placed: Collection[int], color: bool, names: Sequence[str] = (), columns: int | None = None, cut: Mapping[str, tuple[int, int]] = {}) -> str:
     """How many of each rank's labels were placed, as text: a row per kind (in `order`, those with any), then of
     all kinds, then that as a percentage; on the right, of every rank, then as a percentage, then (with `names`) a
     kind's dropped labels, biggest first ('-' if none), as many whole names as fit, then ', N more': in
@@ -68,9 +67,7 @@ def rank_table(plan: list[tuple[int, list[int]]], kinds: Sequence[str], order: S
 
     def row(name: str, kind: str, percent: bool = False) -> str:
         n, of = done[kind], total[kind]
-        parts = [f"{name:<12}", "".join(cell(a, b, percent, kind != "all", rank_w, None if percent else fitted(kind, r))
-                                        for r, (a, b) in enumerate(zip(n, of), 1)),
-                 cell(n.sum(), of.sum(), percent, False) + (" " * 8 if percent else cell(n.sum(), of.sum(), True, False))]
+        parts = [f"{name:<12}", "".join(cell(a, b, percent, kind != "all", rank_w, None if percent else fitted(kind, r)) for r, (a, b) in enumerate(zip(n, of), 1)), cell(n.sum(), of.sum(), percent, False) + (" " * 8 if percent else cell(n.sum(), of.sum(), True, False))]
         if names:
             parts.append("" if kind == "all" else gone(kind))
         return line(parts)
@@ -93,7 +90,7 @@ def progress(r: int, done: int, of: int, kind: str, columns: int) -> str:
     `of`: those of its finished steps), the step's kind; cut to `columns` - 1 so it never wraps."""
     full = round(PROGRESS_WIDTH * done / of) if of else PROGRESS_WIDTH
     text = f"placing rank {r}/{N_RANKS} {'█' * full}{'░' * (PROGRESS_WIDTH - full)} {done}/{of} {kind}"
-    return text[:columns - 1]
+    return text[: columns - 1]
 
 
 def summary(outcome: Outcome, order: Sequence[str], color: bool, columns: int | None) -> str:
@@ -110,6 +107,4 @@ def summary(outcome: Outcome, order: Sequence[str], color: bool, columns: int | 
         else:
             skipped += [entries[i].name for i in members if not isinstance(entries[i], Unplaced) and i not in placed]
     cut = ", ".join(f"{kind} from rank {r} ({dropped[kind]} dropped)" for kind, r in outcome.cut.items())
-    return (f"labels skipped: {skipped}\n" + (f"cut: {cut}\n" if cut else "")
-            + rank_table(outcome.plan, [e.kind for e in entries], order, placed, color, [e.name for e in entries], columns,
-                         {kind: (r, outcome.cut_fit[kind]) for kind, r in outcome.cut.items()}))
+    return f"labels skipped: {skipped}\n" + (f"cut: {cut}\n" if cut else "") + rank_table(outcome.plan, [e.kind for e in entries], order, placed, color, [e.name for e in entries], columns, {kind: (r, outcome.cut_fit[kind]) for kind, r in outcome.cut.items()})

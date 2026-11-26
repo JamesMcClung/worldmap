@@ -28,6 +28,7 @@ CANAL = r"canal|csatorna"  # in a name: a canal, left out of the network (the Vo
 class RiverFlow:
     """The rivers cut into pieces at every junction (`pieces`: Natural Earth's columns, lon/lat), each piece flowing
     from node `up` to node `down`, and `order`: the pieces, each after every piece upstream of it."""
+
     pieces: gpd.GeoDataFrame
     up: np.ndarray
     down: np.ndarray
@@ -65,7 +66,7 @@ def stretches(lines: BaseGeometry, n: int = 64) -> np.ndarray:
     out = []
     for line in shapely.get_parts(lines):
         xy = shapely.get_coordinates(line)
-        out += [shapely.linestrings(xy[i:i + n + 1]) for i in range(0, len(xy) - 1, n)]
+        out += [shapely.linestrings(xy[i : i + n + 1]) for i in range(0, len(xy) - 1, n)]
     return np.array(out)
 
 
@@ -75,9 +76,7 @@ def leaves_of(joined: DisjointSets, n: int) -> np.ndarray:
     return np.flatnonzero(np.bincount(node, minlength=n)[node] == 1)
 
 
-def flow(lines: np.ndarray, names: np.ndarray, ranks: np.ndarray, links: np.ndarray, coast: BaseGeometry, lakes: BaseGeometry,
-         join: float = FLOW_JOIN_M, same_name_join: float = SAME_NAME_JOIN_M,
-         mouth: float = MOUTH_M) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def flow(lines: np.ndarray, names: np.ndarray, ranks: np.ndarray, links: np.ndarray, coast: BaseGeometry, lakes: BaseGeometry, join: float = FLOW_JOIN_M, same_name_join: float = SAME_NAME_JOIN_M, mouth: float = MOUTH_M) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """For `lines` (metres; only those `links` join the network): the pieces (split_at_junctions), their line, the
     nodes each flows from and to, and an order of the pieces with each after every piece upstream of it. Ends join
     within `join`, or `same_name_join` for lines of one of the `names` ("" is none). The mouths are the network ends
@@ -97,8 +96,7 @@ def flow(lines: np.ndarray, names: np.ndarray, ranks: np.ndarray, links: np.ndar
     for a in leaves_of(joined, len(ends)):  # an inland end bridges to the nearest end of its name (one, or a delta
         # collapses into one node)
         if linked[a] and name[a] and not at_coast[a]:
-            near = [int(b) for b in tree.query(ends[a], predicate="dwithin", distance=same_name_join)
-                    if b // 2 != a // 2 and linked[b] and name[b] == name[a]]
+            near = [int(b) for b in tree.query(ends[a], predicate="dwithin", distance=same_name_join) if b // 2 != a // 2 and linked[b] and name[b] == name[a]]
             if near:
                 joined.union(int(a), near[int(np.argmin(shapely.distance(ends[a], ends[near])))])
     node = np.array([joined.find(i) for i in range(len(ends))])
@@ -146,8 +144,7 @@ def river_flow() -> RiverFlow:
     parts, row = shapely.get_parts(rivers.to_crs(EQUAL_AREA_CRS).geometry.values, return_index=True)
     names = rivers.name_en.fillna("")
     canal = (rivers.featurecla == "Canal") | names.str.contains(CANAL, case=False)
-    coast, lakes = (shapely.multilinestrings(shapely.get_parts(shapely.boundary(g.to_crs(EQUAL_AREA_CRS).geometry.values)))
-                    for g in (load_land(), load_lakes()))
+    coast, lakes = (shapely.multilinestrings(shapely.get_parts(shapely.boundary(g.to_crs(EQUAL_AREA_CRS).geometry.values))) for g in (load_land(), load_lakes()))
     pieces, of, up, down, order = flow(parts, names.to_numpy()[row], rivers.scalerank.to_numpy()[row], ~canal.to_numpy()[row], coast, lakes)
     table = rivers.drop(columns="geometry").iloc[row[of]].reset_index(drop=True)
     lonlat = gpd.GeoSeries(pieces, crs=EQUAL_AREA_CRS).to_crs(rivers.crs)

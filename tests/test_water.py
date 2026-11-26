@@ -7,12 +7,27 @@ from shapely.geometry import LineString, Point
 
 from worldmap.curves import arc_lengths, bend
 from worldmap.frame import MapFrame, make_frame
-from worldmap.labels.text import PX_PER_PT
 from worldmap.labels.curved import CURVED_MIN_INSIDE, Body, CurvedLabel
-from worldmap.labels.water import (OCEAN_MIN_PT, OCEAN_PT, RIVER_MAX_PT, RIVER_MIN_PT, SEA_MAX_PT, STYLES,
-                                   WATER_MIN_PT, WATER_TEXT, best_stretch, classify,
-                                   load_water_bodies, longest_paths, make_water_labels, river_label, river_name, river_size)
 from worldmap.labels.priority import Unplaced
+from worldmap.labels.text import PX_PER_PT
+from worldmap.labels.water import (
+    OCEAN_MIN_PT,
+    OCEAN_PT,
+    RIVER_MAX_PT,
+    RIVER_MIN_PT,
+    SEA_MAX_PT,
+    STYLES,
+    WATER_MIN_PT,
+    WATER_TEXT,
+    best_stretch,
+    classify,
+    load_water_bodies,
+    longest_paths,
+    make_water_labels,
+    river_label,
+    river_name,
+    river_size,
+)
 from worldmap.render import drawable_lakes
 
 
@@ -92,8 +107,8 @@ def test_make_water_labels_one_per_body(frame: MapFrame, lakes_projected: gpd.Ge
 
 def test_draw_curved_labels(frame: MapFrame, lakes_projected: gpd.GeoDataFrame) -> None:
     from matplotlib.patches import PathPatch
-
     from test_placement import placed
+
     from worldmap.render import draw_curved_labels, new_figure
 
     med = [l for l in make_water_labels(load_water_bodies({"seas"}, lakes_projected, make_frame()), frame) if isinstance(l, CurvedLabel) and l.text == "Mediterranean Sea"]

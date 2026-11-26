@@ -8,10 +8,8 @@ COAST = LineString([(-500 * KM, 0), (500 * KM, 0)])  # the sea is south of y = 0
 NO_LAKES = LineString([(0, 1e9), (1, 1e9)])
 
 
-def flows(lines: list[LineString], names: list[str], links: list[bool] | None = None, ranks: list[int] | None = None,
-          coast: LineString = COAST) -> tuple[np.ndarray, RiverFlow]:
-    pieces, of, up, down, order = flow(np.array(lines), np.array(names), np.array(ranks or [1] * len(lines)),
-                                       np.array(links or [True] * len(lines)), coast, NO_LAKES)
+def flows(lines: list[LineString], names: list[str], links: list[bool] | None = None, ranks: list[int] | None = None, coast: LineString = COAST) -> tuple[np.ndarray, RiverFlow]:
+    pieces, of, up, down, order = flow(np.array(lines), np.array(names), np.array(ranks or [1] * len(lines)), np.array(links or [True] * len(lines)), coast, NO_LAKES)
     return of, RiverFlow(None, up, down, order)  # type: ignore[arg-type]
 
 
@@ -23,9 +21,7 @@ def shown(lines: list[LineString], names: list[str], drawn: str, **kw: object) -
 
 
 def test_a_delta_and_the_stretch_below_a_junction_are_downstream() -> None:
-    lines = [LineString([(0, 500 * KM), (0, 100 * KM)]),  # the main river, drawn up from its mouth (lines run either way)
-             LineString([(0, 100 * KM), (-50 * KM, 1 * KM)]), LineString([(50 * KM, 1 * KM), (0, 100 * KM)]),  # its delta
-             LineString([(200 * KM, 300 * KM), (0, 300 * KM)])]  # a tributary meeting its middle
+    lines = [LineString([(0, 500 * KM), (0, 100 * KM)]), LineString([(0, 100 * KM), (-50 * KM, 1 * KM)]), LineString([(50 * KM, 1 * KM), (0, 100 * KM)]), LineString([(200 * KM, 300 * KM), (0, 300 * KM)])]  # the main river, drawn up from its mouth (lines run either way)  # its delta  # a tributary meeting its middle
     names = ["Main", "West branch", "East branch", "Tributary"]
     assert shown(lines, names, "Main") == {"Main", "West branch", "East branch"}
     assert shown(lines, names, "Tributary") == {"Main", "West branch", "East branch", "Tributary"}

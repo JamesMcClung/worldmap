@@ -20,12 +20,41 @@ from matplotlib.figure import Figure
 from shapely.geometry import Point
 
 from worldmap.colorbars import Corner, draw_colorbar, label_outline
-from worldmap.coloring import Coloring, load_or_compute_coloring, make_palette, spot_check
+from worldmap.coloring import (
+    Coloring,
+    load_or_compute_coloring,
+    make_palette,
+    spot_check,
+)
 from worldmap.colorspace import RGB
-from worldmap.data import is_labeled, load_countries, load_disputed, load_states, parent_index
-from worldmap.disputed import DISPUTED_GREY, STRIPE_WIDTH_IN, border_lines, dispute_edges, disputed_label_args, load_disputes
-from worldmap.crop import (CROP_MARGIN, box_region, candidates, centre_frame, centre_recipe, centre_spec, choose, crop_frame, matches,
-                           parse_box, parse_centre)
+from worldmap.crop import (
+    CROP_MARGIN,
+    box_region,
+    candidates,
+    centre_frame,
+    centre_recipe,
+    centre_spec,
+    choose,
+    crop_frame,
+    matches,
+    parse_box,
+    parse_centre,
+)
+from worldmap.data import (
+    is_labeled,
+    load_countries,
+    load_disputed,
+    load_states,
+    parent_index,
+)
+from worldmap.disputed import (
+    DISPUTED_GREY,
+    STRIPE_WIDTH_IN,
+    border_lines,
+    dispute_edges,
+    disputed_label_args,
+    load_disputes,
+)
 from worldmap.earth import Fill, build_regions, fill_at
 from worldmap.frame import DPI, MapFrame, make_frame
 from worldmap.labels import land
@@ -35,12 +64,45 @@ from worldmap.labels.placeable import Placeable
 from worldmap.labels.priority import Outcome, Unplaced, place_by_priority
 from worldmap.labels.regions import child_regions
 from worldmap.labels.report import progress, summary
-from worldmap.labels.water import WATER_KINDS, Kind, load_water_bodies, make_water_labels, river_ranks
-from worldmap.pins import draw_pin_circles, draw_pins, fit_to_render, load_pins, pick_pins, pin_sprite
-from worldmap.render import draw_borders, draw_countries, draw_labels, draw_lakes, drawable_lakes, draw_rivers, draw_states, draw_stripes, draw_curved_labels, Lakes, new_figure, subtract_lakes
+from worldmap.labels.water import (
+    WATER_KINDS,
+    Kind,
+    load_water_bodies,
+    make_water_labels,
+    river_ranks,
+)
+from worldmap.pins import (
+    draw_pin_circles,
+    draw_pins,
+    fit_to_render,
+    load_pins,
+    pick_pins,
+    pin_sprite,
+)
+from worldmap.render import (
+    Lakes,
+    draw_borders,
+    draw_countries,
+    draw_curved_labels,
+    draw_labels,
+    draw_lakes,
+    draw_rivers,
+    draw_states,
+    draw_stripes,
+    drawable_lakes,
+    new_figure,
+    subtract_lakes,
+)
 from worldmap.rivers import river_flow
-from worldmap.topographic import ICE, ICE_CONTOURS, LAND, LAND_CONTOURS, SEA, SEA_CONTOURS, draw_topography
-
+from worldmap.topographic import (
+    ICE,
+    ICE_CONTOURS,
+    LAND,
+    LAND_CONTOURS,
+    SEA,
+    SEA_CONTOURS,
+    draw_topography,
+)
 
 DEFAULT_OUT, DEFAULT_PINS_OUT = "worldmap", "worldmap_pins"  # + "." + the format
 FORMATS = ("png", "svg")
@@ -72,45 +134,21 @@ def label_kinds(s: str) -> list[str]:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(prog="make_map", description=(__doc__ or "").split("\n")[0])
-    p.add_argument("out", nargs="?", help=f"output file (default {DEFAULT_OUT}.png, or {DEFAULT_PINS_OUT}.png with --pins; "
-                                          f"the extension follows --format)")
-    p.add_argument("--format", choices=FORMATS,
-                   help="output format (default: from the output's extension, else png); svg is vector, for --type "
-                        "political only, with pins drawn as flat circles, and ignores --dpi")
-    p.add_argument("--type", choices=["political", "topographic"], default="political",
-                   help="political = countries, borders and labels (default); topographic = heights, hill shading and "
-                        "contours, with no borders, and only water and landform labels if --label asks for them (--color, --disputed, "
-                        "--recolor and --label countries, territories are ignored)")
-    p.add_argument("--ocean", action="store_true",
-                   help="with --type topographic, colour the sea by depth (ignored with --type political)")
+    p.add_argument("out", nargs="?", help=f"output file (default {DEFAULT_OUT}.png, or {DEFAULT_PINS_OUT}.png with --pins; " f"the extension follows --format)")
+    p.add_argument("--format", choices=FORMATS, help="output format (default: from the output's extension, else png); svg is vector, for --type " "political only, with pins drawn as flat circles, and ignores --dpi")
+    p.add_argument("--type", choices=["political", "topographic"], default="political", help="political = countries, borders and labels (default); topographic = heights, hill shading and " "contours, with no borders, and only water and landform labels if --label asks for them (--color, --disputed, " "--recolor and --label countries, territories are ignored)")
+    p.add_argument("--ocean", action="store_true", help="with --type topographic, colour the sea by depth (ignored with --type political)")
     p.add_argument("--recolor", action="store_true", help="rebuild the cached graph colouring")
-    p.add_argument("--color", choices=["colorblind", "earth"], default="colorblind",
-                   help="how countries are filled: colorblind = distinct colours that red/green colour-blind viewers "
-                        "can tell apart (default); earth = land cover as seen from space (sandy desert -> light green)")
-    p.add_argument("--label", metavar="LIST", type=label_kinds, default=["countries"],
-                   help="what to label, comma-separated, or none: countries (default); territories = dependencies and "
-                        "outlying regions (Alaska, Greenland, Kaliningrad...) with their parent country; oceans, seas "
-                        "(and gulfs, bays...), lakes, straits (and channels), rivers (draws them too); water = all of these; "
-                        "mountains, uplands (plateaus), deserts, lowlands (plains, basins, valleys); land = all of these")
-    p.add_argument("--disputed", action="store_true",
-                   help="stripe disputed areas in the colours of the countries involved and dash their borders")
+    p.add_argument("--color", choices=["colorblind", "earth"], default="colorblind", help="how countries are filled: colorblind = distinct colours that red/green colour-blind viewers " "can tell apart (default); earth = land cover as seen from space (sandy desert -> light green)")
+    p.add_argument("--label", metavar="LIST", type=label_kinds, default=["countries"], help="what to label, comma-separated, or none: countries (default); territories = dependencies and " "outlying regions (Alaska, Greenland, Kaliningrad...) with their parent country; oceans, seas " "(and gulfs, bays...), lakes, straits (and channels), rivers (draws them too); water = all of these; " "mountains, uplands (plateaus), deserts, lowlands (plains, basins, valleys); land = all of these")
+    p.add_argument("--disputed", action="store_true", help="stripe disputed areas in the colours of the countries involved and dash their borders")
     p.add_argument("--rivers", action="store_true", help="draw the major rivers")
     p.add_argument("--pins", metavar="FILE", help="draw the pins listed in FILE (one lon,lat per line)")
-    p.add_argument("--pin-size", metavar="INCHES", type=float, default=DEFAULT_PIN_SIZE_IN,
-                   help="pin diameter in inches on the poster (default %(default)s)")
-    p.add_argument("--size", metavar="IN", type=positive_float,
-                   help="the poster's long side in inches (default 36 for the world map; a crop's grows with its "
-                        "region, at least 6); text sizes are fixed, so a bigger poster fits more labels")
-    p.add_argument("--dpi", metavar="DPI", type=positive_float, default=DPI,
-                   help="output dots per inch on the poster (default %(default)s); "
-                        "the layout is the same at any resolution, only the pixel count changes")
-    p.add_argument("--crop", metavar="SPEC",
-                   help="zoom in on a region, redrawn in a projection centred on it: label names, comma-separated (or parts of "
-                        "them; only the --label kinds are searched), edges west:east,south:north (any may be left out, "
-                        "e.g. :,60: is everything north of 60N; west past east crosses +-180), or a centre and size "
-                        "lon,lat/width,height (sizes along the ground, in degrees, or with km or mi, e.g. 2,46/1000km,800km)")
-    p.add_argument("--pick", metavar="FILE",
-                   help="click the rendered map to add pins; they are appended to FILE when the window closes")
+    p.add_argument("--pin-size", metavar="INCHES", type=float, default=DEFAULT_PIN_SIZE_IN, help="pin diameter in inches on the poster (default %(default)s)")
+    p.add_argument("--size", metavar="IN", type=positive_float, help="the poster's long side in inches (default 36 for the world map; a crop's grows with its " "region, at least 6); text sizes are fixed, so a bigger poster fits more labels")
+    p.add_argument("--dpi", metavar="DPI", type=positive_float, default=DPI, help="output dots per inch on the poster (default %(default)s); " "the layout is the same at any resolution, only the pixel count changes")
+    p.add_argument("--crop", metavar="SPEC", help="zoom in on a region, redrawn in a projection centred on it: label names, comma-separated (or parts of " "them; only the --label kinds are searched), edges west:east,south:north (any may be left out, " "e.g. :,60: is everything north of 60N; west past east crosses +-180), or a centre and size " "lon,lat/width,height (sizes along the ground, in degrees, or with km or mi, e.g. 2,46/1000km,800km)")
+    p.add_argument("--pick", metavar="FILE", help="click the rendered map to add pins; they are appended to FILE when the window closes")
     args = p.parse_args(argv)
     ext = os.path.splitext(args.out or "")[1].lower().lstrip(".")
     if args.format is None:

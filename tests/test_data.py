@@ -3,7 +3,13 @@ from pathlib import Path
 
 import pytest
 
-from worldmap.data import is_labeled, load_countries, load_marine, load_rivers, parent_index
+from worldmap.data import (
+    is_labeled,
+    load_countries,
+    load_marine,
+    load_rivers,
+    parent_index,
+)
 
 
 def test_dependencies_and_parents() -> None:

@@ -4,7 +4,14 @@ import numpy as np
 import pytest
 
 from worldmap.cli import main
-from worldmap.pins import PIN_CIRCLES, PinStyle, draw_pin_circles, fit_to_render, load_pins, pin_sprite
+from worldmap.pins import (
+    PIN_CIRCLES,
+    PinStyle,
+    draw_pin_circles,
+    fit_to_render,
+    load_pins,
+    pin_sprite,
+)
 
 
 def write(tmp_path: Path, text: str) -> Path:

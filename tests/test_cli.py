@@ -84,10 +84,7 @@ def test_format_flag(capsys: pytest.CaptureFixture[str]) -> None:
     assert out_and_format("MAP.SVG") == ("MAP.SVG", "svg")
     assert out_and_format("map", "--format", "svg") == ("map", "svg")
     assert out_and_format("map.svg", "--format", "svg") == ("map.svg", "svg")
-    for argv, message in [(["map.png", "--format", "svg"], "ends in .png"),
-                          (["--format", "svg", "--type", "topographic"], "political only"),
-                          (["map.svg", "--type", "topographic"], "political only"),
-                          (["--format", "svg", "--pick", "p.txt"], "--pick")]:
+    for argv, message in [(["map.png", "--format", "svg"], "ends in .png"), (["--format", "svg", "--type", "topographic"], "political only"), (["map.svg", "--type", "topographic"], "political only"), (["--format", "svg", "--pick", "p.txt"], "--pick")]:
         with pytest.raises(SystemExit) as e:
             parse_args(argv)
         assert e.value.code == 2 and message in capsys.readouterr().err

@@ -19,20 +19,10 @@ SNAP_M = 500  # metres: a disputed outline this close to an involved country cou
 STRIPE_WIDTH_IN = 0.035  # each stripe's width across, in poster inches
 
 # Names used in NOTE_BRK -> countries-file NAME_EN.
-ALIASES = {"China": "People's Republic of China", "U.S.A.": "United States of America", "U.S.A": "United States of America",
-           "the United States": "United States of America", "U.K.": "United Kingdom", "Azer.": "Azerbaijan",
-           "UAE": "United Arab Emirates", "the Philippines": "Philippines", "the Seychelles": "Seychelles",
-           "Tokelau": "New Zealand"}  # Tokelau is a New Zealand territory with no feature of its own
-HAND_CLAIMS = {  # (NAME_EN, ADMIN) -> countries (NAME_EN), for entries Natural Earth leaves without a note
-    ("Kosovo", "Kosovo"): ["Kosovo", "Serbia"], ("Gaza Strip", "Palestine"): ["Palestine", "Israel"],
-    ("West Bank", "Palestine"): ["Palestine", "Israel"], ("Belize", "Belize"): ["Belize", "Guatemala"],
-    ("Dragonja", "Croatia"): ["Croatia", "Slovenia"], ("Vukovar Island", "Croatia"): ["Croatia", "Serbia"],
-    ("Šarengrad Island", "Croatia"): ["Croatia", "Serbia"], ("Ilemi Triangle", "South Sudan"): ["Kenya", "South Sudan"],
-    ("North Borneo", "Malaysia"): ["Malaysia", "Philippines"],
-    ("Scarborough Shoal", "Scarborough Reef"): ["People's Republic of China", "Philippines", "Taiwan"]}
+ALIASES = {"China": "People's Republic of China", "U.S.A.": "United States of America", "U.S.A": "United States of America", "the United States": "United States of America", "U.K.": "United Kingdom", "Azer.": "Azerbaijan", "UAE": "United Arab Emirates", "the Philippines": "Philippines", "the Seychelles": "Seychelles", "Tokelau": "New Zealand"}  # Tokelau is a New Zealand territory with no feature of its own
+HAND_CLAIMS = {("Kosovo", "Kosovo"): ["Kosovo", "Serbia"], ("Gaza Strip", "Palestine"): ["Palestine", "Israel"], ("West Bank", "Palestine"): ["Palestine", "Israel"], ("Belize", "Belize"): ["Belize", "Guatemala"], ("Dragonja", "Croatia"): ["Croatia", "Slovenia"], ("Vukovar Island", "Croatia"): ["Croatia", "Serbia"], ("Šarengrad Island", "Croatia"): ["Croatia", "Serbia"], ("Ilemi Triangle", "South Sudan"): ["Kenya", "South Sudan"], ("North Borneo", "Malaysia"): ["Malaysia", "Philippines"], ("Scarborough Shoal", "Scarborough Reef"): ["People's Republic of China", "Philippines", "Taiwan"]}  # (NAME_EN, ADMIN) -> countries (NAME_EN), for entries Natural Earth leaves without a note
 # Label text for self-governing areas whose Natural Earth name is an official-style one.
-LABEL_TEXT = {"Turkish Republic of Northern Cyprus": "Northern Cyprus", "Donetsk People's Republic": "Donetsk",
-              "Luhansk People's Republic": "Luhansk"}
+LABEL_TEXT = {"Turkish Republic of Northern Cyprus": "Northern Cyprus", "Donetsk People's Republic": "Donetsk", "Luhansk People's Republic": "Luhansk"}
 
 
 class Note(NamedTuple):
@@ -159,8 +149,7 @@ def border_lines(countries_projected: gpd.GeoDataFrame, disputes: list[Dispute],
         other = shapely.union_all([g.intersection(window) for g in near if g.intersects(window)]).difference(d.geometry)
         dashed_parts.append(d.geometry.boundary.intersection(other.buffer(SNAP_M)))
     dashed = shapely.union_all(dashed_parts)
-    solid = shapely.MultiLineString([ring for g in geoms for ring in shapely.get_parts(shapely.boundary(g))
-                                     for ring in shapely.get_parts(ring)]).difference(dashed.buffer(SNAP_M))
+    solid = shapely.MultiLineString([ring for g in geoms for ring in shapely.get_parts(shapely.boundary(g)) for ring in shapely.get_parts(ring)]).difference(dashed.buffer(SNAP_M))
     return solid, dashed
 
 

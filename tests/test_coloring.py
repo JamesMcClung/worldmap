@@ -2,7 +2,13 @@ import geopandas as gpd
 import pytest
 from shapely.geometry import box
 
-from worldmap.coloring import cache_key, color_graph, load_or_compute_coloring, merge_into_parents, spot_check
+from worldmap.coloring import (
+    cache_key,
+    color_graph,
+    load_or_compute_coloring,
+    merge_into_parents,
+    spot_check,
+)
 from worldmap.data import is_labeled, load_countries, load_disputed, parent_index
 from worldmap.disputed import dispute_edges, load_disputes
 

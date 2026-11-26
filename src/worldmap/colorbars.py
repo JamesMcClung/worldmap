@@ -117,7 +117,7 @@ def inner_side(region: Polygon, corner: Corner) -> np.ndarray:
 def curved_title(region: Polygon, title: str, unit: float, side: np.ndarray) -> Path:
     """`title`'s glyphs bent along the bar's `side` (globe_side or inner_side), centred on it, inside the bar
     TITLE_INSET_IN from it. `unit` is map units per poster inch."""
-    s =arc_lengths(side)
+    s = arc_lengths(side)
     glyphs = TextPath((0, 0), title, size=TITLE_SIZE, prop=FontProperties(weight="bold"))
     scale = unit / 72  # map units per point
     u, v = glyphs.vertices[:, 0] * scale, glyphs.vertices[:, 1] * scale
@@ -159,8 +159,7 @@ def draw_colorbar(ax: Axes, frame: MapFrame, corner: Corner, scale: Scale, title
         return [np.asarray(part.coords) for part in shapely.get_parts(cut) if part.geom_type == "LineString"]
 
     levels = [v for v in multiples(scale, contours.step) if v != 0]
-    ax.add_collection(LineCollection([seg for v in levels for seg in across(v)], colors=contours.color, linewidths=CONTOUR_WIDTH,
-                                     alpha=contours.alpha, linestyles=contours.style, zorder=Z_GLOBE + 0.05))
+    ax.add_collection(LineCollection([seg for v in levels for seg in across(v)], colors=contours.color, linewidths=CONTOUR_WIDTH, alpha=contours.alpha, linestyles=contours.style, zorder=Z_GLOBE + 0.05))
     if 0 < scale.position(0) < 1:  # sea level is on the bar
         ax.add_collection(LineCollection(across(0), colors=BORDER, linewidths=BORDER_WIDTH, zorder=Z_GLOBE + 0.05))
 
@@ -175,10 +174,7 @@ def draw_colorbar(ax: Axes, frame: MapFrame, corner: Corner, scale: Scale, title
         x = xs.min() if left else xs.max()
         y = y_of(v)
         sign = -1 if left else 1
-        ax.plot([x, x + sign * tick], [y, y], color=BORDER, lw=BORDER_WIDTH, zorder=Z_GLOBE + 0.1, solid_capstyle="butt",
-                path_effects=HALO)
-        ax.text(x + sign * pad, y, tick_label(v, scale), fontsize=TICK_SIZE, color=TEXT_COLOR, ha="right" if left else "left",
-                va="center", path_effects=HALO, zorder=Z_GLOBE + 0.2)
+        ax.plot([x, x + sign * tick], [y, y], color=BORDER, lw=BORDER_WIDTH, zorder=Z_GLOBE + 0.1, solid_capstyle="butt", path_effects=HALO)
+        ax.text(x + sign * pad, y, tick_label(v, scale), fontsize=TICK_SIZE, color=TEXT_COLOR, ha="right" if left else "left", va="center", path_effects=HALO, zorder=Z_GLOBE + 0.2)
     side = globe_side(region) if frame.globe else inner_side(region, corner)
-    ax.add_patch(PathPatch(curved_title(region, title, unit, side), fc=TEXT_COLOR, ec="none", joinstyle="round", path_effects=TITLE_HALO,
-                           zorder=Z_GLOBE + 0.2))
+    ax.add_patch(PathPatch(curved_title(region, title, unit, side), fc=TEXT_COLOR, ec="none", joinstyle="round", path_effects=TITLE_HALO, zorder=Z_GLOBE + 0.2))
