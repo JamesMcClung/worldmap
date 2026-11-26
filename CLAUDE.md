@@ -10,7 +10,7 @@ is matplotlib's SVG, political only, all vector (~23 MB for the world), pins as 
 
 ```
 python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'   # deps in pyproject.toml; [dev] adds pytest, pytest-xdist, mypy, black, isort
-.venv/bin/make_map [out.png] [--format png|svg] [--type political|topographic] [--ocean] [--recolor] [--color colorblind|earth] [--label LIST] [--disputed] [--rivers] [--pins FILE] [--pin-size IN] [--size IN] [--dpi DPI] [--crop NAME[,NAME...]|W:E,S:N|LON,LAT/W,H] [--pick FILE]
+.venv/bin/make_map [out.png] [--format png|svg] [--type political|topographic] [--ocean] [--ice] [--recolor] [--color colorblind|earth] [--label LIST] [--disputed] [--rivers] [--pins FILE] [--pin-size IN] [--size IN] [--dpi DPI] [--crop NAME[,NAME...]|W:E,S:N|LON,LAT/W,H] [--pick FILE]
 ```
 
 `--size` sets the poster's long side in inches (`MapFrame.size_in`, None without it: `default_size_in`, 36 for the world): text sizes are
@@ -20,8 +20,8 @@ A run takes ~7-12 s. Output goes to the current directory. After changing the en
 
 Natural Earth data (public domain) is downloaded by `data.fetch(name)` on first use into `.cache/` at the repo root, located
 relative to `data.py` (`CACHE`), so the package must be installed editable (`-e`). The land-cover raster (~75 MB zip,
-394 MB unzipped into `.cache/ne1/`) is fetched only for `--color earth`; ETOPO 2022 (466 MB GeoTIFF) and the Natural Earth ice files only for
-`--type topographic`; ETOPO's 15" tiles (`etopo15_tile`, 4-33 MB each, into `.cache/etopo15/`) only for zoomed
+394 MB unzipped into `.cache/ne1/`) is fetched only for `--color earth`; ETOPO 2022 (466 MB GeoTIFF) only for
+`--type topographic` (its bed, 478 MB, without `--ice`; the surface and the Natural Earth ice files with it); ETOPO's 15" tiles (`etopo15_tile`, 4-33 MB each, into `.cache/etopo15/`) only for zoomed
 topographic crops. `fetch`/`fetch_all` ask y/N first with the total size (HEAD request) and the folder, once for all
 missing files; without a tty they exit with that message. `fetch_all(optional=True)` returns None when declined (the
 tiles: the crop falls back to 1'). `coloring.json`, `earth.json` and `etopo_3min.npy`/`.json` live in `.cache/` too.
@@ -35,9 +35,9 @@ CLI errors), and `test_import_has_no_pyplot` guards that importing any module do
 decoded pixels with `tests/fingerprints.json`:
 `pins`: `--pins` (the default map under the pins); `earth`: `--color earth`; `regions`: `--label countries,territories`;
 `water`: `--label countries,water` (draws the rivers too); `disputed`: `--disputed`; `topographic_ocean`:
-`--type topographic --ocean`; `topographic_water`: `--type topographic --label water` (also checks the outside is
+`--type topographic --ocean --ice`; `topographic_water`: `--type topographic --label water` (the bed; also checks the outside is
 transparent); `crop`: `--crop France`; `crop_water`: a Bering Strait box crop with territories, water and `--disputed`;
-`topographic_crop`: an Alps box crop with `--type topographic --ocean` (reads four 15" tiles, recorded in its
+`topographic_crop`: an Alps box crop with `--type topographic --ocean --ice` (reads four 15" tiles, recorded in its
 environment, so it skips where they aren't downloaded); `crop_pacific_water`: `--crop pacific --label countries,oceans,seas` (Equal Earth); `land`: `--label countries,land`.
 - A commit that changes the output on purpose re-records with `UPDATE_REFERENCE=1 .venv/bin/pytest` and commits `fingerprints.json`
   in the same commit, saying in the body what changed visually. Refactors must leave the fingerprints unchanged.
@@ -48,7 +48,7 @@ environment, so it skips where they aren't downloaded); `crop_pacific_water`: `-
   (or deleting `earth.json`) to be exercised.
 - `conftest.private_caches` (session, autouse) points the in-process tests' `coloring.json`/`earth.json` at a temp copy, so a
   test with other inputs can't overwrite the real caches; the render subprocesses still read the real ones.
-- `conftest.environment(mode)` keys data files per mode (`raster` for earth, ETOPO etc. for topographic*, `marine` for *water*, `rivers` for *water*, `regions` for `land`):
+- `conftest.environment(mode)` keys data files per mode (`raster` for earth, ETOPO etc. for topographic*, `etopo_bed` for topographic_water, `marine` for *water*, `rivers` for *water*, `regions` for `land`):
   a new key on an existing mode would make it skip, so add keys only for the modes that use them.
 - Parallel runs: `pytest_collection_modifyitems` schedules the renders first (else the long ones start last). The
   world topographic renders take ~3.3 GB each (`--type topographic`, Memory), so their `xdist_group` (`topographic`)
@@ -75,7 +75,7 @@ Importing any module has no side effects; only `cli.main` (after choosing the ba
 | `colorspace.py` | OKLab/OKLCH conversions, `fit_gamut`, `darken` |
 | `coloring.py` | graph colouring (`adjacency`, `add_proximity_edges`, `color_graph`), `make_palette`, `load_or_compute_coloring` (cache), `OCEAN` |
 | `disputed.py` | `--disputed`: `load_disputes` (`NOTE_BRK` parsing, `ALIASES`, `HAND_CLAIMS`), `dispute_edges`, `stripe_parts`, `border_lines` |
-| `topographic.py` | `--type topographic`: elevation data (`elevation_grid`, `elevation_for`), `Scale`s, `relief`, `coastline`, `draw_topography` |
+| `topographic.py` | `--type topographic`: elevation data (`elevation_grid`, `elevation_for`; `ice` picks surface or bed), `Scale`s, `relief`, `coastline`, `draw_topography` |
 | `colorbars.py` | `--type topographic`: `draw_colorbar` (right-triangle bars in the canvas corners; rectangles in a crop), `curved_title` |
 | `earth.py` | `--color earth`: `earth_values` (raster sampling, cache), `earth_fill`, `build_regions`, `fill_at` |
 | `pins.py` | `load_pins`, `PinStyle` (every sprite shading constant), `pin_sprite`, `draw_pins`, `pick_pins` |
@@ -176,8 +176,13 @@ Today: 72 two-country areas, 11 with 3+ countries, 6 breakaways (self-governing,
 `cli.main` branches to `draw_topographic` right after the frame (and `--pick`), so none of the political data, colouring
 or country labels run. `--color`, `--disputed`, `--recolor` and `--label countries,territories` are ignored; water kinds in
 `--label` add water labels and land kinds landform labels (`place_by_priority` with no country labels, `cli.area_kinds`), else no label stage runs. `--ocean` is ignored with `--type political`.
-- Data: ETOPO 2022 60" ice-surface GeoTIFF (`data.ETOPO`, Deflate + float predictor, read with rasterio), reduced to `GRID_STEP_DEG` = 3' block means as int16 and cached in `etopo_3min.npy` (keyed on the file size
-  and `ELEVATION_RULE`; bump it if the reduction changes). Ice: Natural Earth `glaciated_areas` + `antarctic_ice_shelves_polys`
+- `--ice` (like `--ocean`, a flag): the top of the ice (`data.ETOPO`, the surface) with ice sheets and glaciers on `ICE`,
+  their contours and the Ice bar. Without it (the default), ETOPO's bed (`data.ETOPO_BED`): Greenland and Antarctica
+  are the rock under their ice, on `LAND` (below sea level: the darker green), no ice mask, and the ice shelves (not
+  in `ne_10m_land`) are sea; the coastline is the land's alone. Mountain glaciers stay in the bed (ETOPO only removes the
+  sheets). NOAA has 15" bed tiles only under the sheets (`data.BED_TILES`, 62 of 288); `etopo15_tile(ice=False)` falls back to the surface tile elsewhere.
+- Data: ETOPO 2022 60" GeoTIFF (surface or bed, `topographic.etopo(ice)`; Deflate + float predictor, read with rasterio), reduced to `GRID_STEP_DEG` = 3' block means as int16 and cached in `etopo_3min.npy` (the bed: `etopo_bed_3min.npy`; keyed on the file size
+  and `ELEVATION_RULE`; bump it if the reduction changes). Ice (`--ice` only): Natural Earth `glaciated_areas` + `antarctic_ice_shelves_polys`
   (`load_ice`; the shelves' holes are dropped, the islands in them are ice-covered). Land vs water: Natural Earth
   `ne_10m_land` (`load_land`), not the sign of the height. Lakes: the political `load_lakes()`.
 - Raster (`draw_topography`): `poster_grid` inverse-projects every pixel centre at `min(dpi, DPI)` (one pixel per
@@ -196,7 +201,7 @@ or country labels run. `--color`, `--disputed`, `--recolor` and `--label countri
 - Memory: at 200 dpi the world peaks ~3.3 GB; a square 36 in crop ~4.3 GB (more pixels than the world poster), a
   default-size crop much less (the Alps test crop, ~9 in: 0.7 GB; it grows with size squared, so a big `--size` crop can take many GB). Work in blocks or in place on the whole-poster arrays; don't use
   `ax.contour` (its ContourSet keeps a float64 copy of the grid per call, ~665 MB each), use `contour_lines` (contourpy).
-- Colour bars (`colorbars.py`): height bottom-right, depth top-right (`--ocean` only), ice bottom-left. Each is its
+- Colour bars (`colorbars.py`): height bottom-right, depth top-right (`--ocean` only), ice bottom-left (`--ice` only). Each is its
   corner quadrant minus the globe grown by `BAR_GAP_IN`, minus `BAR_MARGIN_IN`; signed labels in the gap with a white
   halo (ends marked `≥`/`≤`), the map's contour lines across the bar, and sea level in the coastline's style.
   The title (`curved_title`, `TITLE_SIZE` bold) is a `TextPath` warped onto the bar's globe-side curve
