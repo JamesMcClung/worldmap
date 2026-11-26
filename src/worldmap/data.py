@@ -30,10 +30,16 @@ RIVERS = "ne_10m_rivers_lake_centerlines.zip"  # --rivers: centrelines, joined u
 PHYSICAL = {LAKES, GLACIERS, ICE_SHELVES, LAND_OUTLINE, MARINE, REGIONS, RIVERS}  # under physical/ rather than cultural/
 # ETOPO 2022 (NOAA, public domain): land heights and sea depths in metres, 60 arc-second grid, top of the ice.
 ETOPO = "ETOPO_2022_v1_60s_N90W180_surface.tif"
+# ETOPO_BED: the same with the ice sheets (Greenland, Antarctica) taken off, the rock under them (without --ice).
+ETOPO_BED = "ETOPO_2022_v1_60s_N90W180_bed.tif"
 ETOPO_URL = "https://www.ngdc.noaa.gov/mgg/global/relief/ETOPO2022/data/60s/60s_surface_elev_gtif/" + ETOPO
+ETOPO_BED_URL = "https://www.ngdc.noaa.gov/mgg/global/relief/ETOPO2022/data/60s/60s_bed_elev_gtif/" + ETOPO_BED
 # Its 15 arc-second version, in 15-degree tiles (4-33 MB each), for zoomed-in crops; kept in .cache/etopo15/.
 ETOPO15_URL = "https://www.ngdc.noaa.gov/mgg/global/relief/ETOPO2022/data/15s/15s_surface_elev_gtif/"
+ETOPO15_BED_URL = "https://www.ngdc.noaa.gov/mgg/global/relief/ETOPO2022/data/15s/15s_bed_elev_gtif/"
 ETOPO15_DIR = "etopo15"
+# The only 15" tiles with a bed version (north-west corners): elsewhere the bed is the surface.
+BED_TILES = frozenset("N60W030 N60W045 N60W060 N75W015 N75W030 N75W045 N75W060 N75W075 N90E000 N90W015 N90W030 N90W045 N90W060 N90W075 N90W090 N90W105 S60E000 S60E015 S60E030 S60E045 S60E060 S60E075 S60E090 S60E105 S60E120 S60E135 S60E150 S60E165 S60W015 S60W030 S60W045 S60W060 S60W075 S60W090 S60W105 S60W120 S60W135 S60W150 S75E000 S75E015 S75E030 S75E045 S75E060 S75E075 S75E090 S75E105 S75E120 S75E135 S75E150 S75E165 S75W015 S75W030 S75W045 S75W060 S75W075 S75W090 S75W105 S75W120 S75W135 S75W150 S75W165 S75W180".split())
 
 DRY_LAKES = {"Lake Eyre North", "Lake Torrens", "Lake Gairdner", "Lake Mackay", "Lake Frome", "Lake Barlee"}  # Australian salt pans, usually dry
 EQUAL_AREA_CRS = "+proj=eqearth"  # for every km2 (with_km2)
@@ -59,11 +65,13 @@ LABELED_TYPES = ("Sovereign country", "Country", "Sovereignty")
 NOT_DEPENDENCY_TYPES = ("Lease", "Indeterminate")
 
 
-def etopo15_tile(north: int, west: int) -> str:
-    """The 15" ETOPO tile whose north-west corner is at (west, north), as a fetch name."""
+def etopo15_tile(north: int, west: int, ice: bool = True) -> str:
+    """The 15" ETOPO tile whose north-west corner is at (west, north), as a fetch name: the top of the ice, or
+    without `ice` the bed (the surface tile where the bed has none)."""
     ns = f"N{north:02d}" if north >= 0 else f"S{-north:02d}"
     ew = f"E{west:03d}" if west >= 0 else f"W{-west:03d}"
-    return f"{ETOPO15_DIR}/ETOPO_2022_v1_15s_{ns}{ew}_surface.tif"
+    kind = "surface" if ice or ns + ew not in BED_TILES else "bed"
+    return f"{ETOPO15_DIR}/ETOPO_2022_v1_15s_{ns}{ew}_{kind}.tif"
 
 
 def download_size(url: str) -> int | None:
@@ -97,8 +105,10 @@ def url_of(name: str) -> str:
         return NE_URL + "raster/NE1_LR_LC.zip"
     if name == ETOPO:
         return ETOPO_URL
+    if name == ETOPO_BED:
+        return ETOPO_BED_URL
     if name.startswith(ETOPO15_DIR + "/"):
-        return ETOPO15_URL + name.split("/", 1)[1]
+        return (ETOPO15_BED_URL if name.endswith("_bed.tif") else ETOPO15_URL) + name.split("/", 1)[1]
     return NE_URL + ("physical/" if name in PHYSICAL else "cultural/") + name
 
 

@@ -79,6 +79,15 @@ def test_etopo15_tile_names() -> None:
     assert etopo15_tile(0, 165) == "etopo15/ETOPO_2022_v1_15s_N00E165_surface.tif"
 
 
+def test_etopo15_bed_tiles_only_under_the_ice_sheets() -> None:
+    from worldmap.data import etopo15_tile, url_of
+
+    assert etopo15_tile(-75, -180, ice=False) == "etopo15/ETOPO_2022_v1_15s_S75W180_bed.tif"  # Antarctica
+    assert etopo15_tile(75, -45, ice=False) == "etopo15/ETOPO_2022_v1_15s_N75W045_bed.tif"  # Greenland
+    assert etopo15_tile(45, 0, ice=False) == etopo15_tile(45, 0)  # the Alps: no bed tile, the surface one
+    assert url_of(etopo15_tile(-75, -180, ice=False)).endswith("/15s_bed_elev_gtif/ETOPO_2022_v1_15s_S75W180_bed.tif")
+
+
 def test_fetch_all_asks_once_and_optional_may_be_declined(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     from worldmap.data import etopo15_tile, fetch_all
 
