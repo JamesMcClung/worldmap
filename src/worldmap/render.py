@@ -24,7 +24,7 @@ from worldmap.earth import Fill, Regions
 from worldmap.frame import DPI, MapFrame
 from worldmap.labels.label import Label
 from worldmap.labels.placement import Placement, leader_ends
-from worldmap.labels.curved import CURVED_HALO_PX, CurvedLabel
+from worldmap.labels.curved import CURVED_HALO_PX, WHITE_HALO, CurvedLabel
 from worldmap.labels.water import river_width
 
 BORDER, STATE_LINE = "#3a3a3a", "#7d7d7d"
@@ -43,7 +43,7 @@ LAKE_MIN_IN2 = 0.002  # lakes covering at least this many square inches of the p
 Z_RIVERS = 2.2  # above the state lines, below the lakes (which hide the lake centrelines)
 Z_STATES_UNDER_BORDERS = 1.65  # --disputed: state lines above the stripes, below the (dashed) borders
 LABEL_ZORDER = 6
-HALO = [pe.withStroke(linewidth=2.2, foreground=(1, 1, 1, 0.55))]  # the country labels'
+HALO = [pe.withStroke(linewidth=2.2, foreground=WHITE_HALO)]  # the country labels'
 
 
 def patches(geom: BaseGeometry) -> Iterator[MplPolygon]:

@@ -23,7 +23,7 @@ RING_HOLE_SHARE = 0.25  # a body round a hole holding its middle, this share of 
 SEA_FILL = 0.8  # a name fills this share of its curve, within its style's sizes
 CURVED_MIN_INSIDE = 0.35  # a curved label with less of its glyph boxes over its body than this is dropped
 CURVED_HALO_PX = 2.4  # halo width (poster px); glyph boxes are padded by half of it
-WHITE_HALO = (1, 1, 1, 0.55)  # the country labels': for names on land (rivers, landforms)
+WHITE_HALO = (1, 1, 1, 0.55)  # for names on land: countries (render.HALO), rivers, landforms
 
 
 @dataclass(frozen=True)
