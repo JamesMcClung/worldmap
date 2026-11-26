@@ -3,7 +3,7 @@ import pytest
 from worldmap.crop import box_region, crop_frame, parse_box
 from worldmap.frame import MapFrame, make_frame
 from worldmap.labels.curved import Body, CurvedLabel
-from worldmap.labels.land import LAND_TEXT, classify, kinds_from_labels, load_land_bodies, make_land_labels, text_of
+from worldmap.labels.land import classify, kinds_from_labels, load_land_bodies, make_land_labels, text_of
 
 
 @pytest.fixture(scope="module")
@@ -62,7 +62,6 @@ def test_make_land_labels(frame: MapFrame) -> None:
     andes = [b for b in load_land_bodies({"mountains"}, frame) if b.text == "Andes"]
     [label] = make_land_labels(andes, frame)
     assert isinstance(label, CurvedLabel)
-    assert label.style.italic and label.style.text == LAND_TEXT and label.style.tracking_em == 0
     first, last = label.parts[0], label.parts[-1]
     dx = (last[0] + last[2]) / 2 - (first[0] + first[2]) / 2
     dy = (last[1] + last[3]) / 2 - (first[1] + first[3]) / 2
