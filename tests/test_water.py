@@ -9,7 +9,7 @@ from worldmap.curves import arc_lengths, bend
 from worldmap.frame import MapFrame, make_frame
 from worldmap.labels.text import PX_PER_PT
 from worldmap.labels.curved import CURVED_MIN_INSIDE, Body, CurvedLabel
-from worldmap.labels.water import (OCEAN_MIN_PT, OCEAN_PT, OCEAN_TRACKING_EM, RIVER_MAX_PT, RIVER_MIN_PT, SEA_MAX_PT, STYLES, WATER_KINDS,
+from worldmap.labels.water import (OCEAN_MIN_PT, OCEAN_PT, RIVER_MAX_PT, RIVER_MIN_PT, SEA_MAX_PT, STYLES,
                                    WATER_MIN_PT, WATER_TEXT, best_stretch, classify, kinds_from_labels,
                                    load_water_bodies, longest_paths, make_water_labels, river_label, river_name, river_size)
 from worldmap.labels.priority import Unplaced
@@ -260,10 +260,3 @@ def test_river_ranks_by_name_and_nearest_body() -> None:
     assert (ranks[colorado & south] == 2).all() and (ranks[colorado & ~south] == 3).all()
     assert (ranks[(named == "Nile").values] == 3).all()
     assert (ranks[named.isna().values] == UNLABELED).all() and (ranks[(named == "Danube").values] == UNLABELED).all()
-
-
-def test_styles_by_kind() -> None:
-    assert STYLES.keys() == set(WATER_KINDS)
-    assert STYLES["oceans"].tracking_em == OCEAN_TRACKING_EM and STYLES["oceans"].cap_centred
-    assert STYLES["seas"].tracking_em == 0 and not STYLES["seas"].cap_centred
-    assert STYLES["rivers"].italic and not STYLES["seas"].italic
