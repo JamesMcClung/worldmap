@@ -60,7 +60,7 @@ environment, so it skips where they aren't downloaded); `crop_pacific_water`: `-
 
 Formatting: `.venv/bin/isort src tests && .venv/bin/black src tests` before every commit (config in `pyproject.toml`, matching
 the user's VS Code format-on-save: black and isort (`profile = "black"`) both at line length 1000: long lines are fine, a magic trailing comma wraps one).
-`black --check` / `isort --check` should pass.
+`black --check` / `isort --check` should pass: CI runs them (`.github/workflows/format.yml`, versions pinned there; bump them with the local ones).
 
 ## Module layout (`src/worldmap/`)
 
