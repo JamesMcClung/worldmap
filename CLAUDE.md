@@ -86,7 +86,7 @@ Importing any module has no side effects; only `cli.main` (after choosing the ba
 | `labels/geometry.py` | `Coverage` (summed-area table of a shape), `coverage` (cached), `on_feature`, rect helpers |
 | `rivers.py` | `--rivers`: `river_flow` (cached): pieces split at junctions, oriented toward mouths |
 | `disjoint.py` | `DisjointSets` (union-find) |
-| `curves.py` | `arc_lengths`, `along`, `bend`: text bending for colour bar titles and water labels |
+| `curves.py` | `arc_lengths`, `along`, `bend`: text bending for colour bar titles and curved labels |
 | `render.py` | the `draw_*` layers (labels drawn from the `Placement` alone), `drawable_lakes` (-> `Lakes`: the rows, and `merged` on first use), `subtract_lakes`, line widths and z-orders |
 
 Pipeline (`cli.main`):
@@ -249,7 +249,7 @@ oceans) gets Equal Earth centred on its longitude instead, clipped a hair either
   (the user's call: no hard-coded smoothing); a read of the tiles across +-180 prints a note instead. `soften` still blurs heights over
   about a cell when a cell spans > 2 pixels (bilinear heights shade as flat facets).
   Colour bars are rectangles (`BAR_RECT_WIDTH_IN`, `BAR_RECT_LENGTH`) titled along `inner_side`,
-  over the map: water labels are placed in `label_outline` (the canvas minus the bar corners), and a crop's water
+  over the map: curved labels are placed in `label_outline` (the canvas minus the bar corners), and a crop's curved
   label with a glyph outside the outline is dropped (`placement.outside_outline`).
 - `--pick` with the same `--crop` inverts the crop's projection.
 
@@ -300,9 +300,9 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
   (they pay `CostWeights.nudge` per height/em from where they settled, at most `nudge_max`, and shrink to no less
   than `NUDGE_MIN_SCALE` of their settled size), older ones `FIXED`. Then `check_step` checks the step's labels smallest
   first: a country label clashing (`clash`, symmetric for every kind) with a label still kept, or hanging off its
-  country by over `OVERHANG_MAX`, becomes 'out' (leader) and the step is re-solved; one already out and clashing, or a water label clashing or hanging off its
-  water by over `OVERHANG_MAX` = 30% at either end (`overhang_of`: per glyph; a gap in the middle is fine) or out of
-  a crop's outline, is skipped for good. A water label pushed off its water first looks for a smaller label of the
+  country by over `OVERHANG_MAX`, becomes 'out' (leader) and the step is re-solved; one already out and clashing, or a curved label clashing or hanging off its
+  feature by over `OVERHANG_MAX` = 30% at either end (`overhang_of`: per glyph; a gap in the middle is fine) or out of
+  a crop's outline, is skipped for good. A curved label pushed off its feature first looks for a smaller label of the
   step overlapping it at its anchor: that one is skipped instead and the step re-solved.
 - Saturation cut: features whose label can't be laid out at all (`Unplaced`: a river shorter than its name, a bay
   under `CURVED_MIN_INSIDE`) are ranked with the labels and count as failed in their step. The step after which a kind's
@@ -332,12 +332,12 @@ Digitises the physical pin-the-hometown poster. A pin list is a text file, one `
 - `CurvedLabel` (`curved.py`): one bent `Path` per label plus a halo-padded box per glyph (`parts`), both relative to its position.
   Bodies whose name doesn't sit >= `CURVED_MIN_INSIDE` over them at their anchor are left out up front (`inside_share`:
   glyph box area whose centres are on the water, as the solver counts it).
-- Solver: in `Placement` a water label's x/y is its anchor position. Every label pays
-  the same terms on its rects (`label_cost`); a water label's `off_feature` counts glyph centres over the body. A label still clashing (`clashes`, any kind)
+- Solver: in `Placement` a curved label's x/y is its anchor position. Every label pays
+  the same terms on its rects (`label_cost`); a curved label's `off_feature` counts glyph centres over the body. A label still clashing (`clashes`, any kind)
   after descent shrinks a step (`shrink_step`): in the `Placement` only (`size`, extents, rects); the labels stay as
   laid out and the draw functions take the size from the placement.
-- Water labels also try steps of a tenth and a fifth of their extent (`CURVED_STEP_SCALES`: big steps leave narrow
-  water); `CostWeights.overhang` keeps them within `OVERHANG_MAX` of their water.
+- Curved labels also try steps of a tenth and a fifth of their extent (`CURVED_STEP_SCALES`: big steps leave narrow
+  water); `CostWeights.overhang` keeps them within `OVERHANG_MAX` of their feature.
 - Every label overlapping another also tries the shortest moves that clear each overlap (`kernels.escapes`,
   `ESCAPE_PX` past touching): steps are too coarse for a pixel or two (Lake Michigan, as long as its lake, was
   skipped for 1 px into the United States label's box).
