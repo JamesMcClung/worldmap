@@ -39,6 +39,7 @@ line-length = 1000  # no wrapping: lines are broken by hand
 
 [tool.isort]
 profile = "black"
+line_length = 1000  # as black: magic trailing commas wrap
 
 [tool.mypy]
 ignore_missing_imports = true  # geopandas, shapely, pyproj ship no stubs
