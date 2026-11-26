@@ -67,18 +67,7 @@ def environment(mode: str = "default") -> dict[str, str]:
     import pyproj
     import shapely
 
-    from worldmap.data import (
-        COUNTRIES,
-        DISPUTED,
-        LAKES,
-        LAND_OUTLINE,
-        MARINE,
-        RASTER,
-        REGIONS,
-        RIVERS,
-        STATES,
-        fetch,
-    )
+    from worldmap.data import COUNTRIES, DISPUTED, LAKES, LAND_OUTLINE, MARINE, RASTER, REGIONS, RIVERS, STATES, fetch
 
     return {
         "python": platform.python_version(),

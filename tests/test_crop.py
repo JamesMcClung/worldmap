@@ -8,16 +8,7 @@ from shapely.geometry import Point, box
 
 from worldmap import cli, crop
 from worldmap.cli import make_map_frame, parse_args
-from worldmap.crop import (
-    Candidate,
-    box_region,
-    choose,
-    crop_frame,
-    describe,
-    matches,
-    parse_box,
-    sphere_centre,
-)
+from worldmap.crop import Candidate, box_region, choose, crop_frame, describe, matches, parse_box, sphere_centre
 from worldmap.frame import MapFrame, make_frame
 
 
@@ -302,13 +293,7 @@ def test_several_names() -> None:
 @pytest.mark.parametrize("name", ["France", "PACIFIC OCEAN", "SOUTHERN OCEAN", "ARCTIC OCEAN", "ATLANTIC OCEAN", "INDIAN OCEAN"])
 # azimuthal, Equal Earth, round a pole (both), past the poles (a centre crop's height goes on past them), wide and short
 def test_centre_recipe_reproduces_the_crop(name: str) -> None:
-    from worldmap.crop import (
-        CROP_MARGIN,
-        centre_frame,
-        centre_recipe,
-        centre_spec,
-        parse_centre,
-    )
+    from worldmap.crop import CROP_MARGIN, centre_frame, centre_recipe, centre_spec, parse_centre
 
     c = next(c for c in candidates({"countries", "oceans", "seas"}, False) if c.text == name)  # the set another test builds
     recipe = centre_recipe(c.geom, CROP_MARGIN)

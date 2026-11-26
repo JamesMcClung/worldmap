@@ -12,20 +12,7 @@ import numpy as np
 from worldmap.frame import MapFrame
 from worldmap.labels.geometry import coverage, on_feature
 from worldmap.labels.placeable import Placeable
-from worldmap.labels.placement import (
-    FIXED,
-    FREE,
-    NUDGE,
-    OVERHANG_MAX,
-    OVERHANG_SLICES,
-    Placement,
-    clash,
-    outside_outline,
-    overhang,
-    place_labels,
-    rects,
-    subset,
-)
+from worldmap.labels.placement import FIXED, FREE, NUDGE, OVERHANG_MAX, OVERHANG_SLICES, Placement, clash, outside_outline, overhang, place_labels, rects, subset
 
 N_RANKS = 5
 # A river ranks as an area of RIVER_KM2 * length (km) ** RIVER_POWER km2. The power is the trend of 751 rivers'

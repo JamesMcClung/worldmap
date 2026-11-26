@@ -2,13 +2,7 @@ import matplotlib
 import pytest
 from shapely.geometry import Polygon, box
 
-from worldmap.colorbars import (
-    BAR_GAP_IN,
-    bar_region,
-    curved_title,
-    draw_colorbar,
-    globe_side,
-)
+from worldmap.colorbars import BAR_GAP_IN, bar_region, curved_title, draw_colorbar, globe_side
 from worldmap.frame import make_frame
 from worldmap.topographic import LAND, LAND_CONTOURS, SEA, SEA_CONTOURS, Contours, Scale
 

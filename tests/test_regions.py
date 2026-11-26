@@ -9,12 +9,7 @@ from worldmap.data import CACHE, RASTER, is_labeled, load_countries
 from worldmap.earth import Fill, build_regions, fill_at
 from worldmap.frame import MapFrame, make_frame
 from worldmap.labels.label import RENAME, Label, make_labels
-from worldmap.labels.regions import (
-    HAND_PICKED,
-    PARENT_SHORT,
-    ChildRegion,
-    child_regions,
-)
+from worldmap.labels.regions import HAND_PICKED, PARENT_SHORT, ChildRegion, child_regions
 from worldmap.render import drawable_lakes, subtract_lakes
 
 

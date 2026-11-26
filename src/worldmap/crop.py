@@ -16,16 +16,7 @@ from shapely.geometry.base import BaseGeometry
 from worldmap.data import is_labeled, load_countries, load_disputed, load_lakes
 from worldmap.disputed import disputed_label_args, load_disputes
 from worldmap.earth import Fill
-from worldmap.frame import (
-    ANTIMERIDIAN_EPS,
-    OUTLINE_POINTS,
-    PROJECT_PAD,
-    SEGMENT_DEG,
-    LonLatBox,
-    MapFrame,
-    lon_ranges,
-    make_frame,
-)
+from worldmap.frame import ANTIMERIDIAN_EPS, OUTLINE_POINTS, PROJECT_PAD, SEGMENT_DEG, LonLatBox, MapFrame, lon_ranges, make_frame
 from worldmap.labels import land
 from worldmap.labels.curved import Body, kinds_in
 from worldmap.labels.label import RENAME

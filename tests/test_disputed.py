@@ -6,18 +6,7 @@ from shapely.geometry import Point, box
 from shapely.geometry.base import BaseGeometry
 
 from worldmap.data import CRS, load_countries, load_disputed, parent_index
-from worldmap.disputed import (
-    DISPUTED_GREY,
-    Dispute,
-    Note,
-    border_lines,
-    dispute_edges,
-    dispute_fills,
-    disputed_label_args,
-    load_disputes,
-    parse_note,
-    stripe_parts,
-)
+from worldmap.disputed import DISPUTED_GREY, Dispute, Note, border_lines, dispute_edges, dispute_fills, disputed_label_args, load_disputes, parse_note, stripe_parts
 from worldmap.frame import make_frame
 from worldmap.labels.label import make_labels
 

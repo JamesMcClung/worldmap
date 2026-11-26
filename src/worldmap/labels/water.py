@@ -18,18 +18,7 @@ from worldmap.curves import along, arc_lengths, bend
 from worldmap.data import EQUAL_AREA_CRS, load_marine, load_rivers
 from worldmap.disjoint import DisjointSets
 from worldmap.frame import MapFrame
-from worldmap.labels.curved import (
-    CURVED_MIN_INSIDE,
-    MAX_TILT_DEG,
-    WHITE_HALO,
-    Body,
-    CurvedLabel,
-    Style,
-    area_label,
-    fit_curve,
-    largest,
-    lay_out,
-)
+from worldmap.labels.curved import CURVED_MIN_INSIDE, MAX_TILT_DEG, WHITE_HALO, Body, CurvedLabel, Style, area_label, fit_curve, largest, lay_out
 from worldmap.labels.priority import UNLABELED, Unplaced
 from worldmap.labels.text import PX_PER_PT, font, text_width
 

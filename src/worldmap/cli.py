@@ -20,41 +20,11 @@ from matplotlib.figure import Figure
 from shapely.geometry import Point
 
 from worldmap.colorbars import Corner, draw_colorbar, label_outline
-from worldmap.coloring import (
-    Coloring,
-    load_or_compute_coloring,
-    make_palette,
-    spot_check,
-)
+from worldmap.coloring import Coloring, load_or_compute_coloring, make_palette, spot_check
 from worldmap.colorspace import RGB
-from worldmap.crop import (
-    CROP_MARGIN,
-    box_region,
-    candidates,
-    centre_frame,
-    centre_recipe,
-    centre_spec,
-    choose,
-    crop_frame,
-    matches,
-    parse_box,
-    parse_centre,
-)
-from worldmap.data import (
-    is_labeled,
-    load_countries,
-    load_disputed,
-    load_states,
-    parent_index,
-)
-from worldmap.disputed import (
-    DISPUTED_GREY,
-    STRIPE_WIDTH_IN,
-    border_lines,
-    dispute_edges,
-    disputed_label_args,
-    load_disputes,
-)
+from worldmap.crop import CROP_MARGIN, box_region, candidates, centre_frame, centre_recipe, centre_spec, choose, crop_frame, matches, parse_box, parse_centre
+from worldmap.data import is_labeled, load_countries, load_disputed, load_states, parent_index
+from worldmap.disputed import DISPUTED_GREY, STRIPE_WIDTH_IN, border_lines, dispute_edges, disputed_label_args, load_disputes
 from worldmap.earth import Fill, build_regions, fill_at
 from worldmap.frame import DPI, MapFrame, make_frame
 from worldmap.labels import land
@@ -64,45 +34,11 @@ from worldmap.labels.placeable import Placeable
 from worldmap.labels.priority import Outcome, Unplaced, place_by_priority
 from worldmap.labels.regions import child_regions
 from worldmap.labels.report import progress, summary
-from worldmap.labels.water import (
-    WATER_KINDS,
-    Kind,
-    load_water_bodies,
-    make_water_labels,
-    river_ranks,
-)
-from worldmap.pins import (
-    draw_pin_circles,
-    draw_pins,
-    fit_to_render,
-    load_pins,
-    pick_pins,
-    pin_sprite,
-)
-from worldmap.render import (
-    Lakes,
-    draw_borders,
-    draw_countries,
-    draw_curved_labels,
-    draw_labels,
-    draw_lakes,
-    draw_rivers,
-    draw_states,
-    draw_stripes,
-    drawable_lakes,
-    new_figure,
-    subtract_lakes,
-)
+from worldmap.labels.water import WATER_KINDS, Kind, load_water_bodies, make_water_labels, river_ranks
+from worldmap.pins import draw_pin_circles, draw_pins, fit_to_render, load_pins, pick_pins, pin_sprite
+from worldmap.render import Lakes, draw_borders, draw_countries, draw_curved_labels, draw_labels, draw_lakes, draw_rivers, draw_states, draw_stripes, drawable_lakes, new_figure, subtract_lakes
 from worldmap.rivers import river_flow
-from worldmap.topographic import (
-    ICE,
-    ICE_CONTOURS,
-    LAND,
-    LAND_CONTOURS,
-    SEA,
-    SEA_CONTOURS,
-    draw_topography,
-)
+from worldmap.topographic import ICE, ICE_CONTOURS, LAND, LAND_CONTOURS, SEA, SEA_CONTOURS, draw_topography
 
 DEFAULT_OUT, DEFAULT_PINS_OUT = "worldmap", "worldmap_pins"  # + "." + the format
 FORMATS = ("png", "svg")

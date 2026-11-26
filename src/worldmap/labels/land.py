@@ -11,14 +11,7 @@ from worldmap.colorspace import RGB, fit_gamut
 from worldmap.data import load_regions
 from worldmap.disjoint import DisjointSets
 from worldmap.frame import MapFrame
-from worldmap.labels.curved import (
-    WHITE_HALO,
-    Body,
-    CurvedLabel,
-    Style,
-    area_label,
-    largest,
-)
+from worldmap.labels.curved import WHITE_HALO, Body, CurvedLabel, Style, area_label, largest
 from worldmap.labels.priority import Unplaced
 
 Kind = Literal["mountains", "uplands", "deserts", "lowlands"]

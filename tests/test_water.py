@@ -10,24 +10,7 @@ from worldmap.frame import MapFrame, make_frame
 from worldmap.labels.curved import CURVED_MIN_INSIDE, Body, CurvedLabel
 from worldmap.labels.priority import Unplaced
 from worldmap.labels.text import PX_PER_PT
-from worldmap.labels.water import (
-    OCEAN_MIN_PT,
-    OCEAN_PT,
-    RIVER_MAX_PT,
-    RIVER_MIN_PT,
-    SEA_MAX_PT,
-    STYLES,
-    WATER_MIN_PT,
-    WATER_TEXT,
-    best_stretch,
-    classify,
-    load_water_bodies,
-    longest_paths,
-    make_water_labels,
-    river_label,
-    river_name,
-    river_size,
-)
+from worldmap.labels.water import OCEAN_MIN_PT, OCEAN_PT, RIVER_MAX_PT, RIVER_MIN_PT, SEA_MAX_PT, STYLES, WATER_MIN_PT, WATER_TEXT, best_stretch, classify, load_water_bodies, longest_paths, make_water_labels, river_label, river_name, river_size
 from worldmap.render import drawable_lakes
 
 

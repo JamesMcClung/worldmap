@@ -8,21 +8,7 @@ from matplotlib.colors import to_rgb
 from worldmap.coloring import OCEAN
 from worldmap.data import load_ice, load_land
 from worldmap.frame import POSTER_WIDTH_IN, make_frame
-from worldmap.topographic import (
-    LAND_BELOW_SEA,
-    LAND_TOP,
-    Grid,
-    PosterGrid,
-    coastline,
-    colorize,
-    draw_topography,
-    elevation_grid,
-    polygon_mask,
-    poster_grid,
-    relief,
-    sample,
-    shade,
-)
+from worldmap.topographic import LAND_BELOW_SEA, LAND_TOP, Grid, PosterGrid, coastline, colorize, draw_topography, elevation_grid, polygon_mask, poster_grid, relief, sample, shade
 
 
 @pytest.fixture(scope="module")

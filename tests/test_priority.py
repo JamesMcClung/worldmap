@@ -3,28 +3,13 @@ from typing import TypeVar
 
 import numpy as np
 import shapely
-from test_placement import (
-    country_label,
-    crossing_water_labels,
-    mid_atlantic_px,
-    of_kind,
-    water_label,
-)
+from test_placement import country_label, crossing_water_labels, mid_atlantic_px, of_kind, water_label
 
 from worldmap.frame import make_frame
 from worldmap.labels.curved import CurvedLabel
 from worldmap.labels.label import Label
 from worldmap.labels.placement import Placement, clashes, overhang
-from worldmap.labels.priority import (
-    UNLABELED,
-    Outcome,
-    Unplaced,
-    check_step,
-    place_by_priority,
-    ranks_by_quantile,
-    saturated,
-    steps,
-)
+from worldmap.labels.priority import UNLABELED, Outcome, Unplaced, check_step, place_by_priority, ranks_by_quantile, saturated, steps
 from worldmap.labels.water import WATER_MIN_PT
 
 
