@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from worldmap.cli import draws_rivers, is_svg, main, make_map_frame, parse_args
+from worldmap.cli import draws_rivers, make_map_frame, parse_args
 from worldmap.frame import DPI
 
 
@@ -73,16 +73,24 @@ def test_type_flag() -> None:
     assert e.value.code == 2
 
 
-def test_svg_output() -> None:
-    assert is_svg("map.svg") and is_svg("MAP.SVG") and not is_svg("map.png") and not is_svg("svg.png")
-    with pytest.raises(SystemExit, match="political only"):
-        main(["x.svg", "--type", "topographic"])
+def test_format_flag(capsys: pytest.CaptureFixture[str]) -> None:
+    def out_and_format(*argv: str) -> tuple[str, str]:
+        args = parse_args(list(argv))
+        return args.out, args.format
 
-
-def test_pick_rejects_svg(tmp_path: Path) -> None:
-    (tmp_path / "map.svg").write_text("<svg/>")
-    with pytest.raises(SystemExit, match="PNG"):
-        main(["--pick", str(tmp_path / "p.txt"), str(tmp_path / "map.svg")])
+    assert out_and_format() == ("worldmap.png", "png")
+    assert out_and_format("--format", "svg") == ("worldmap.svg", "svg")
+    assert out_and_format("--format", "svg", "--pins", "p.txt") == ("worldmap_pins.svg", "svg")
+    assert out_and_format("MAP.SVG") == ("MAP.SVG", "svg")
+    assert out_and_format("map", "--format", "svg") == ("map", "svg")
+    assert out_and_format("map.svg", "--format", "svg") == ("map.svg", "svg")
+    for argv, message in [(["map.png", "--format", "svg"], "ends in .png"),
+                          (["--format", "svg", "--type", "topographic"], "political only"),
+                          (["map.svg", "--type", "topographic"], "political only"),
+                          (["--format", "svg", "--pick", "p.txt"], "--pick")]:
+        with pytest.raises(SystemExit) as e:
+            parse_args(argv)
+        assert e.value.code == 2 and message in capsys.readouterr().err
 
 
 def test_pick_uses_crop_frame(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]

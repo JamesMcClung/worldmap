@@ -1,6 +1,6 @@
 """Render a poster-sized world map (country + large-country state borders, non-overlapping labels).
 
-Data: Natural Earth 10m (public domain), downloaded into .cache/ on first use. Run: make_map [out.png|out.svg]
+Data: Natural Earth 10m (public domain), downloaded into .cache/ on first use. Run: make_map [out.png] [--format png|svg]
 Pins: --pick pins.txt (click the rendered map to add pins) and --pins pins.txt [--pin-size inches] (draw them).
 """
 
@@ -42,7 +42,8 @@ from worldmap.rivers import river_flow
 from worldmap.topographic import ICE, ICE_CONTOURS, LAND, LAND_CONTOURS, SEA, SEA_CONTOURS, draw_topography
 
 
-DEFAULT_OUT, DEFAULT_PINS_OUT = "worldmap.png", "worldmap_pins.png"
+DEFAULT_OUT, DEFAULT_PINS_OUT = "worldmap", "worldmap_pins"  # + "." + the format
+FORMATS = ("png", "svg")
 DEFAULT_PIN_SIZE_IN = 0.24
 
 
@@ -71,8 +72,11 @@ def label_kinds(s: str) -> list[str]:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(prog="make_map", description=(__doc__ or "").split("\n")[0])
-    p.add_argument("out", nargs="?", help=f"output PNG, or SVG if it ends in .svg (political maps only; pins are drawn as "
-                                          f"flat circles) (default {DEFAULT_OUT}, or {DEFAULT_PINS_OUT} with --pins)")
+    p.add_argument("out", nargs="?", help=f"output file (default {DEFAULT_OUT}.png, or {DEFAULT_PINS_OUT}.png with --pins; "
+                                          f"the extension follows --format)")
+    p.add_argument("--format", choices=FORMATS,
+                   help="output format (default: from the output's extension, else png); svg is vector, for --type "
+                        "political only, with pins drawn as flat circles, and ignores --dpi")
     p.add_argument("--type", choices=["political", "topographic"], default="political",
                    help="political = countries, borders and labels (default); topographic = heights, hill shading and "
                         "contours, with no borders, and only water and landform labels if --label asks for them (--color, --disputed, "
@@ -107,7 +111,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         "lon,lat/width,height (sizes along the ground, in degrees, or with km or mi, e.g. 2,46/1000km,800km)")
     p.add_argument("--pick", metavar="FILE",
                    help="click the rendered map to add pins; they are appended to FILE when the window closes")
-    return p.parse_args(argv)
+    args = p.parse_args(argv)
+    ext = os.path.splitext(args.out or "")[1].lower().lstrip(".")
+    if args.format is None:
+        args.format = ext if ext in FORMATS else "png"
+    elif ext in FORMATS and ext != args.format:
+        p.error(f"--format {args.format}, but {args.out} ends in .{ext}")
+    if args.out is None:
+        args.out = f"{DEFAULT_PINS_OUT if args.pins else DEFAULT_OUT}.{args.format}"
+    if args.format == "svg" and args.pick:
+        p.error("--pick shows the rendered PNG: drop --format svg")
+    if args.format == "svg" and args.type == "topographic":
+        p.error("--format svg is for --type political only: a topographic map is a raster")
+    return args
 
 
 def draws_rivers(args: argparse.Namespace) -> bool:
@@ -160,13 +176,9 @@ def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
     if not args.pick:  # --pick needs an interactive backend
         matplotlib.use("Agg")
-    out = args.out or (DEFAULT_PINS_OUT if args.pins else DEFAULT_OUT)
+    out = args.out
     if args.pick and not os.path.exists(out):
         sys.exit("--pick shows the rendered map: run make_map first to create %s" % out)
-    if is_svg(out) and args.pick:
-        sys.exit("--pick shows the rendered PNG, not an SVG: pass the PNG rendered with the same options")
-    if is_svg(out) and args.type == "topographic":
-        sys.exit("SVG output is for --type political only: a topographic map is a raster")
 
     frame = make_map_frame(args)
     if args.pick:
@@ -216,8 +228,8 @@ def main(argv: list[str] | None = None) -> None:
     draw_labels(ax, placement, frame)
     draw_curved_labels(ax, placement, frame)
 
-    add_pins(ax, frame, args, vector=is_svg(out))
-    save(fig, out, args.dpi)
+    add_pins(ax, frame, args, vector=args.format == "svg")
+    save(fig, out, args.format, args.dpi)
     print("wrote", out, "labels:", int((~placement.curved).sum()), "leaders:", int(placement.out.sum()), "curved labels:", int(placement.curved.sum()))
 
 
@@ -267,19 +279,15 @@ def place(entries: Sequence[Placeable | Unplaced], frame: MapFrame, order: list[
     return outcome
 
 
-def is_svg(out: str) -> bool:
-    return out.lower().endswith(".svg")
-
-
-def save(fig: Figure, out: str, dpi: float) -> None:
-    """Save `fig` as a PNG at `dpi`, or as an SVG if `out` ends in .svg. The layout is measured at DPI: saving at
-    another resolution only rescales it. An SVG leaves out the date and takes its ids from a fixed salt, so a
-    render is the same file every time."""
-    if not is_svg(out):
-        fig.savefig(out, dpi=dpi, transparent=True)
+def save(fig: Figure, out: str, fmt: str, dpi: float) -> None:
+    """Save `fig` as a PNG at `dpi`, or an SVG (`fmt`). The layout is measured at DPI: saving at another resolution
+    only rescales it. An SVG leaves out the date and takes its ids from a fixed salt, so a render is the same file
+    every time."""
+    if fmt == "png":
+        fig.savefig(out, format=fmt, dpi=dpi, transparent=True)
         return
     with matplotlib.rc_context({"svg.hashsalt": "worldmap"}):
-        fig.savefig(out, transparent=True, metadata={"Date": None})
+        fig.savefig(out, format=fmt, transparent=True, metadata={"Date": None})
 
 
 def add_pins(ax: Axes, frame: MapFrame, args: argparse.Namespace, vector: bool = False) -> None:
@@ -318,7 +326,7 @@ def draw_topographic(args: argparse.Namespace, out: str, frame: MapFrame) -> Non
     ax.set_xlim(frame.xmin, frame.xmax)
     ax.set_ylim(frame.ymin, frame.ymax)
     add_pins(ax, frame, args)
-    save(fig, out, args.dpi)
+    save(fig, out, args.format, args.dpi)
     print("wrote", out, "in %.1f s" % (time.perf_counter() - start))
 
 
