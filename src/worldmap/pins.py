@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 from matplotlib.axes import Axes
 from matplotlib.image import AxesImage
+from matplotlib.patches import Circle
 
 from worldmap.frame import MapFrame
 
@@ -17,6 +18,14 @@ LonLat = tuple[float, float]
 PIN_ZORDER = 10  # above labels
 PICK_WINDOW_IN = 14  # width of the --pick window
 PICK_DOWNSAMPLE = 4  # the rendered map is shown at 1/4 size in the --pick window
+# A vector pin (SVG output), bottom to top: (dx, dy, radius) in sphere radii, RGB, alpha. The sprite's look in four
+# flat circles: drop shadow, dark gold rim, gold body offset towards the key light, highlight in the upper left.
+PIN_CIRCLES: tuple[tuple[tuple[float, float, float], tuple[float, float, float], float], ...] = (
+    ((0.12, -0.16, 1.05), (0, 0, 0), 0.3),
+    ((0, 0, 1), (0.65, 0.42, 0.05), 1),
+    ((-0.06, 0.08, 0.86), (0.92, 0.70, 0.16), 1),
+    ((-0.3, 0.38, 0.28), (1.0, 0.93, 0.68), 1),
+)
 
 
 @dataclass(frozen=True)
@@ -146,6 +155,20 @@ def draw_pins(ax: Axes, frame: MapFrame, pins: Sequence[LonLat], sprite: np.ndar
     for lon, lat in sorted(pins, key=lambda p: -p[1]):
         x, y = frame.to_map.transform(lon, lat)
         out.append(ax.imshow(sprite, extent=(x - half, x + half, y - half, y + half), zorder=PIN_ZORDER, interpolation="bilinear"))
+    return out
+
+
+def draw_pin_circles(ax: Axes, frame: MapFrame, pins: Sequence[LonLat], diameter_in: float) -> list[Circle]:
+    """Draw pins as a few flat circles each (PIN_CIRCLES), for vector output; northernmost first, like draw_pins.
+    Returns the patches."""
+    radius = diameter_in / 2 * frame.units_per_in
+    out = []
+    for lon, lat in sorted(pins, key=lambda p: -p[1]):
+        x, y = frame.to_map.transform(lon, lat)
+        for (dx, dy, r), rgb, alpha in PIN_CIRCLES:
+            circle = Circle((x + dx * radius, y + dy * radius), r * radius, fc=rgb, ec="none", alpha=alpha, zorder=PIN_ZORDER)
+            ax.add_patch(circle)
+            out.append(circle)
     return out
 
 

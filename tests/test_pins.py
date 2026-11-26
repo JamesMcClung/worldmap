@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from worldmap.cli import main
-from worldmap.pins import PinStyle, fit_to_render, load_pins, pin_sprite
+from worldmap.pins import PIN_CIRCLES, PinStyle, draw_pin_circles, fit_to_render, load_pins, pin_sprite
 
 
 def write(tmp_path: Path, text: str) -> Path:
@@ -35,6 +35,21 @@ def test_pin_sprite_shape_and_alpha() -> None:
     assert sprite[n // 2, n // 2, 3] == pytest.approx(1)
     assert sprite[0, 0, 3] == 0
     assert np.isfinite(sprite).all()
+
+
+def test_pin_circles_northernmost_first() -> None:
+    import matplotlib.figure
+
+    from worldmap.frame import make_frame
+
+    frame = make_frame()
+    ax = matplotlib.figure.Figure().add_subplot()
+    circles = draw_pin_circles(ax, frame, [(0, -10), (0, 40)], 0.24)
+    assert len(circles) == 2 * len(PIN_CIRCLES)
+    centre_y = [c.center[1] for c in circles]
+    assert centre_y[0] > centre_y[len(PIN_CIRCLES)]  # the northern pin first, under the southern one
+    rim = circles[1]
+    assert rim.radius == pytest.approx(0.12 * frame.units_per_in) and rim.center == pytest.approx(frame.to_map.transform(0, 40))
 
 
 def test_fit_to_render_takes_its_size(tmp_path: Path) -> None:
