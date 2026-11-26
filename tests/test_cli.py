@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from worldmap.cli import draws_rivers, make_map_frame, parse_args
+from worldmap.cli import draws_rivers, is_svg, main, make_map_frame, parse_args
 from worldmap.frame import DPI
 
 
@@ -71,6 +71,18 @@ def test_type_flag() -> None:
     with pytest.raises(SystemExit) as e:
         parse_args(["--type", "sky"])
     assert e.value.code == 2
+
+
+def test_svg_output() -> None:
+    assert is_svg("map.svg") and is_svg("MAP.SVG") and not is_svg("map.png") and not is_svg("svg.png")
+    with pytest.raises(SystemExit, match="political only"):
+        main(["x.svg", "--type", "topographic"])
+
+
+def test_pick_rejects_svg(tmp_path: Path) -> None:
+    (tmp_path / "map.svg").write_text("<svg/>")
+    with pytest.raises(SystemExit, match="PNG"):
+        main(["--pick", str(tmp_path / "p.txt"), str(tmp_path / "map.svg")])
 
 
 def test_pick_uses_crop_frame(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
