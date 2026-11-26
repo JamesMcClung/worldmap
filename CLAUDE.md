@@ -59,7 +59,7 @@ environment, so it skips where they aren't downloaded); `crop_pacific_water`: `-
 `.venv/bin/mypy src` should report no issues (default mode, missing stubs ignored).
 
 Formatting: `.venv/bin/isort src tests && .venv/bin/black src tests` before every commit (config in `pyproject.toml`, matching
-the user's VS Code format-on-save: black `line-length = 1000`, so lines are never wrapped for you, and isort `profile = "black"`).
+the user's VS Code format-on-save: black and isort (`profile = "black"`) both at line length 1000: long lines are fine, a magic trailing comma wraps one).
 `black --check` / `isort --check` should pass.
 
 ## Module layout (`src/worldmap/`)
