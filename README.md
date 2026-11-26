@@ -33,6 +33,7 @@ make_map --label countries,land  # also name the mountain ranges, plateaus, dese
 make_map --disputed           # stripe disputed areas (Kashmir, Crimea, Taiwan...) in their claimants' colours
 make_map --rivers             # draw the major rivers (also with --type topographic)
 make_map --type topographic --ocean  # heights and sea depths instead of countries
+make_map --type topographic --ice  # the ice sheets and glaciers on their own scale, not the rock under them
 make_map --crop France        # zoom in on France, in a projection centred on it
 make_map --crop 5:17,43:49    # zoom in on a box: west:east,south:north (degrees)
 make_map --crop 10.5,46/800km,520km  # zoom in on a centre and a size along the ground
@@ -44,8 +45,9 @@ make_map --format svg         # a vector SVG instead of a PNG; writes worldmap.s
 
 | Option          | Effect                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--type TYPE`   | `political` (default): countries, borders and labels. `topographic`: heights with hill shading and contours (land below sea level, like the Dead Sea shore, stays land), ice sheets and glaciers on their own scale, colour bars in the corners, no borders, and only water and landform labels if `--label` asks for them (`--color`, `--disputed`, `--recolor` and the `countries`/`territories` labels are ignored). The first run downloads ~470 MB of elevation data (ETOPO 2022); zoomed-in crops can also use its finer 15" tiles (4-33 MB each, downloaded only for the crops that need them, or skipped if you decline).                                                                                                                                                                                                         |
+| `--type TYPE`   | `political` (default): countries, borders and labels. `topographic`: heights with hill shading and contours (land below sea level, like the Dead Sea shore, stays land), Greenland and Antarctica as the bedrock under their ice sheets (see `--ice`), colour bars in the corners, no borders, and only water and landform labels if `--label` asks for them (`--color`, `--disputed`, `--recolor` and the `countries`/`territories` labels are ignored). The first run downloads ~480 MB of elevation data (ETOPO 2022's bedrock; with `--ice`, ~470 MB more for its ice surface); zoomed-in crops can also use its finer 15" tiles (4-33 MB each, downloaded only for the crops that need them, or skipped if you decline).                                                                                                                                                                                                         |
 | `--ocean`       | With `--type topographic`, colour the sea by depth, with depth contours and a depth colour bar. Ignored with `--type political`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `--ice`         | With `--type topographic`, show the ice sheets and glaciers at the top of the ice, on their own white-to-blue scale, with ice contours and an ice colour bar. Without it, Greenland and Antarctica show the bedrock under their ice sheets, coloured like any other land (some of it below sea level), and Antarctica's floating ice shelves are sea; mountain glaciers keep their ice-top heights. Ignored with `--type political`.                                                                                                                                                                                                                                                                                                                                                                                         |
 | `--color NAME`  | How countries are filled. `colorblind` (default): distinct colours that red/green colour-blind viewers can tell apart. `earth`: each region coloured by what it looks like from space; the first run downloads a ~75 MB raster.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `--crop SPEC`   | Draw one region instead of the world, in a projection centred on it (Lambert azimuthal equal-area; Equal Earth for a region as wide as an ocean), on a poster sized to the region (see `--size`). `SPEC` is one of: label names, comma-separated, or parts of them, matched ignoring case and accents among the `--label` kinds (`--crop france,germany`, `--crop pacific`), with a 10% margin; if a name matches several labels you choose from a list, and the crop prints the centre form that reproduces it, to copy and adjust; a box `west:east,south:north` in degrees, where any edge may be left out (`:,60:` is everything north of 60°N) and west past east crosses the 180° meridian (`170:-160,50:70`); or a centre and a size `lon,lat/width,height`, the sizes measured along the ground in degrees, or with `km` or `mi`. |
 | `--label LIST`  | What to label: a comma-separated list, or `none`. `countries` (default): sovereign countries. `territories`: outlying parts of countries (e.g. Alaska). `oceans`, `seas`, `lakes`, `straits`, `rivers`: self-explanatory; `water`: shorthand for all of the water options. `mountains` (ranges), `uplands` (plateaus), `deserts`, `lowlands` (plains, basins, valleys and depressions), from Natural Earth's physical label areas; `land`: shorthand for all four. (Labels are ranked 1–5 based on their size, placed in order of rank, and influence only labels of the same or 1 below. Results are shown in a table on map generation.)                                                                                                                                                                                                                                                                                                                                                                           |
@@ -93,20 +95,20 @@ make_map examples/disputed.png --disputed --dpi 50
 
 ![World map with disputed areas striped](examples/disputed.png)
 
-A topographic map with the sea floor, `--type topographic --ocean`:
+A topographic map with the sea floor and the ice, `--type topographic --ocean --ice`:
 
 ```
-make_map examples/topographic.png --type topographic --ocean --dpi 50
+make_map examples/topographic.png --type topographic --ocean --ice --dpi 50
 ```
 
 ![Topographic world map with sea depths](examples/topographic.png)
 
-A topographic crop of the Alps, 800 by 520 km around 10.5°E, 46°N, with the sea floor and the water named. A crop
+A topographic crop of the Alps, 800 by 520 km around 10.5°E, 46°N, with the sea floor and the glaciers, and the water named. A crop
 this size is an 8 in poster, so this one is at the full 200 dpi; at this zoom it reads ETOPO's 15" heights, and the
 colour bars and labels adapt to the crop:
 
 ```
-make_map examples/alps.png --type topographic --ocean --label water --crop 10.5,46/800km,520km
+make_map examples/alps.png --type topographic --ocean --ice --label water --crop 10.5,46/800km,520km
 ```
 
 ![Topographic map of the Alps with the Adriatic and Ligurian seas](examples/alps.png)
@@ -146,7 +148,7 @@ recorded ones. After a deliberate change to the map, re-record with `UPDATE_REFE
 
 [Natural Earth](https://www.naturalearthdata.com/) 10m cultural and physical vectors and the Natural Earth I land-cover
 raster, and NOAA's [ETOPO 2022](https://www.ncei.noaa.gov/products/etopo-global-relief-model) 60 arc-second elevation
-grid and its 15 arc-second tiles, all public domain. They are downloaded on first use into `.cache/`, which also holds the colouring and elevation
+grids (ice surface and bedrock) and their 15 arc-second tiles, all public domain. They are downloaded on first use into `.cache/`, which also holds the colouring and elevation
 caches. Delete `.cache/` to start fresh.
 
 ## License
