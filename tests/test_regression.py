@@ -5,9 +5,8 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from PIL import Image
-
 from conftest import TESTS, check_fingerprint, environment, fingerprint, render
+from PIL import Image
 
 
 def test_render_earth(tmp_path: Path) -> None:

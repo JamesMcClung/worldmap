@@ -33,6 +33,7 @@ Ranker = Callable[[Sequence[str], Sequence[float]], np.ndarray]
 class Unplaced(NamedTuple):
     """A feature of a labelled kind whose label doesn't fit at all (a river shorter than its name): ranked with the
     labels, it counts as one that failed."""
+
     name: str
     kind: str
     full_size: float
@@ -47,7 +48,7 @@ def ranks_by_quantile(kinds: Sequence[str], sizes: Sequence[float]) -> np.ndarra
     """Each label's rank, 1..N_RANKS: which fifth (for 5 ranks) of every label, whatever its kind, biggest first, it
     falls in, a river's length L (km) counting as RIVER_KM2 * L ** RIVER_POWER km2. A size of 0 (or unknown) is the
     last rank."""
-    size = np.array([RIVER_KM2 * v ** RIVER_POWER if k == "rivers" else v for k, v in zip(kinds, sizes)], float)
+    size = np.array([RIVER_KM2 * v**RIVER_POWER if k == "rivers" else v for k, v in zip(kinds, sizes)], float)
     ranks = np.full(len(size), N_RANKS)
     known = np.flatnonzero(size > 0)  # NaN compares False
     biggest_first = known[np.argsort(-size[known], kind="stable")]
@@ -90,6 +91,7 @@ def rival(p: Placement, k: int, smaller: list[int]) -> int | None:
 @dataclass
 class Verdict:
     """What check_step decided. Unless `out` and `rival` are empty, the step is solved again."""
+
     out: list[int]  # country labels to put 'out', beside their country with a leader
     rival: int | None  # a label of the step to skip, so that a bigger curved label can keep to its feature
     skip: list[int]  # labels to skip for good (once nothing else is left to try)
@@ -113,7 +115,7 @@ def check_step(p: Placement, new: list[int], active: np.ndarray, frame: MapFrame
             continue
         off = bool(q.curved[i]) and (overhang_of(q, i) > OVERHANG_MAX or i in outside)
         if off:
-            verdict.rival = rival(q, i, [m for m in new[n + 1:] if among[m]])
+            verdict.rival = rival(q, i, [m for m in new[n + 1 :] if among[m]])
             if verdict.rival is not None:
                 return verdict
         if off or clash(q, i, among):
@@ -125,6 +127,7 @@ def check_step(p: Placement, new: list[int], active: np.ndarray, frame: MapFrame
 @dataclass
 class Outcome:
     """What place_by_priority did with its entries."""
+
     entries: Sequence[Placeable | Unplaced]  # as given
     placement: Placement  # the kept labels'
     plan: list[tuple[int, list[int]]]  # its steps (steps), indices into its entries
@@ -147,6 +150,7 @@ class Outcome:
 class Settled:
     """What placing has decided so far: one placement of every label, solved step by step over the `active` ones
     (kept so far, and the step's), and where (home_x/y) and at what `size` each kept one settled (0 until it has)."""
+
     p: Placement
     active: np.ndarray
     home_x: np.ndarray
@@ -166,6 +170,7 @@ class Settled:
 class Cuts:
     """Each kind's labels failed so far, of all its labels (`of_kind`, every rank), and the kinds cut: at which rank,
     and how many of that rank's labels had placed (`fit`)."""
+
     of_kind: dict[str, int]
     failed: dict[str, int]
     at: dict[str, int] = field(default_factory=dict)
@@ -211,8 +216,7 @@ def place_step(s: Settled, r: int, new: list[int], ranks: np.ndarray, min_size: 
     s.home_x[kept], s.home_y[kept], s.size[kept] = s.p.x[kept], s.p.y[kept], s.p.size[kept]
 
 
-def place_by_priority(entries: Sequence[Placeable | Unplaced], frame: MapFrame, order: Sequence[str],
-                      rank: Ranker = ranks_by_quantile, on_step: Callable[[int, int, int, str], None] | None = None) -> Outcome:
+def place_by_priority(entries: Sequence[Placeable | Unplaced], frame: MapFrame, order: Sequence[str], rank: Ranker = ranks_by_quantile, on_step: Callable[[int, int, int, str], None] | None = None) -> Outcome:
     """Place the labels among the `entries` step by step (steps, with `rank`; place_step), returning the Outcome.
     Before each step, on_step(rank, labels of the rank's steps done so far, of all its steps, the step's kind).
     An Unplaced entry is ranked with the labels and counts as failed in its step. A step after which its kind's

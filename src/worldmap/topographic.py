@@ -39,6 +39,7 @@ ELEVATION_RULE = "etopo2022-60s-mean-3min/v1"  # bump when the reduction changes
 class Scale:
     """A colour scale from `start` metres (cmap position 0, at the colour bar's canvas edge) to `end` (position 1, at
     its tip). Heights beyond either end take the end colour."""
+
     cmap: LinearSegmentedColormap
     start: float
     end: float
@@ -66,8 +67,7 @@ def oklab(colors: list[str]) -> np.ndarray:
     return np.stack([L, C * np.cos(np.radians(h)), C * np.sin(np.radians(h))], axis=1)
 
 
-def even_ramp(name: str, start: float, end: float, stops: list[tuple[float | None, str]],
-              n: int = 256) -> LinearSegmentedColormap:
+def even_ramp(name: str, start: float, end: float, stops: list[tuple[float | None, str]], n: int = 256) -> LinearSegmentedColormap:
     """A colormap through the stops' colours along straight lines in OKLab, so equal steps in metres are equal
     steps in perceived colour between pinned stops. A stop's metres may be None: it is then placed between the
     pinned stops either side of it by OKLab distance. The first and last stops are pinned, at start and end."""
@@ -83,9 +83,7 @@ def even_ramp(name: str, start: float, end: float, stops: list[tuple[float | Non
 
 LAND_BELOW_SEA = "#3f7d6b"  # the Dead Sea shore, Qattara, Death Valley
 LAND_TOP = "#805334"  # not white, to stand apart from the ice
-LAND = Scale(even_ramp("land", -500, 6000, [(-500, LAND_BELOW_SEA), (0, "#5f9e5a"), (None, "#a8c97f"),
-                                            (None, "#e8dc95"), (None, "#c9a26b"), (None, "#ad7e5b"), (None, "#9a6b4a"),
-                                            (6000, LAND_TOP)]), -500, 6000)
+LAND = Scale(even_ramp("land", -500, 6000, [(-500, LAND_BELOW_SEA), (0, "#5f9e5a"), (None, "#a8c97f"), (None, "#e8dc95"), (None, "#c9a26b"), (None, "#ad7e5b"), (None, "#9a6b4a"), (6000, LAND_TOP)]), -500, 6000)
 # Water above 0 m: ETOPO's 3' averages along coasts. With --ocean it is a shade lighter than the sea surface.
 SEA = Scale(ramp("sea", 500, -8000, [(500, "#f7fbfd"), (0, OCEAN), (-8000, "#2f5f8c")]), 500, -8000)
 ICE = Scale(ramp("ice", 0, 4000, [(0, "#ffffff"), (4000, "#cfe3f2")]), 0, 4000)
@@ -198,7 +196,7 @@ def read_tiles(row0: int, row1: int, runs: list[tuple[int, int]], per_deg: int) 
                 c_a, c_b = max(c, ti * t), min(c + n, (ti + 1) * t)
                 with rasterio.open(path_of[name(tj, ti)]) as src:
                     block = src.read(1, window=Window(c_a - ti * t, r_a - tj * t, c_b - c_a, r_b - r_a))
-                out[r_a - row0:r_b - row0, offset + c_a - c:offset + c_b - c] = np.round(block)
+                out[r_a - row0 : r_b - row0, offset + c_a - c : offset + c_b - c] = np.round(block)
         offset += n
     return out
 
@@ -210,7 +208,7 @@ def sample(grid: Grid, lon: np.ndarray, lat: np.ndarray) -> np.ndarray:
     flat_lon, flat_lat = lon.reshape(-1), lat.reshape(-1)
     out = np.empty(flat_lon.shape, np.float32)
     for i in range(0, out.size, SAMPLE_BLOCK):
-        out[i:i + SAMPLE_BLOCK] = sample_block(grid, flat_lon[i:i + SAMPLE_BLOCK], flat_lat[i:i + SAMPLE_BLOCK])
+        out[i : i + SAMPLE_BLOCK] = sample_block(grid, flat_lon[i : i + SAMPLE_BLOCK], flat_lat[i : i + SAMPLE_BLOCK])
     return out.reshape(lon.shape)
 
 
@@ -239,10 +237,10 @@ def box_blur(z: np.ndarray, radius: int, axis: int) -> None:
     stay small on a whole-poster grid."""
     zt = np.moveaxis(z, axis, 1)
     for r0 in range(0, zt.shape[0], 256):
-        band = zt[r0:r0 + 256].astype(np.float64)
+        band = zt[r0 : r0 + 256].astype(np.float64)
         padded = np.concatenate([np.repeat(band[:, :1], radius + 1, 1), band, np.repeat(band[:, -1:], radius, 1)], axis=1)
         sums = np.cumsum(padded, axis=1)
-        zt[r0:r0 + 256] = (sums[:, 2 * radius + 1:] - sums[:, :-2 * radius - 1]) / (2 * radius + 1)
+        zt[r0 : r0 + 256] = (sums[:, 2 * radius + 1 :] - sums[:, : -2 * radius - 1]) / (2 * radius + 1)
 
 
 def soften(z: np.ndarray, cell_px: float) -> np.ndarray:
@@ -339,13 +337,13 @@ def poster_grid(frame: MapFrame, dpi: float) -> PosterGrid:
     lat = np.empty((rows, cols), np.float32)
     inside = np.empty((rows, cols), bool)
     for r0 in range(0, rows, 256):  # in bands, to keep the float64 temporaries small
-        X, Y = np.meshgrid(x, y[r0:r0 + 256])
+        X, Y = np.meshgrid(x, y[r0 : r0 + 256])
         lo, la = frame.to_lonlat.transform(X, Y)
         ok = np.isfinite(lo) & np.isfinite(la) & (np.abs(lo) <= 180) & (np.abs(la) <= 90)
         lo, la = np.where(ok, lo, 0), np.where(ok, la, 0)
         bx, by = frame.to_map.transform(lo, la)
-        inside[r0:r0 + 256] = ok & (np.abs(bx - X) < pw) & (np.abs(by - Y) < ph)
-        lon[r0:r0 + 256], lat[r0:r0 + 256] = lo, la
+        inside[r0 : r0 + 256] = ok & (np.abs(bx - X) < pw) & (np.abs(by - Y) < ph)
+        lon[r0 : r0 + 256], lat[r0 : r0 + 256] = lo, la
     return PosterGrid(x, y, lon, lat, inside)
 
 
@@ -430,8 +428,7 @@ def draw_topography(ax: Axes, frame: MapFrame, dpi: float, ocean: bool, lakes: L
 
     def contours(where: np.ndarray, levels: np.ndarray, c: Contours) -> None:
         lines = contour_lines(pg.x, pg.y, np.ma.masked_where(~where, z), levels)
-        ax.add_collection(LineCollection(lines, colors=c.color, linewidths=CONTOUR_WIDTH, alpha=c.alpha, linestyles=c.style,
-                                         zorder=Z_COUNTRY + 0.1))
+        ax.add_collection(LineCollection(lines, colors=c.color, linewidths=CONTOUR_WIDTH, alpha=c.alpha, linestyles=c.style, zorder=Z_COUNTRY + 0.1))
 
     contours(land, np.arange(LAND_CONTOURS.step, z.max() + 1, LAND_CONTOURS.step), LAND_CONTOURS)
     contours(ice, np.arange(ICE_CONTOURS.step, z.max() + 1, ICE_CONTOURS.step), ICE_CONTOURS)

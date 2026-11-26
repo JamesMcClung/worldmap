@@ -43,7 +43,9 @@ RIVER_TEXT: RGB = _river_text[0]  # darker than WATER_TEXT: it sits on land, not
 _SEA_STYLE = Style(False, 0.0, False, WATER_TEXT, WATER_HALO, WATER_MIN_PT, SEA_MAX_PT)
 STYLES: dict[Kind, Style] = {
     "oceans": Style(False, OCEAN_TRACKING_EM, True, WATER_TEXT, WATER_HALO, OCEAN_MIN_PT, OCEAN_PT),
-    "seas": _SEA_STYLE, "lakes": _SEA_STYLE, "straits": _SEA_STYLE,
+    "seas": _SEA_STYLE,
+    "lakes": _SEA_STYLE,
+    "straits": _SEA_STYLE,
     "rivers": Style(True, 0.0, False, RIVER_TEXT, WHITE_HALO, WATER_MIN_PT, SEA_MAX_PT),  # sized by river_size, not max_pt
 }
 RIVER_WIDTH_MAX, RIVER_WIDTH_MIN = 1.6, 0.3  # line widths (pt) at scalerank 0 and RIVER_THIN_RANK

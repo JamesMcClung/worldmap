@@ -60,14 +60,14 @@ def fingerprint(png: Path) -> str:
 def environment(mode: str = "default") -> dict[str, str]:
     """Versions of everything that can change the rendered pixels: libraries, and the sizes of the downloaded
     Natural Earth files (a new NE release would otherwise look like a regression)."""
-    from worldmap.data import COUNTRIES, DISPUTED, LAKES, LAND_OUTLINE, MARINE, RASTER, REGIONS, RIVERS, STATES, fetch
-
     import geopandas
     import matplotlib
     import matplotlib.ft2font
     import PIL
     import pyproj
     import shapely
+
+    from worldmap.data import COUNTRIES, DISPUTED, LAKES, LAND_OUTLINE, MARINE, RASTER, REGIONS, RIVERS, STATES, fetch
 
     return {
         "python": platform.python_version(),
@@ -99,9 +99,7 @@ def topographic_environment() -> dict[str, str]:
 
     from worldmap.data import ETOPO, GLACIERS, ICE_SHELVES, LAND_OUTLINE, fetch
 
-    return {"etopo": str(os.path.getsize(fetch(ETOPO))), "glaciers": str(os.path.getsize(fetch(GLACIERS))),
-            "ice_shelves": str(os.path.getsize(fetch(ICE_SHELVES))), "land": str(os.path.getsize(fetch(LAND_OUTLINE))),
-            "rasterio": rasterio.__version__, "gdal": rasterio.__gdal_version__}
+    return {"etopo": str(os.path.getsize(fetch(ETOPO))), "glaciers": str(os.path.getsize(fetch(GLACIERS))), "ice_shelves": str(os.path.getsize(fetch(ICE_SHELVES))), "land": str(os.path.getsize(fetch(LAND_OUTLINE))), "rasterio": rasterio.__version__, "gdal": rasterio.__gdal_version__}
 
 
 def alps_tiles() -> dict[str, str]:

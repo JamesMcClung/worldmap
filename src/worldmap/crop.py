@@ -16,12 +16,11 @@ from shapely.geometry.base import BaseGeometry
 from worldmap.data import is_labeled, load_countries, load_disputed, load_lakes
 from worldmap.disputed import disputed_label_args, load_disputes
 from worldmap.earth import Fill
-from worldmap.frame import (ANTIMERIDIAN_EPS, OUTLINE_POINTS, PROJECT_PAD, SEGMENT_DEG, LonLatBox, MapFrame, lon_ranges,
-                            make_frame)
-from worldmap.labels.label import RENAME
-from worldmap.labels.regions import PARENT_SHORT, child_regions, polygons
+from worldmap.frame import ANTIMERIDIAN_EPS, OUTLINE_POINTS, PROJECT_PAD, SEGMENT_DEG, LonLatBox, MapFrame, lon_ranges, make_frame
 from worldmap.labels import land
 from worldmap.labels.curved import Body, kinds_in
+from worldmap.labels.label import RENAME
+from worldmap.labels.regions import PARENT_SHORT, child_regions, polygons
 from worldmap.labels.water import WATER_KINDS, load_water_bodies
 
 if TYPE_CHECKING:
@@ -412,9 +411,7 @@ def checklist(message: str, lines: list[str]) -> "questionary.Question":
     import questionary
     from prompt_toolkit.key_binding import KeyBindings
 
-    q = questionary.checkbox(message, choices=[questionary.Choice(line, value=k) for k, line in enumerate(lines)],
-                             instruction="(arrow keys to move, <space> to check, <enter> to confirm)",
-                             validate=lambda chosen: bool(chosen) or "choose at least one")
+    q = questionary.checkbox(message, choices=[questionary.Choice(line, value=k) for k, line in enumerate(lines)], instruction="(arrow keys to move, <space> to check, <enter> to confirm)", validate=lambda chosen: bool(chosen) or "choose at least one")
     bindings = q.application.key_bindings
     assert isinstance(bindings, KeyBindings)
     for key in ("a", "i"):
@@ -431,8 +428,7 @@ def choose(name: str, found: list[Candidate]) -> list[Candidate]:
         return found
     lines = [describe(c) for c in found]
     if not sys.stdin.isatty():
-        sys.exit(f"make_map: --crop {name} matches several labels; run in a terminal to choose, or crop to one with its lon,lat/width,height:\n"
-                 + "\n".join(lines))
+        sys.exit(f"make_map: --crop {name} matches several labels; run in a terminal to choose, or crop to one with its lon,lat/width,height:\n" + "\n".join(lines))
     picked = checklist(f"--crop {name} matches several labels. Crop to:", lines).ask()
     if not picked:
         sys.exit("make_map: --crop: nothing chosen")

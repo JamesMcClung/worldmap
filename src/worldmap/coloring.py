@@ -248,10 +248,7 @@ def merge_into_parents(gdf: gpd.GeoDataFrame, major: list[bool], parent_of: dict
 def cache_key(countries: gpd.GeoDataFrame, major: list[bool], parent_of: dict[int, int], extra_edges: set[Edge]) -> dict:
     """Everything the colouring depends on, so a change to any of it rebuilds coloring.json."""
     names = list(countries.NAME_EN)
-    return {"n_colors": N_COLORS, "max_gap": MAX_GAP, "close_gap": CLOSE_GAP, "min_deg": MIN_DEG, "rule": COLORING_RULE, "files": {COUNTRIES: os.path.getsize(fetch(COUNTRIES))},
-            "major": [name for name, m in zip(names, major) if m],
-            "parents": sorted([countries.NAME_EN[d], countries.NAME_EN[p]] for d, p in parent_of.items()),
-            "extra_edges": sorted([countries.NAME_EN[a], countries.NAME_EN[b]] for a, b in extra_edges)}
+    return {"n_colors": N_COLORS, "max_gap": MAX_GAP, "close_gap": CLOSE_GAP, "min_deg": MIN_DEG, "rule": COLORING_RULE, "files": {COUNTRIES: os.path.getsize(fetch(COUNTRIES))}, "major": [name for name, m in zip(names, major) if m], "parents": sorted([countries.NAME_EN[d], countries.NAME_EN[p]] for d, p in parent_of.items()), "extra_edges": sorted([countries.NAME_EN[a], countries.NAME_EN[b]] for a, b in extra_edges)}
 
 
 def load_or_compute_coloring(countries: gpd.GeoDataFrame, major: list[bool], recolor: bool, parent_of: dict[int, int], extra_edges: set[Edge]) -> Coloring:

@@ -9,8 +9,7 @@ from numba import njit
 PARALLEL_EPS = 1e-9  # segment direction components below this count as parallel to that axis
 
 # Indices into the weights array (placement.weight_array, in CostWeights' field order).
-OVERLAP, DOT_COVER, DOT_RADIUS, LEADER_HITS_LABEL, LEADER_CROSSES_LEADER, LEADER_LENGTH, LEADER_TARGET, LEADER_TOO_SHORT, LEADER_MIN, \
-    OFF_FEATURE, DRIFT, OUTSIDE_GLOBE, OVERHANG = range(13)
+OVERLAP, DOT_COVER, DOT_RADIUS, LEADER_HITS_LABEL, LEADER_CROSSES_LEADER, LEADER_LENGTH, LEADER_TARGET, LEADER_TOO_SHORT, LEADER_MIN, OFF_FEATURE, DRIFT, OUTSIDE_GLOBE, OVERHANG = range(13)
 
 
 @njit(cache=True)
@@ -64,8 +63,7 @@ def below_left(table: np.ndarray, x0: float, y0: float, step: float, x: float, y
 @njit(cache=True)
 def holds(table: np.ndarray, x0: float, y0: float, step: float, bx0: float, by0: float, bx1: float, by1: float) -> bool:
     """Coverage.holds for one box: all four corners covered."""
-    return (covered(table, x0, y0, step, bx0, by0) and covered(table, x0, y0, step, bx1, by0)
-            and covered(table, x0, y0, step, bx0, by1) and covered(table, x0, y0, step, bx1, by1))
+    return covered(table, x0, y0, step, bx0, by0) and covered(table, x0, y0, step, bx1, by0) and covered(table, x0, y0, step, bx0, by1) and covered(table, x0, y0, step, bx1, by1)
 
 
 @njit(cache=True)
@@ -85,9 +83,7 @@ def envelope(cx: np.ndarray, cy: np.ndarray, parts: np.ndarray, out: bool, ax: f
 
 
 @njit(cache=True)
-def nearby(i: int, ex0: float, ey0: float, ex1: float, ey1: float, rects: np.ndarray, owner: np.ndarray, active: np.ndarray,
-           x: np.ndarray, y: np.ndarray, width: np.ndarray, height: np.ndarray, anchor_x: np.ndarray, anchor_y: np.ndarray,
-           out: np.ndarray, dot_radius: float, obstacles: np.ndarray, leaders: np.ndarray) -> tuple[int, int]:
+def nearby(i: int, ex0: float, ey0: float, ex1: float, ey1: float, rects: np.ndarray, owner: np.ndarray, active: np.ndarray, x: np.ndarray, y: np.ndarray, width: np.ndarray, height: np.ndarray, anchor_x: np.ndarray, anchor_y: np.ndarray, out: np.ndarray, dot_radius: float, obstacles: np.ndarray, leaders: np.ndarray) -> tuple[int, int]:
     """What can add to label i's cost within the envelope: into `obstacles` (len(rects), 4) the rects of other
     active labels that meet it, into `leaders` (len(x)) the other active 'out' labels whose dot (with its keep-clear
     radius) or leader meets it; returns how many of each. (The caller allocates them: the cost loops ran half as
@@ -124,8 +120,7 @@ def hang(on: np.ndarray) -> float:
 
 
 @njit(cache=True)
-def on_feature(parts: np.ndarray, x: float, y: float, by_area: bool, table: np.ndarray, tx0: float, ty0: float, tstep: float,
-               on: np.ndarray) -> float:
+def on_feature(parts: np.ndarray, x: float, y: float, by_area: bool, table: np.ndarray, tx0: float, ty0: float, tstep: float, on: np.ndarray) -> float:
     """The share of a label's rects (`parts`, relative to its position (x, y)) on its feature (`table`...: its
     Coverage), and into `on` which of its pieces are: by_area (a country), the box round its rects by area, in
     len(on) upright slices, each on it if at least half over it; else (a curved label) each rect, on it if its
@@ -155,11 +150,7 @@ def on_feature(parts: np.ndarray, x: float, y: float, by_area: bool, table: np.n
 
 
 @njit(cache=True)
-def label_cost(i: int, cx: np.ndarray, cy: np.ndarray, parts: np.ndarray, unit: float, by_area: bool,
-               x: np.ndarray, y: np.ndarray, width: np.ndarray, height: np.ndarray, anchor_x: np.ndarray, anchor_y: np.ndarray,
-               out: np.ndarray, active: np.ndarray, rects: np.ndarray, owner: np.ndarray,
-               table: np.ndarray, tx0: float, ty0: float, tstep: float,
-               outline: np.ndarray, ox0: float, oy0: float, ostep: float, overhang_max: float, slices: int, wt: np.ndarray) -> np.ndarray:
+def label_cost(i: int, cx: np.ndarray, cy: np.ndarray, parts: np.ndarray, unit: float, by_area: bool, x: np.ndarray, y: np.ndarray, width: np.ndarray, height: np.ndarray, anchor_x: np.ndarray, anchor_y: np.ndarray, out: np.ndarray, active: np.ndarray, rects: np.ndarray, owner: np.ndarray, table: np.ndarray, tx0: float, ty0: float, tstep: float, outline: np.ndarray, ox0: float, oy0: float, ostep: float, overhang_max: float, slices: int, wt: np.ndarray) -> np.ndarray:
     """placement.cost_batch for label i (its rects `parts`, relative to its position; distances in `unit` px) at
     each candidate position (cx[k], cy[k]). How much of it is on its feature, and how far it hangs off it:
     on_feature (by_area: in `slices` slices). rects/owner: every label's rects where it is now, and whose (placement.rects); active: the labels being
@@ -243,9 +234,7 @@ def escapes(i: int, rects: np.ndarray, owner: np.ndarray, active: np.ndarray, ga
 
 
 @njit(cache=True)
-def candidates(x: float, y: float, w: float, h: float, ax: float, ay: float, out: bool, steps: np.ndarray, scales: np.ndarray,
-               ring_cos: np.ndarray, ring_sin: np.ndarray, ring_scales: np.ndarray, ring_x_gap: float, ring_y: float,
-               grid: bool, bounds: np.ndarray, nx: int, ny: int, escape_x: np.ndarray, escape_y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def candidates(x: float, y: float, w: float, h: float, ax: float, ay: float, out: bool, steps: np.ndarray, scales: np.ndarray, ring_cos: np.ndarray, ring_sin: np.ndarray, ring_scales: np.ndarray, ring_x_gap: float, ring_y: float, grid: bool, bounds: np.ndarray, nx: int, ny: int, escape_x: np.ndarray, escape_y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """placement.candidates: the current position, steps (a, b) in widths and heights at each scale, then for an
     'out' label rings round its anchor, else its anchor and (grid) an nx x ny grid over `bounds`; then the moves
     `escape_x/y` (escapes)."""
@@ -290,8 +279,7 @@ def leader_hits(dx: float, dy: float, ex: float, ey: float, r0: float, r1: float
 
 
 @njit(cache=True)
-def clash(i: int, rects: np.ndarray, owner: np.ndarray, among: np.ndarray, out: np.ndarray,
-          anchor_x: np.ndarray, anchor_y: np.ndarray, end_x: np.ndarray, end_y: np.ndarray) -> bool:
+def clash(i: int, rects: np.ndarray, owner: np.ndarray, among: np.ndarray, out: np.ndarray, anchor_x: np.ndarray, anchor_y: np.ndarray, end_x: np.ndarray, end_y: np.ndarray) -> bool:
     """placement.clash: label i's rects overlap those of another label of `among`, or another's leader crosses
     them, or (an 'out' label) its leader crosses another's rects; rects/owner: placement.rects, p.owner; end_x/y: leader_ends."""
     mine = np.flatnonzero(owner == i)
@@ -318,8 +306,7 @@ def clash(i: int, rects: np.ndarray, owner: np.ndarray, among: np.ndarray, out: 
 
 
 @njit(cache=True)
-def clashes(rects: np.ndarray, owner: np.ndarray, among: np.ndarray, out: np.ndarray,
-            anchor_x: np.ndarray, anchor_y: np.ndarray, end_x: np.ndarray, end_y: np.ndarray) -> np.ndarray:
+def clashes(rects: np.ndarray, owner: np.ndarray, among: np.ndarray, out: np.ndarray, anchor_x: np.ndarray, anchor_y: np.ndarray, end_x: np.ndarray, end_y: np.ndarray) -> np.ndarray:
     """clash for every label of `among`: a mask."""
     hit = np.zeros(len(among), np.bool_)
     for i in range(len(among)):

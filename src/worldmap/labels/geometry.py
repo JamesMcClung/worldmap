@@ -30,6 +30,7 @@ def two_line(text: str) -> str | None:
 class Coverage:
     """A shape rasterised (by cell centre, cells `step` px from (x0, y0)) as a summed-area table: any box's area
     over it in a few lookups, to within a cell along the box's edges."""
+
     table: np.ndarray  # (rows + 1, cols + 1): table[j, i] = cells covered in rows < j, columns < i
     x0: float
     y0: float
@@ -57,7 +58,7 @@ class Coverage:
         i, j = np.minimum(u.astype(int), cols - 1), np.minimum(v.astype(int), rows - 1)
         fu, fv = u - i, v - j
         t = self.table
-        return ((1 - fv) * ((1 - fu) * t[j, i] + fu * t[j, i + 1]) + fv * ((1 - fu) * t[j + 1, i] + fu * t[j + 1, i + 1])) * self.step ** 2
+        return ((1 - fv) * ((1 - fu) * t[j, i] + fu * t[j, i + 1]) + fv * ((1 - fu) * t[j + 1, i] + fu * t[j + 1, i + 1])) * self.step**2
 
     def holds(self, boxes: np.ndarray) -> np.ndarray:
         """Whether each box (..., 4) has all four corners inside the shape (a convex one: wholly inside it)."""

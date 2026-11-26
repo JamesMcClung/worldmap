@@ -32,8 +32,7 @@ def lines(text: str, size: float, italic: bool = False) -> tuple[Path, float, fl
     return Path(np.asarray(path.vertices) * PX_PER_PT, path.codes), max(widths) * PX_PER_PT, len(rows) * line * PX_PER_PT
 
 
-def bent(text: str, prop: FontProperties, curve: np.ndarray, centre: float, drop: float = 0.0, rise: float = 0.0,
-         tracking: float = 0.0, h: float = 1.0) -> list[tuple[np.ndarray, np.ndarray]]:
+def bent(text: str, prop: FontProperties, curve: np.ndarray, centre: float, drop: float = 0.0, rise: float = 0.0, tracking: float = 0.0, h: float = 1.0) -> list[tuple[np.ndarray, np.ndarray]]:
     """`text`'s non-space glyphs bent along `curve` (px; curves.bend, tangents over `h` px), its middle `centre` px
     along it, letters `tracking` pt apart beyond their advance, each glyph's height less `drop` pt, plus `rise` px,
     to the left of the curve: (vertices, codes) per glyph."""

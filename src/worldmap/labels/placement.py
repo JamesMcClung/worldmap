@@ -106,9 +106,15 @@ class Placement:
         anchor_y = np.array([item.anchor_y for item in items], float)
         parts = [item.parts for item in items]
         return cls(
-            anchor_x.copy(), anchor_y.copy(), np.array([item.width for item in items], float), np.array([item.height for item in items], float),
-            np.array([item.size for item in items], float), anchor_x, anchor_y,
-            np.array([item.out for item in items], bool), np.array([item.curved for item in items], bool),
+            anchor_x.copy(),
+            anchor_y.copy(),
+            np.array([item.width for item in items], float),
+            np.array([item.height for item in items], float),
+            np.array([item.size for item in items], float),
+            anchor_x,
+            anchor_y,
+            np.array([item.out for item in items], bool),
+            np.array([item.curved for item in items], bool),
             np.vstack([np.zeros((0, 4)), *parts]),
             np.concatenate([np.zeros(0, int), *[np.full(len(rows), k) for k, rows in enumerate(parts)]]),
             list(items),
@@ -146,13 +152,10 @@ def rects(p: Placement) -> np.ndarray:
 @functools.cache
 def weight_array(weights: CostWeights) -> np.ndarray:
     """The weights the cost kernels take, in their order (kernels.OVERLAP...)."""
-    return np.array([weights.overlap, weights.dot_cover, weights.dot_radius, weights.leader_hits_label, weights.leader_crosses_leader,
-                     weights.leader_length, weights.leader_target, weights.leader_too_short, weights.leader_min, weights.off_feature,
-                     weights.drift, weights.outside_globe, weights.overhang], float)
+    return np.array([weights.overlap, weights.dot_cover, weights.dot_radius, weights.leader_hits_label, weights.leader_crosses_leader, weights.leader_length, weights.leader_target, weights.leader_too_short, weights.leader_min, weights.off_feature, weights.drift, weights.outside_globe, weights.overhang], float)
 
 
-def cost_batch(p: Placement, i: int, cx: np.ndarray, cy: np.ndarray, weights: CostWeights, outline: Coverage,
-               placed: np.ndarray | None = None, active: np.ndarray | None = None) -> np.ndarray:
+def cost_batch(p: Placement, i: int, cx: np.ndarray, cy: np.ndarray, weights: CostWeights, outline: Coverage, placed: np.ndarray | None = None, active: np.ndarray | None = None) -> np.ndarray:
     """Cost of placing label i at each candidate (cx[k], cy[k]): a country label's box centre, a curved label's anchor.
     Every label is its rects (parts: a country label's box, a curved label's glyph boxes), in units of unit_px:
     their overlap with other labels' rects; covering another 'out' label's dot, or its leader crossing them; any
@@ -166,10 +169,7 @@ def cost_batch(p: Placement, i: int, cx: np.ndarray, cy: np.ndarray, weights: Co
     active = np.ones(p.n, bool) if active is None else active
     cover = coverage(p.items[i])
     first, end = np.searchsorted(p.owner, [i, i + 1])  # its rects' rows (owner ascends)
-    return kernels.label_cost(i, np.asarray(cx, float), np.asarray(cy, float), p.parts[first:end], unit_px(p, i), not p.curved[i],
-                              p.x, p.y, p.width, p.height, p.anchor_x, p.anchor_y, p.out, active, placed, p.owner,
-                              cover.table, cover.x0, cover.y0, cover.step, outline.table, outline.x0, outline.y0, outline.step,
-                              OVERHANG_MAX, OVERHANG_SLICES, weight_array(weights))
+    return kernels.label_cost(i, np.asarray(cx, float), np.asarray(cy, float), p.parts[first:end], unit_px(p, i), not p.curved[i], p.x, p.y, p.width, p.height, p.anchor_x, p.anchor_y, p.out, active, placed, p.owner, cover.table, cover.x0, cover.y0, cover.step, outline.table, outline.x0, outline.y0, outline.step, OVERHANG_MAX, OVERHANG_SLICES, weight_array(weights))
 
 
 def candidates(p: Placement, i: int, grid: bool = False, placed: np.ndarray | None = None, active: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray]:
@@ -180,9 +180,7 @@ def candidates(p: Placement, i: int, grid: bool = False, placed: np.ndarray | No
     rects(p), as cost_batch. Compiled: kernels.candidates."""
     grid = grid and not p.curved[i] and not p.out[i]
     escape_x, escape_y = kernels.escapes(i, rects(p) if placed is None else placed, p.owner, np.ones(p.n, bool) if active is None else active, ESCAPE_PX)
-    return kernels.candidates(p.x[i], p.y[i], p.width[i], p.height[i], p.anchor_x[i], p.anchor_y[i], bool(p.out[i]), STEP_ARRAY,
-                              CURVED_SCALE_ARRAY if p.curved[i] else SCALE_ARRAY, RING_COS, RING_SIN, RING_SCALE_ARRAY, RING_X_GAP, RING_Y,
-                              grid, np.array(p.items[i].geom.bounds) if grid else NO_BOUNDS, GRID_NX, GRID_NY, escape_x, escape_y)
+    return kernels.candidates(p.x[i], p.y[i], p.width[i], p.height[i], p.anchor_x[i], p.anchor_y[i], bool(p.out[i]), STEP_ARRAY, CURVED_SCALE_ARRAY if p.curved[i] else SCALE_ARRAY, RING_COS, RING_SIN, RING_SCALE_ARRAY, RING_X_GAP, RING_Y, grid, np.array(p.items[i].geom.bounds) if grid else NO_BOUNDS, GRID_NX, GRID_NY, escape_x, escape_y)
 
 
 def clash(p: Placement, i: int, among: np.ndarray) -> bool:
@@ -200,9 +198,7 @@ def clashes(p: Placement, among: np.ndarray | None = None) -> list[int]:
     return [int(i) for i in np.flatnonzero(kernels.clashes(rects(p), p.owner, among, p.out, p.anchor_x, p.anchor_y, end_x, end_y))]
 
 
-def place_labels(p: Placement, frame: MapFrame, seed: int = SEED, weights: CostWeights = CostWeights(),
-                 active: np.ndarray | None = None, freedom: np.ndarray | None = None, home: tuple[np.ndarray, np.ndarray] | None = None,
-                 floors: np.ndarray | None = None) -> None:
+def place_labels(p: Placement, frame: MapFrame, seed: int = SEED, weights: CostWeights = CostWeights(), active: np.ndarray | None = None, freedom: np.ndarray | None = None, home: tuple[np.ndarray, np.ndarray] | None = None, floors: np.ndarray | None = None) -> None:
     """Place the `active` labels of `p` (a mask, default all; the rest are ignored), from where they are, moving p.
     Free 'out' labels first move, in order, to their best spot, so they start separated; then coordinate descent.
     Labels still clashing after it (clashes) are shrunk a step (shrink_step: in p, not the labels) and the descent
@@ -255,7 +251,7 @@ def place_labels(p: Placement, frame: MapFrame, seed: int = SEED, weights: CostW
             p.size[i] *= factor
             p.width[i] *= factor
             p.height[i] *= factor
-            p.parts[first[i]:first[i + 1]] *= factor
+            p.parts[first[i] : first[i + 1]] *= factor
             place_rects(i)
         optimize(SHRINK_PASSES)
 
@@ -264,8 +260,7 @@ def subset(p: Placement, keep: np.ndarray) -> Placement:
     """The placement of the `keep` labels (boolean mask) only, in the same order."""
     new_index = np.cumsum(keep) - 1
     glyph_kept = keep[p.owner]
-    return Placement(p.x[keep], p.y[keep], p.width[keep], p.height[keep], p.size[keep], p.anchor_x[keep], p.anchor_y[keep], p.out[keep],
-                     p.curved[keep], p.parts[glyph_kept], new_index[p.owner[glyph_kept]], [item for item, k in zip(p.items, keep) if k])
+    return Placement(p.x[keep], p.y[keep], p.width[keep], p.height[keep], p.size[keep], p.anchor_x[keep], p.anchor_y[keep], p.out[keep], p.curved[keep], p.parts[glyph_kept], new_index[p.owner[glyph_kept]], [item for item, k in zip(p.items, keep) if k])
 
 
 _outline: list[tuple[MapFrame, Coverage]] = []  # the last frame's outline_coverage (one: each is ~32 MB)

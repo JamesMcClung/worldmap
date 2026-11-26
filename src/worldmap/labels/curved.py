@@ -32,6 +32,7 @@ K = TypeVar("K", bound=str)
 @dataclass(frozen=True)
 class Style:
     """How a kind's names look: a curved label's style is its kind's (water.STYLES, land.STYLE), never its size's."""
+
     italic: bool
     tracking_em: float  # extra space after each letter, in ems
     cap_centred: bool  # the cap height (else the x-height) is centred on the curve
@@ -197,9 +198,11 @@ class CurvedLabel:
 
 def extend(curve: np.ndarray, length: float) -> np.ndarray:
     """`curve` with straight continuations of `length` at both ends."""
+
     def step(a: np.ndarray, b: np.ndarray) -> np.ndarray:
         d = b - a
         return b + d / np.hypot(*d) * length
+
     return np.vstack([step(curve[1], curve[0]), curve, step(curve[-2], curve[-1])])
 
 

@@ -21,9 +21,15 @@ CLASSES |= {c: "lowlands" for c in ("Plain", "Basin", "Lowland", "Valley", "Gorg
 # continents, regions (Siberia), deltas, wetlands, foothills and tundra are never labelled
 SMALL_WORDS = {"of", "de", "del", "la", "the", "and"}  # lower case inside a title-cased name
 NAMES = {  # Natural Earth NAME -> label, where its NAME_EN is wrong: cut short ('Ahag'), a single peak, a part, another feature
-    "AHAGGAR MTS.": "Ahaggar Mountains", "Grampian Mts.": "Grampian Mountains", "CORD. CENTRAL": "Cordillera Central",
-    "Campos Sertão": "Campos Sertão", "APPENNINI": "Apennines", "NULLARBOR PLAIN": "Nullarbor Plain",
-    "CRYSTAL MOUNTAINS": "Crystal Mountains", "COLUMBIA MTS.": "Columbia Mountains", "STANOVOY UPLAND": "Stanovoy Upland",
+    "AHAGGAR MTS.": "Ahaggar Mountains",
+    "Grampian Mts.": "Grampian Mountains",
+    "CORD. CENTRAL": "Cordillera Central",
+    "Campos Sertão": "Campos Sertão",
+    "APPENNINI": "Apennines",
+    "NULLARBOR PLAIN": "Nullarbor Plain",
+    "CRYSTAL MOUNTAINS": "Crystal Mountains",
+    "COLUMBIA MTS.": "Columbia Mountains",
+    "STANOVOY UPLAND": "Stanovoy Upland",
 }
 GENERIC_WORDS = {"mountains", "basin", "steppe", "coastal", "plain"}  # capitalised after the first word ('Amazon basin')
 _land_text = fit_gamut(0.30, 0.07, 65)
@@ -58,7 +64,7 @@ def features(regions: gpd.GeoDataFrame) -> list[int]:
     geoms = list(regions.geometry)
     for rows in regions.groupby("text").indices.values():
         for a, i in enumerate(rows):
-            for j in rows[a + 1:]:
+            for j in rows[a + 1 :]:
                 if min(geoms[i].distance(translate(geoms[j], shift)) for shift in (-360, 0, 360)) <= JOIN_DEG:
                     sets.union(int(j), int(i))
     return [sets.find(i) for i in range(len(regions))]

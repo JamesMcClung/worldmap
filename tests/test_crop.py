@@ -6,10 +6,10 @@ import pytest
 import shapely
 from shapely.geometry import Point, box
 
-from worldmap.cli import make_map_frame, parse_args
-from worldmap.frame import MapFrame, make_frame
 from worldmap import cli, crop
+from worldmap.cli import make_map_frame, parse_args
 from worldmap.crop import Candidate, box_region, choose, crop_frame, describe, matches, parse_box, sphere_centre
+from worldmap.frame import MapFrame, make_frame
 
 
 @functools.cache
@@ -50,7 +50,6 @@ def test_parse_box_names_and_errors() -> None:
     for bad in ("5:17,95:49", "200:10,0:10", "5:17,49:43", "10:10,40:50", "5:17,40:40"):  # out of range, north < south, no area
         with pytest.raises(ValueError):
             parse_box(bad)
-
 
 
 def test_parse_centre() -> None:
@@ -129,8 +128,7 @@ def test_matches_exact_first() -> None:
 
 
 def test_matches_of_a_kind_biggest_first() -> None:
-    c = [Candidate("United Arab Emirates", "country", Point(54, 24), (), 7e4), Candidate("United States", "country", Point(-98, 39), (), 9.5e6),
-         Candidate("United Kingdom", "country", Point(-2, 54), (), 2.4e5)]
+    c = [Candidate("United Arab Emirates", "country", Point(54, 24), (), 7e4), Candidate("United States", "country", Point(-98, 39), (), 9.5e6), Candidate("United Kingdom", "country", Point(-2, 54), (), 2.4e5)]
     assert [m.text for m in matches("united", c)] == ["United States", "United Kingdom", "United Arab Emirates"]
 
 
@@ -145,8 +143,7 @@ def same_map(a: MapFrame, b: MapFrame, tolerance: float) -> bool:
 def test_describe_shows_a_centre_crop_that_reproduces_the_crop() -> None:
     from worldmap.crop import CROP_MARGIN, centre_frame, parse_centre
 
-    for c in (Candidate("France", "country", box(-5, 42, 9, 51)), Candidate("Norway", "country", box(5, 58, 31, 71)),
-              Candidate("Fiji", "country", shapely.union_all([box(177, -19, 180, -16), box(-180, -17, -179, -16)]))):
+    for c in (Candidate("France", "country", box(-5, 42, 9, 51)), Candidate("Norway", "country", box(5, 58, 31, 71)), Candidate("Fiji", "country", shapely.union_all([box(177, -19, 180, -16), box(-180, -17, -179, -16)]))):
         name, spec = describe(c).split(") ")
         assert name == f"{c.text} ({c.kind}"
         crop = parse_centre(spec)

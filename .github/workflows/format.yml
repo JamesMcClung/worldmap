@@ -1,0 +1,18 @@
+name: format
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # Only the formatters, not the package: config is in pyproject.toml. Pinned so a new release can't fail CI unasked.
+      - run: pip install black==26.10.1 isort==9.0.2
+      - run: isort --check --diff src tests
+      - run: black --check --diff src tests

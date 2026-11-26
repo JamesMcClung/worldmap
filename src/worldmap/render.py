@@ -11,7 +11,8 @@ import shapely
 from matplotlib.axes import Axes
 from matplotlib.collections import LineCollection, PatchCollection
 from matplotlib.figure import Figure
-from matplotlib.patches import PathPatch, Polygon as MplPolygon
+from matplotlib.patches import PathPatch
+from matplotlib.patches import Polygon as MplPolygon
 from matplotlib.path import Path
 from shapely.geometry import MultiPolygon, Point
 from shapely.geometry.base import BaseGeometry
@@ -22,9 +23,9 @@ from worldmap.data import load_lakes
 from worldmap.disputed import DISPUTED_GREY, Dispute, dispute_fills, stripe_parts
 from worldmap.earth import Fill, Regions
 from worldmap.frame import DPI, MapFrame
+from worldmap.labels.curved import CURVED_HALO_PX, WHITE_HALO, CurvedLabel
 from worldmap.labels.label import Label
 from worldmap.labels.placement import Placement, leader_ends
-from worldmap.labels.curved import CURVED_HALO_PX, WHITE_HALO, CurvedLabel
 from worldmap.labels.water import river_width
 
 BORDER, STATE_LINE = "#3a3a3a", "#7d7d7d"
@@ -128,6 +129,7 @@ def draw_states(ax: Axes, states_projected: gpd.GeoDataFrame, disputed: bool = F
 @dataclass
 class Lakes:
     """The drawn lakes (drawable_lakes)."""
+
     shapes: gpd.GeoDataFrame  # projected, one row per lake
 
     @cached_property
@@ -139,7 +141,7 @@ class Lakes:
 def drawable_lakes(frame: MapFrame) -> Lakes:
     """The lakes, projected, that cover at least LAKE_MIN_IN2 of the poster in the frame."""
     lakes = frame.project(load_lakes())
-    return Lakes(lakes[lakes.area / frame.units_per_in ** 2 >= LAKE_MIN_IN2])
+    return Lakes(lakes[lakes.area / frame.units_per_in**2 >= LAKE_MIN_IN2])
 
 
 def draw_lakes(ax: Axes, lakes: Lakes) -> None:
@@ -179,8 +181,7 @@ def draw_labels(ax: Axes, placement: Placement, frame: MapFrame) -> None:
     """Each country label's glyphs at its placed position and size, and leader lines and dots for 'out' labels."""
     end_x, end_y = leader_ends(placement)
     for i, label in placement.each(Label):
-        ax.add_patch(glyph_patch(label.glyphs, placement.size[i] / label.size, placement.x[i], placement.y[i], frame,
-                                 fc=label.color, zorder=LABEL_ZORDER, path_effects=HALO))
+        ax.add_patch(glyph_patch(label.glyphs, placement.size[i] / label.size, placement.x[i], placement.y[i], frame, fc=label.color, zorder=LABEL_ZORDER, path_effects=HALO))
         if placement.out[i]:
             x0, y0 = frame.px_to_map(placement.anchor_x[i], placement.anchor_y[i])
             x1, y1 = frame.px_to_map(end_x[i], end_y[i])
@@ -194,5 +195,4 @@ def draw_curved_labels(ax: Axes, placement: Placement, frame: MapFrame) -> None:
     for i, label in placement.each(CurvedLabel):
         style = label.style
         halo = [pe.withStroke(linewidth=CURVED_HALO_PX * 72 / DPI, foreground=style.halo)]
-        ax.add_patch(glyph_patch(label.glyphs, placement.size[i] / label.size, placement.x[i], placement.y[i], frame,
-                                 fc=style.text, zorder=LABEL_ZORDER - 0.1, path_effects=halo))
+        ax.add_patch(glyph_patch(label.glyphs, placement.size[i] / label.size, placement.x[i], placement.y[i], frame, fc=style.text, zorder=LABEL_ZORDER - 0.1, path_effects=halo))

@@ -6,10 +6,10 @@ import shapely
 from test_placement import country_label, crossing_water_labels, mid_atlantic_px, of_kind, water_label
 
 from worldmap.frame import make_frame
+from worldmap.labels.curved import CurvedLabel
 from worldmap.labels.label import Label
 from worldmap.labels.placement import Placement, clashes, overhang
 from worldmap.labels.priority import UNLABELED, Outcome, Unplaced, check_step, place_by_priority, ranks_by_quantile, saturated, steps
-from worldmap.labels.curved import CurvedLabel
 from worldmap.labels.water import WATER_MIN_PT
 
 
@@ -76,8 +76,7 @@ def test_smaller_of_a_clashing_pair_is_skipped() -> None:
 
 def test_country_can_lose_to_a_bigger_sea() -> None:
     sea, frame = boxed_in()
-    p = place_by_priority([atlantis(1), sized(sea, 1e6)], frame, ["countries", "seas"],
-                          rank=lambda kinds, sizes: np.array([3, 1])).placement  # the sea two ranks up: fixed
+    p = place_by_priority([atlantis(1), sized(sea, 1e6)], frame, ["countries", "seas"], rank=lambda kinds, sizes: np.array([3, 1])).placement  # the sea two ranks up: fixed
     assert of_kind(p, Label) == [] and [w.text for w in of_kind(p, CurvedLabel)] == ["Sea"]
 
 
@@ -175,6 +174,7 @@ def test_check_step_names_the_smaller_label_at_a_water_label_s_anchor() -> None:
 
 # The saturation cut.
 
+
 def unfit(n: int, kind: str = "seas") -> list[Unplaced]:
     return [Unplaced(f"Bay {k}", kind, 1.0) for k in range(n)]
 
@@ -213,8 +213,7 @@ def test_cut_rolls_back_what_the_group_nudged() -> None:
     nudged = place_by_priority([atlantis(1), sized(sea_on(atlantis(1)), 1)], FRAME, ["countries", "seas"], rank=lambda k, s: np.array([1, 2])).placement
     alone = place_by_priority([atlantis(1)], FRAME, ["countries"], rank=lambda k, s: np.array([1])).placement
     assert (nudged.x[0], nudged.y[0]) != (alone.x[0], alone.y[0])  # the sea moves Atlantis, so the test means something
-    p = place_by_priority([atlantis(1), sized(sea_on(atlantis(1)), 1), *unfit(5)], FRAME, ["countries", "seas"],
-                          rank=lambda k, s: np.array([1, 2] + [2] * 5)).placement
+    p = place_by_priority([atlantis(1), sized(sea_on(atlantis(1)), 1), *unfit(5)], FRAME, ["countries", "seas"], rank=lambda k, s: np.array([1, 2] + [2] * 5)).placement
     assert p.n == 1 and (p.x[0], p.y[0], p.size[0]) == (alone.x[0], alone.y[0], alone.size[0])
 
 
@@ -249,8 +248,7 @@ def test_progress_counts_the_steps_a_cut_skips() -> None:
 def test_entries_keep_the_callers_order() -> None:
     """Unplaced entries may come anywhere: kept and ranks follow the entries as given."""
     sea, _ = crossing_water_labels(FRAME)
-    out = place_by_priority([Unplaced("Cove", "seas", 1.0), sized(sea, 100), Unplaced("Creek", "rivers", 1.0)], FRAME, ["seas", "rivers"],
-                            rank=lambda k, s: np.array([2, 1, 3]))
+    out = place_by_priority([Unplaced("Cove", "seas", 1.0), sized(sea, 100), Unplaced("Creek", "rivers", 1.0)], FRAME, ["seas", "rivers"], rank=lambda k, s: np.array([2, 1, 3]))
     assert list(out.kept) == [False, True, False] and list(out.ranks) == [2, 1, 3]
     assert list(out.ranks_of([out.entries[2], out.entries[0]])) == [3, 2] and len(out.ranks_of([])) == 0
     assert [w.text for w in of_kind(out.placement, CurvedLabel)] == ["Sea"]
