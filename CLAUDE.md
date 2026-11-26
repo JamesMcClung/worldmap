@@ -2,12 +2,14 @@
 
 The `worldmap` package (console script `make_map`, also `python -m worldmap`) renders a poster-sized political world map PNG (country borders, state/province borders for
 large countries, non-overlapping country labels), or with `--type topographic` a hill-shaded height map. Output default: `worldmap.png`, an RGBA PNG 7200 x 3693 px (36 in wide at 200 dpi), transparent outside the globe outline.
+An output ending `.svg` (`cli.is_svg`, political only; `cli.save`) is matplotlib's SVG, all vector (~23 MB for the world), pins as
+flat circles (`pins.draw_pin_circles`, `PIN_CIRCLES`); `svg.hashsalt` and no date keep it byte-identical run to run. `--pick` and `--type topographic` refuse it.
 
 ## Setup and run
 
 ```
 python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'   # deps in pyproject.toml; [dev] adds pytest, pytest-xdist, mypy
-.venv/bin/make_map [out.png] [--type political|topographic] [--ocean] [--recolor] [--color colorblind|earth] [--label LIST] [--disputed] [--rivers] [--pins FILE] [--pin-size IN] [--size IN] [--dpi DPI] [--crop NAME[,NAME...]|W:E,S:N|LON,LAT/W,H] [--pick FILE]
+.venv/bin/make_map [out.png|out.svg] [--type political|topographic] [--ocean] [--recolor] [--color colorblind|earth] [--label LIST] [--disputed] [--rivers] [--pins FILE] [--pin-size IN] [--size IN] [--dpi DPI] [--crop NAME[,NAME...]|W:E,S:N|LON,LAT/W,H] [--pick FILE]
 ```
 
 `--size` sets the poster's long side in inches (`MapFrame.size_in`, None without it: `default_size_in`, 36 for the world): text sizes are
