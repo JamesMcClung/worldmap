@@ -73,6 +73,26 @@ def test_type_flag() -> None:
     assert e.value.code == 2
 
 
+def test_format_flag(capsys: pytest.CaptureFixture[str]) -> None:
+    def out_and_format(*argv: str) -> tuple[str, str]:
+        args = parse_args(list(argv))
+        return args.out, args.format
+
+    assert out_and_format() == ("worldmap.png", "png")
+    assert out_and_format("--format", "svg") == ("worldmap.svg", "svg")
+    assert out_and_format("--format", "svg", "--pins", "p.txt") == ("worldmap_pins.svg", "svg")
+    assert out_and_format("MAP.SVG") == ("MAP.SVG", "svg")
+    assert out_and_format("map", "--format", "svg") == ("map", "svg")
+    assert out_and_format("map.svg", "--format", "svg") == ("map.svg", "svg")
+    for argv, message in [(["map.png", "--format", "svg"], "ends in .png"),
+                          (["--format", "svg", "--type", "topographic"], "political only"),
+                          (["map.svg", "--type", "topographic"], "political only"),
+                          (["--format", "svg", "--pick", "p.txt"], "--pick")]:
+        with pytest.raises(SystemExit) as e:
+            parse_args(argv)
+        assert e.value.code == 2 and message in capsys.readouterr().err
+
+
 def test_pick_uses_crop_frame(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     from PIL import Image
 

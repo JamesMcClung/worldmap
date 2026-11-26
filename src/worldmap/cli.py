@@ -1,6 +1,6 @@
 """Render a poster-sized world map (country + large-country state borders, non-overlapping labels).
 
-Data: Natural Earth 10m (public domain), downloaded into .cache/ on first use. Run: make_map [out.png]
+Data: Natural Earth 10m (public domain), downloaded into .cache/ on first use. Run: make_map [out.png] [--format png|svg]
 Pins: --pick pins.txt (click the rendered map to add pins) and --pins pins.txt [--pin-size inches] (draw them).
 """
 
@@ -16,6 +16,7 @@ import geopandas as gpd
 import matplotlib
 import shapely
 from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 from shapely.geometry import Point
 
 from worldmap.colorbars import Corner, draw_colorbar, label_outline
@@ -35,13 +36,14 @@ from worldmap.labels.priority import Outcome, Unplaced, place_by_priority
 from worldmap.labels.regions import child_regions
 from worldmap.labels.report import progress, summary
 from worldmap.labels.water import WATER_KINDS, Kind, load_water_bodies, make_water_labels, river_ranks
-from worldmap.pins import draw_pins, fit_to_render, load_pins, pick_pins, pin_sprite
+from worldmap.pins import draw_pin_circles, draw_pins, fit_to_render, load_pins, pick_pins, pin_sprite
 from worldmap.render import draw_borders, draw_countries, draw_labels, draw_lakes, drawable_lakes, draw_rivers, draw_states, draw_stripes, draw_curved_labels, Lakes, new_figure, subtract_lakes
 from worldmap.rivers import river_flow
 from worldmap.topographic import ICE, ICE_CONTOURS, LAND, LAND_CONTOURS, SEA, SEA_CONTOURS, draw_topography
 
 
-DEFAULT_OUT, DEFAULT_PINS_OUT = "worldmap.png", "worldmap_pins.png"
+DEFAULT_OUT, DEFAULT_PINS_OUT = "worldmap", "worldmap_pins"  # + "." + the format
+FORMATS = ("png", "svg")
 DEFAULT_PIN_SIZE_IN = 0.24
 
 
@@ -70,7 +72,11 @@ def label_kinds(s: str) -> list[str]:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(prog="make_map", description=(__doc__ or "").split("\n")[0])
-    p.add_argument("out", nargs="?", help=f"output PNG (default {DEFAULT_OUT}, or {DEFAULT_PINS_OUT} with --pins)")
+    p.add_argument("out", nargs="?", help=f"output file (default {DEFAULT_OUT}.png, or {DEFAULT_PINS_OUT}.png with --pins; "
+                                          f"the extension follows --format)")
+    p.add_argument("--format", choices=FORMATS,
+                   help="output format (default: from the output's extension, else png); svg is vector, for --type "
+                        "political only, with pins drawn as flat circles, and ignores --dpi")
     p.add_argument("--type", choices=["political", "topographic"], default="political",
                    help="political = countries, borders and labels (default); topographic = heights, hill shading and "
                         "contours, with no borders, and only water and landform labels if --label asks for them (--color, --disputed, "
@@ -105,7 +111,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         "lon,lat/width,height (sizes along the ground, in degrees, or with km or mi, e.g. 2,46/1000km,800km)")
     p.add_argument("--pick", metavar="FILE",
                    help="click the rendered map to add pins; they are appended to FILE when the window closes")
-    return p.parse_args(argv)
+    args = p.parse_args(argv)
+    ext = os.path.splitext(args.out or "")[1].lower().lstrip(".")
+    if args.format is None:
+        args.format = ext if ext in FORMATS else "png"
+    elif ext in FORMATS and ext != args.format:
+        p.error(f"--format {args.format}, but {args.out} ends in .{ext}")
+    if args.out is None:
+        args.out = f"{DEFAULT_PINS_OUT if args.pins else DEFAULT_OUT}.{args.format}"
+    if args.format == "svg" and args.pick:
+        p.error("--pick shows the rendered PNG: drop --format svg")
+    if args.format == "svg" and args.type == "topographic":
+        p.error("--format svg is for --type political only: a topographic map is a raster")
+    return args
 
 
 def draws_rivers(args: argparse.Namespace) -> bool:
@@ -158,7 +176,7 @@ def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
     if not args.pick:  # --pick needs an interactive backend
         matplotlib.use("Agg")
-    out = args.out or (DEFAULT_PINS_OUT if args.pins else DEFAULT_OUT)
+    out = args.out
     if args.pick and not os.path.exists(out):
         sys.exit("--pick shows the rendered map: run make_map first to create %s" % out)
 
@@ -210,9 +228,8 @@ def main(argv: list[str] | None = None) -> None:
     draw_labels(ax, placement, frame)
     draw_curved_labels(ax, placement, frame)
 
-    add_pins(ax, frame, args)
-    # Layout above is measured at DPI; saving at another resolution only rescales it.
-    fig.savefig(out, dpi=args.dpi, transparent=True)
+    add_pins(ax, frame, args, vector=args.format == "svg")
+    save(fig, out, args.format, args.dpi)
     print("wrote", out, "labels:", int((~placement.curved).sum()), "leaders:", int(placement.out.sum()), "curved labels:", int(placement.curved.sum()))
 
 
@@ -262,11 +279,25 @@ def place(entries: Sequence[Placeable | Unplaced], frame: MapFrame, order: list[
     return outcome
 
 
-def add_pins(ax: Axes, frame: MapFrame, args: argparse.Namespace) -> None:
-    """The --pins, if any, above everything else."""
+def save(fig: Figure, out: str, fmt: str, dpi: float) -> None:
+    """Save `fig` as a PNG at `dpi`, or an SVG (`fmt`). The layout is measured at DPI: saving at another resolution
+    only rescales it. An SVG leaves out the date and takes its ids from a fixed salt, so a render is the same file
+    every time."""
+    if fmt == "png":
+        fig.savefig(out, format=fmt, dpi=dpi, transparent=True)
+        return
+    with matplotlib.rc_context({"svg.hashsalt": "worldmap"}):
+        fig.savefig(out, format=fmt, transparent=True, metadata={"Date": None})
+
+
+def add_pins(ax: Axes, frame: MapFrame, args: argparse.Namespace, vector: bool = False) -> None:
+    """The --pins, if any, above everything else: sprites, or flat circles for `vector` output."""
     if args.pins:
         pins = load_pins(args.pins)
-        draw_pins(ax, frame, pins, pin_sprite(args.pin_size * args.dpi), args.pin_size)
+        if vector:
+            draw_pin_circles(ax, frame, pins, args.pin_size)
+        else:
+            draw_pins(ax, frame, pins, pin_sprite(args.pin_size * args.dpi), args.pin_size)
         ax.set_xlim(frame.xmin, frame.xmax)
         ax.set_ylim(frame.ymin, frame.ymax)
         print("pins:", len(pins))
@@ -295,7 +326,7 @@ def draw_topographic(args: argparse.Namespace, out: str, frame: MapFrame) -> Non
     ax.set_xlim(frame.xmin, frame.xmax)
     ax.set_ylim(frame.ymin, frame.ymax)
     add_pins(ax, frame, args)
-    fig.savefig(out, dpi=args.dpi, transparent=True)
+    save(fig, out, args.format, args.dpi)
     print("wrote", out, "in %.1f s" % (time.perf_counter() - start))
 
 
