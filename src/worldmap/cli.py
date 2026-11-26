@@ -74,6 +74,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--format", choices=FORMATS, help="output format (default: from the output's extension, else png); svg is vector, for --type " "political only, with pins drawn as flat circles, and ignores --dpi")
     p.add_argument("--type", choices=["political", "topographic"], default="political", help="political = countries, borders and labels (default); topographic = heights, hill shading and " "contours, with no borders, and only water and landform labels if --label asks for them (--color, --disputed, " "--recolor and --label countries, territories are ignored)")
     p.add_argument("--ocean", action="store_true", help="with --type topographic, colour the sea by depth (ignored with --type political)")
+    p.add_argument("--ice", action="store_true", help="with --type topographic, show the ice sheets and glaciers on their own scale, at the top of the ice; without, " "Greenland and Antarctica are the rock under their ice, coloured like any land, and the ice shelves are sea (ignored " "with --type political)")
     p.add_argument("--recolor", action="store_true", help="rebuild the cached graph colouring")
     p.add_argument("--color", choices=["colorblind", "earth"], default="colorblind", help="how countries are filled: colorblind = distinct colours that red/green colour-blind viewers " "can tell apart (default); earth = land cover as seen from space (sandy desert -> light green)")
     p.add_argument("--label", metavar="LIST", type=label_kinds, default=["countries"], help="what to label, comma-separated, or none: countries (default); territories = dependencies and " "outlying regions (Alaska, Greenland, Kaliningrad...) with their parent country; oceans, seas " "(and gulfs, bays...), lakes, straits (and channels), rivers (draws them too); water = all of these; " "mountains, uplands (plateaus), deserts, lowlands (plains, basins, valleys); land = all of these")
@@ -278,20 +279,23 @@ def add_pins(ax: Axes, frame: MapFrame, args: argparse.Namespace, vector: bool =
 
 
 def draw_topographic(args: argparse.Namespace, out: str, frame: MapFrame) -> None:
-    """--type topographic: heights (and sea depths with --ocean), colour bars in the corners, pins; nothing political."""
+    """--type topographic: heights (and sea depths with --ocean, ice with --ice), colour bars in the corners, pins;
+    nothing political."""
     start = time.perf_counter()
     fig, ax = new_figure(frame)
     lakes = drawable_lakes(frame)
-    draw_topography(ax, frame, args.dpi, args.ocean, lakes)
+    draw_topography(ax, frame, args.dpi, args.ocean, args.ice, lakes)
     draw_colorbar(ax, frame, "br", LAND, "Height", LAND_CONTOURS)
     if args.ocean:
         draw_colorbar(ax, frame, "tr", SEA, "Depth", SEA_CONTOURS)
-    draw_colorbar(ax, frame, "bl", ICE, "Ice", ICE_CONTOURS)
+    if args.ice:
+        draw_colorbar(ax, frame, "bl", ICE, "Ice", ICE_CONTOURS)
     bodies, water = water_labels(kinds_in(args.label, WATER_KINDS), lakes, frame)
     outcome = None
     if area_kinds(args.label):  # without water or land kinds no label stage runs
         # A crop's bars sit over the map: keep the labels off them.
-        bars: list[Corner] = ["br", "tr", "bl"] if args.ocean else ["br", "bl"]
+        shown: dict[Corner, bool] = {"br": True, "tr": args.ocean, "bl": args.ice}
+        bars = [c for c, on in shown.items() if on]
         room = frame if frame.globe else dataclasses.replace(frame, outline=label_outline(frame, bars))
         outcome = place([*water, *land_labels(kinds_in(args.label, land.LAND_KINDS), frame)], room, args.label)
         draw_curved_labels(ax, outcome.placement, frame)

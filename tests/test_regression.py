@@ -83,16 +83,16 @@ def test_version_mismatch_skips(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
 
 
 def test_render_topographic_crop(tmp_path: Path) -> None:
-    check_fingerprint("topographic_crop", render(tmp_path, "--type", "topographic", "--ocean", "--crop", "5:17,40:49"))
+    check_fingerprint("topographic_crop", render(tmp_path, "--type", "topographic", "--ocean", "--ice", "--crop", "5:17,40:49"))
 
 
 @pytest.mark.xdist_group("topographic")  # 3.3 GB each, one at a time
 def test_render_topographic_ocean(tmp_path: Path) -> None:
-    check_fingerprint("topographic_ocean", render(tmp_path, "--type", "topographic", "--ocean"))
+    check_fingerprint("topographic_ocean", render(tmp_path, "--type", "topographic", "--ocean", "--ice"))
 
 
 @pytest.mark.xdist_group("topographic")  # 3.3 GB each, one at a time
-def test_render_topographic_water(tmp_path: Path) -> None:
+def test_render_topographic_water(tmp_path: Path) -> None:  # without --ice: the bed
     png = render(tmp_path, "--type", "topographic", "--label", "water")
     check_fingerprint("topographic_water", png)
     im = np.asarray(Image.open(png))
@@ -104,3 +104,4 @@ def test_render_topographic_water(tmp_path: Path) -> None:
 def test_environment_includes_topographic_data() -> None:
     assert {"etopo", "glaciers", "ice_shelves", "land", "rasterio", "gdal"} <= environment("topographic_ocean").keys()
     assert "etopo" not in environment("default")
+    assert "etopo_bed" in environment("topographic_water") and "etopo_bed" not in environment("topographic_ocean")

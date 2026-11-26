@@ -1,4 +1,5 @@
-"""--type topographic: heights and depths from ETOPO 2022, hill-shaded, with contours, ice and lakes."""
+"""--type topographic: heights and depths from ETOPO 2022, hill-shaded, with contours and lakes; the ice sheets with
+--ice, else the rock under them."""
 
 import json
 import os
@@ -17,6 +18,7 @@ from worldmap.colorspace import lin_to_srgb, oklab_to_linear_rgb, srgb_to_oklch
 from worldmap.data import (
     CACHE,
     ETOPO,
+    ETOPO_BED,
     etopo15_tile,
     fetch,
     fetch_all,
@@ -113,17 +115,24 @@ class Grid:
         return self.z.shape[1] * self.step >= 360 - 1e-9
 
 
-def elevation_grid() -> Grid:
-    """ETOPO reduced to GRID_STEP_DEG cells (the mean of each block), cached in .cache/etopo_3min.npy."""
-    cache, key_file = CACHE / "etopo_3min.npy", CACHE / "etopo_3min.json"
-    key = {"etopo": os.path.getsize(fetch(ETOPO)), "rule": ELEVATION_RULE}
+def etopo(ice: bool) -> str:
+    """The 60" file: the top of the ice, or without `ice` the bed."""
+    return ETOPO if ice else ETOPO_BED
+
+
+def elevation_grid(ice: bool) -> Grid:
+    """ETOPO (etopo(ice)) reduced to GRID_STEP_DEG cells (the mean of each block), cached in .cache/etopo_3min.npy
+    (the bed's in etopo_bed_3min.npy)."""
+    stem = "etopo_3min" if ice else "etopo_bed_3min"
+    cache, key_file = CACHE / f"{stem}.npy", CACHE / f"{stem}.json"
+    key = {"etopo": os.path.getsize(fetch(etopo(ice))), "rule": ELEVATION_RULE}
     if cache.exists() and key_file.exists() and json.loads(key_file.read_text()) == key:
         return Grid(np.load(cache), GRID_STEP_DEG)
     import rasterio
     from rasterio.enums import Resampling
 
     rows, cols = round(180 / GRID_STEP_DEG), round(360 / GRID_STEP_DEG)
-    with rasterio.open(fetch(ETOPO)) as src:
+    with rasterio.open(fetch(etopo(ice))) as src:
         z = src.read(1, out_shape=(rows, cols), resampling=Resampling.average)
     z = np.round(z).astype(np.int16)
     np.save(cache, z)
@@ -131,7 +140,7 @@ def elevation_grid() -> Grid:
     return Grid(z, GRID_STEP_DEG)
 
 
-def elevation_window(lon: np.ndarray, lat: np.ndarray, step: float = FINE_STEP_DEG) -> Grid | None:
+def elevation_window(lon: np.ndarray, lat: np.ndarray, step: float = FINE_STEP_DEG, *, ice: bool) -> Grid | None:
     """ETOPO at FINE_STEP_DEG (the 60" file) or TILE_STEP_DEG (15" tiles) over the lon/lat extent of the points (a
     crop's pixels) plus FINE_PAD_DEG: finer than the cached 3' grid, for a crop. None if the user declines to
     download the tiles it needs."""
@@ -151,22 +160,22 @@ def elevation_window(lon: np.ndarray, lat: np.ndarray, step: float = FINE_STEP_D
         n = min(left, total_cols - c)
         runs.append((c, n))
         c, left = 0, left - n
-    z = read_etopo(row0, row1, runs) if step == FINE_STEP_DEG else read_tiles(row0, row1, runs, per_deg)
+    z = read_etopo(row0, row1, runs, ice) if step == FINE_STEP_DEG else read_tiles(row0, row1, runs, per_deg, ice)
     if z is not None and step == TILE_STEP_DEG and (len(runs) > 1 or cols == total_cols):
         print("note: ETOPO's 15\" heights join their sources at +-180, which can show as a line in the shading")
     return None if z is None else Grid(z, step, -180 + col0 / per_deg, 90 - row0 / per_deg)
 
 
-def read_etopo(row0: int, row1: int, runs: list[tuple[int, int]]) -> np.ndarray:
-    """Rows row0..row1 of the 60" file, for each (first column, count) run, side by side, as int16."""
+def read_etopo(row0: int, row1: int, runs: list[tuple[int, int]], ice: bool) -> np.ndarray:
+    """Rows row0..row1 of the 60" file (etopo(ice)), for each (first column, count) run, side by side, as int16."""
     import rasterio
     from rasterio.windows import Window
 
-    with rasterio.open(fetch(ETOPO)) as src:
+    with rasterio.open(fetch(etopo(ice))) as src:
         return np.hstack([np.round(src.read(1, window=Window(c, row0, n, row1 - row0))).astype(np.int16) for c, n in runs])
 
 
-def read_tiles(row0: int, row1: int, runs: list[tuple[int, int]], per_deg: int) -> np.ndarray | None:
+def read_tiles(row0: int, row1: int, runs: list[tuple[int, int]], per_deg: int, ice: bool) -> np.ndarray | None:
     """Like read_etopo, from the 15" tiles (rows and columns counted over the whole globe), downloading any it
     needs once the user agrees; None if they decline."""
     import rasterio
@@ -179,7 +188,7 @@ def read_tiles(row0: int, row1: int, runs: list[tuple[int, int]], per_deg: int) 
         return range(c // t, (c + n - 1) // t + 1)
 
     def name(tj: int, ti: int) -> str:
-        return etopo15_tile(90 - TILE_DEG * tj, -180 + TILE_DEG * ti)
+        return etopo15_tile(90 - TILE_DEG * tj, -180 + TILE_DEG * ti, ice)
 
     names = list(dict.fromkeys(name(tj, ti) for c, n in runs for tj in tile_rows for ti in tile_cols(c, n)))
     paths = fetch_all(names, optional=True)
@@ -358,10 +367,10 @@ def polygon_mask(projected: gpd.GeoDataFrame, frame: MapFrame, pg: PosterGrid) -
     return rasterize(shapes, out_shape=(rows, cols), transform=transform, fill=0, default_value=1, dtype="uint8").astype(bool)
 
 
-def coastline(land: gpd.GeoDataFrame, ice: gpd.GeoDataFrame) -> list[np.ndarray]:
-    """The outline of the (projected) land and ice together, minus the slivers the union leaves where ice shelves
-    meet land."""
-    union = shapely.union_all(np.concatenate([land.geometry.values, ice.geometry.values]))
+def coastline(*layers: gpd.GeoDataFrame) -> list[np.ndarray]:
+    """The outline of the (projected) layers together (land, and ice), minus the slivers the union leaves where ice
+    shelves meet land."""
+    union = shapely.union_all(np.concatenate([layer.geometry.values for layer in layers]))
     rings = []
     for part in shapely.get_parts(union):
         if part.area >= SLIVER_M2:
@@ -386,37 +395,39 @@ def cell_px(step: float, frame: MapFrame, pg: PosterGrid) -> float:
     return step * METRES_PER_DEG / (frame.width / len(pg.x))
 
 
-def elevation_for(frame: MapFrame, pg: PosterGrid) -> Grid:
+def elevation_for(frame: MapFrame, pg: PosterGrid, ice: bool) -> Grid:
     """The cached 3' grid, or for a crop where its cells would span over FINE_ABOVE_PX pixels, ETOPO's 1' cells over
     what the crop shows, or its 15" tiles where 1' cells would too (unless the user declines the download)."""
-    grid = elevation_grid()
+    grid = elevation_grid(ice)
     if frame.globe or cell_px(grid.step, frame, pg) <= FINE_ABOVE_PX:
         return grid
     rows, cols = pg.inside.shape
     r, c = np.r_[0:rows:8, rows - 1], np.r_[0:cols:8, cols - 1]  # every 8th pixel and the far edges
     inside = pg.inside[np.ix_(r, c)]
     lon, lat = pg.lon[np.ix_(r, c)][inside], pg.lat[np.ix_(r, c)][inside]
-    if cell_px(FINE_STEP_DEG, frame, pg) > FINE_ABOVE_PX and (tiles := elevation_window(lon, lat, TILE_STEP_DEG)):
+    if cell_px(FINE_STEP_DEG, frame, pg) > FINE_ABOVE_PX and (tiles := elevation_window(lon, lat, TILE_STEP_DEG, ice=ice)):
         return tiles
-    fine = elevation_window(lon, lat, FINE_STEP_DEG)
+    fine = elevation_window(lon, lat, FINE_STEP_DEG, ice=ice)
     assert fine is not None  # the 60" file is fetched, not optional
     return fine
 
 
-def draw_topography(ax: Axes, frame: MapFrame, dpi: float, ocean: bool, lakes: Lakes) -> None:
+def draw_topography(ax: Axes, frame: MapFrame, dpi: float, ocean: bool, ice: bool, lakes: Lakes) -> None:
     """Everything on the globe for --type topographic: the coloured, hill-shaded heights (sea depths with `ocean`),
-    contours, the coastline and the lakes (render.drawable_lakes)."""
+    contours, the coastline and the lakes (render.drawable_lakes). With `ice`, the top of the ice sheets and glaciers
+    on ICE; without, the rock under the ice sheets, on LAND like any land, and the ice shelves are sea."""
     pg = poster_grid(frame, dpi)
-    grid = elevation_for(frame, pg)
+    grid = elevation_for(frame, pg, ice)
     z = sample(grid, pg.lon, pg.lat)
     z[~pg.inside] = 0
     z = soften(z, cell_px(grid.step, frame, pg))
     pg.lon = pg.lat = np.empty((0, 0), np.float32)  # done with them; ~200 MB at 200 dpi
-    land_shapes, ice_shapes = frame.project(load_land(), dissolve=True), frame.project(load_ice(), dissolve=True)
-    ice = polygon_mask(ice_shapes, frame, pg) & pg.inside  # ice wins: the shelves
-    land = polygon_mask(land_shapes, frame, pg) & pg.inside & ~ice
-    sea = ~land & ~ice & pg.inside
-    shaded = shade(colorize(z, land, ice, ocean), z, frame.width / len(pg.x), sea, ocean)
+    land_shapes = frame.project(load_land(), dissolve=True)
+    shapes = [land_shapes, frame.project(load_ice(), dissolve=True)] if ice else [land_shapes]
+    on_ice = polygon_mask(shapes[1], frame, pg) & pg.inside if ice else np.zeros_like(pg.inside)  # ice wins: the shelves
+    land = polygon_mask(land_shapes, frame, pg) & pg.inside & ~on_ice
+    sea = ~land & ~on_ice & pg.inside
+    shaded = shade(colorize(z, land, on_ice, ocean), z, frame.width / len(pg.x), sea, ocean)
     rgba = np.empty(z.shape + (4,), np.float32)  # allocated after shading, so the two peaks don't add up
     rgba[..., :3] = shaded
     del shaded
@@ -431,8 +442,9 @@ def draw_topography(ax: Axes, frame: MapFrame, dpi: float, ocean: bool, lakes: L
         ax.add_collection(LineCollection(lines, colors=c.color, linewidths=CONTOUR_WIDTH, alpha=c.alpha, linestyles=c.style, zorder=Z_COUNTRY + 0.1))
 
     contours(land, np.arange(LAND_CONTOURS.step, z.max() + 1, LAND_CONTOURS.step), LAND_CONTOURS)
-    contours(ice, np.arange(ICE_CONTOURS.step, z.max() + 1, ICE_CONTOURS.step), ICE_CONTOURS)
+    if ice:
+        contours(on_ice, np.arange(ICE_CONTOURS.step, z.max() + 1, ICE_CONTOURS.step), ICE_CONTOURS)
     if ocean:
         contours(sea, -np.arange(SEA_CONTOURS.step, -z.min() + 1, SEA_CONTOURS.step)[::-1], SEA_CONTOURS)
-    ax.add_collection(LineCollection(coastline(land_shapes, ice_shapes), colors=BORDER, linewidths=BORDER_WIDTH, zorder=Z_BORDERS))
+    ax.add_collection(LineCollection(coastline(*shapes), colors=BORDER, linewidths=BORDER_WIDTH, zorder=Z_BORDERS))
     draw_lakes(ax, lakes)

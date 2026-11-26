@@ -89,6 +89,7 @@ def environment(mode: str = "default") -> dict[str, str]:
         **({"land": str(os.path.getsize(fetch(LAND_OUTLINE)))} if "water" in mode else {}),  # where the rivers flow out
         **({"regions": str(os.path.getsize(fetch(REGIONS)))} if mode == "land" else {}),  # the landform labels
         **(topographic_environment() if mode.startswith("topographic") else {}),
+        **(bed_environment() if mode == "topographic_water" else {}),  # the one render without --ice
         **(alps_tiles() if mode == "topographic_crop" else {}),
     }
 
@@ -100,6 +101,13 @@ def topographic_environment() -> dict[str, str]:
     from worldmap.data import ETOPO, GLACIERS, ICE_SHELVES, LAND_OUTLINE, fetch
 
     return {"etopo": str(os.path.getsize(fetch(ETOPO))), "glaciers": str(os.path.getsize(fetch(GLACIERS))), "ice_shelves": str(os.path.getsize(fetch(ICE_SHELVES))), "land": str(os.path.getsize(fetch(LAND_OUTLINE))), "rasterio": rasterio.__version__, "gdal": rasterio.__gdal_version__}
+
+
+def bed_environment() -> dict[str, str]:
+    """ETOPO's bed, which --type topographic reads without --ice."""
+    from worldmap.data import ETOPO_BED, fetch
+
+    return {"etopo_bed": str(os.path.getsize(fetch(ETOPO_BED)))}
 
 
 def alps_tiles() -> dict[str, str]:
