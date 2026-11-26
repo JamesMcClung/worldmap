@@ -9,7 +9,7 @@ is matplotlib's SVG, political only, all vector (~23 MB for the world), pins as 
 ## Setup and run
 
 ```
-python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'   # deps in pyproject.toml; [dev] adds pytest, pytest-xdist, mypy
+python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'   # deps in pyproject.toml; [dev] adds pytest, pytest-xdist, mypy, black, isort
 .venv/bin/make_map [out.png] [--format png|svg] [--type political|topographic] [--ocean] [--recolor] [--color colorblind|earth] [--label LIST] [--disputed] [--rivers] [--pins FILE] [--pin-size IN] [--size IN] [--dpi DPI] [--crop NAME[,NAME...]|W:E,S:N|LON,LAT/W,H] [--pick FILE]
 ```
 
@@ -57,6 +57,10 @@ environment, so it skips where they aren't downloaded); `crop_pacific_water`: `-
 - The crop tests build `crop.candidates` once per set of kinds (`test_crop.candidates`, also patched into `cli`).
 
 `.venv/bin/mypy src` should report no issues (default mode, missing stubs ignored).
+
+Formatting: `.venv/bin/isort src tests && .venv/bin/black src tests` before every commit (config in `pyproject.toml`, matching
+the user's VS Code format-on-save: black `line-length = 1000`, so lines are never wrapped for you, and isort `profile = "black"`).
+`black --check` / `isort --check` should pass.
 
 ## Module layout (`src/worldmap/`)
 
