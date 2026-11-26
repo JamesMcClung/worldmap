@@ -3,7 +3,7 @@ import shapely
 import shapely.affinity
 from shapely.geometry import Point
 
-from worldmap.labels.curved import fit_curve
+from worldmap.labels.curved import fit_curve, kinds_in
 
 
 def test_fit_curve_horizontal_and_reading_direction() -> None:
@@ -59,3 +59,7 @@ def test_fit_curve_steep_and_bent_never_tips_past_vertical() -> None:
     c = fit_curve(arch, 90)
     assert (np.diff(c[:, 0]) >= -1e-9).all()  # every step still goes right: no glyph leans upside down
 
+
+def test_kinds_in() -> None:
+    assert kinds_in({"seas", "countries", "deserts"}, ("oceans", "seas")) == {"seas"}
+    assert kinds_in({"countries", "water"}, ("oceans", "seas")) == set()

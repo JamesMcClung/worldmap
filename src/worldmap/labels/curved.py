@@ -1,7 +1,9 @@
 """Curved area labels: the curve a name follows along its feature (a sea, a mountain range...), and its glyphs bent
 along it. Bodies are in projected map units; labels are in poster pixels."""
 
+from collections.abc import Collection
 from dataclasses import dataclass, field
+from typing import TypeVar
 
 import numpy as np
 import shapely
@@ -24,6 +26,7 @@ SEA_FILL = 0.8  # a name fills this share of its curve, within its style's sizes
 CURVED_MIN_INSIDE = 0.35  # a curved label with less of its glyph boxes over its body than this is dropped
 CURVED_HALO_PX = 2.4  # halo width (poster px); glyph boxes are padded by half of it
 WHITE_HALO = (1, 1, 1, 0.55)  # for names on land: countries (render.HALO), rivers, landforms
+K = TypeVar("K", bound=str)
 
 
 @dataclass(frozen=True)
@@ -46,6 +49,11 @@ class Body:
     geom: Polygon | LineString  # the piece the label goes on (a river's line), in map units
     full_size: float  # km2 of the whole body, or km of the whole river, however much the frame shows: its priority
     style: Style  # its kind's
+
+
+def kinds_in(label: Collection[str], kinds: tuple[K, ...]) -> set[K]:
+    """Those of `kinds` (water.WATER_KINDS, land.LAND_KINDS) asked for in --label."""
+    return {k for k in kinds if k in label}
 
 
 def largest(geom: BaseGeometry) -> Polygon:
