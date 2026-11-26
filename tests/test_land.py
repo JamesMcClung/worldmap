@@ -3,7 +3,7 @@ import pytest
 from worldmap.crop import box_region, crop_frame, parse_box
 from worldmap.frame import MapFrame, make_frame
 from worldmap.labels.curved import Body, CurvedLabel
-from worldmap.labels.land import classify, kinds_from_labels, load_land_bodies, make_land_labels, text_of
+from worldmap.labels.land import classify, load_land_bodies, make_land_labels, text_of
 
 
 @pytest.fixture(scope="module")
@@ -20,11 +20,6 @@ def test_classify() -> None:
     assert classify("Range/mtn") == "mountains" and classify("Plateau") == "uplands" and classify("Desert") == "deserts"
     assert classify("Plain") == "lowlands" and classify("Gorge") == "lowlands" and classify("Depression") == "lowlands"
     assert classify("Island") is None and classify("Geoarea") is None and classify("Continent") is None
-
-
-def test_kinds_from_labels() -> None:
-    assert kinds_from_labels({"countries", "deserts"}) == {"deserts"}
-    assert kinds_from_labels({"seas", "water"}) == set()
 
 
 def test_text_of() -> None:

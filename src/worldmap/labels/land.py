@@ -1,7 +1,6 @@
 """Landform labels (--label mountains, uplands, deserts, lowlands, land): Natural Earth's land label areas, named
 along their long direction like the seas (curved.area_label). Bodies are in projected map units."""
 
-from collections.abc import Collection
 from typing import Literal
 
 import geopandas as gpd
@@ -38,11 +37,6 @@ JOIN_DEG = 1.0  # rows of one name this close (degrees) are one feature (split a
 def classify(featurecla: str) -> Kind | None:
     """The label kind of a Natural Earth region feature class, or None if it never gets a label."""
     return CLASSES.get(featurecla)
-
-
-def kinds_from_labels(label: Collection[str]) -> set[Kind]:
-    """The land kinds asked for in --label."""
-    return {k for k in LAND_KINDS if k in label}
 
 
 def text_of(name_en: object, name: str) -> str:

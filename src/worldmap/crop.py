@@ -366,7 +366,7 @@ def candidates(label: Collection[str], disputed: bool) -> list[Candidate]:
                 oceans.setdefault(b.text, []).append(b)
         found += [(text, "ocean", shapely.union_all([b.geom for b in halves]), (), halves[0].full_size) for text, halves in oceans.items()]
         found += [(b.text, WATER_KIND[b.kind], b.geom, (), b.full_size) for b in bodies if b.kind != "oceans"]
-    if land_kinds := land.kinds_from_labels(label):
+    if land_kinds := kinds_in(label, land.LAND_KINDS):
         found += [(b.text, LAND_KIND[b.kind], b.geom, (), b.full_size) for b in land.load_land_bodies(land_kinds, frame)]
     return [Candidate(text, kind, to_lonlat(g, frame), aliases, size) for text, kind, g, aliases, size in found]
 

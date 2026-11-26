@@ -203,7 +203,7 @@ def main(argv: list[str] | None = None) -> None:
     labels = make_labels(shown, frame, fill_of, children, "countries" in args.label, relabel, extra)
     decide_out_and_wrap(labels)
     bodies, water = water_labels(kinds_in(args.label, WATER_KINDS), lakes, frame)
-    outcome = place([*labels, *water, *land_labels(land.kinds_from_labels(args.label), frame)], frame, args.label)
+    outcome = place([*labels, *water, *land_labels(kinds_in(args.label, land.LAND_KINDS), frame)], frame, args.label)
     if draws_rivers(args):
         draw_rivers(ax, shown_rivers(frame, bodies, water, outcome))
     placement = outcome.placement
@@ -232,7 +232,7 @@ def land_labels(kinds: set[land.Kind], frame: MapFrame) -> list[CurvedLabel | Un
 
 def area_kinds(label: Sequence[str]) -> bool:
     """Whether --label asks for any curved area labels (water or land): without, --type topographic places none."""
-    return bool(kinds_in(label, WATER_KINDS) or land.kinds_from_labels(label))
+    return bool(kinds_in(label, WATER_KINDS) or kinds_in(label, land.LAND_KINDS))
 
 
 def shown_rivers(frame: MapFrame, bodies: list[Body], water: list[CurvedLabel | Unplaced], outcome: Outcome | None) -> gpd.GeoDataFrame:
@@ -288,7 +288,7 @@ def draw_topographic(args: argparse.Namespace, out: str, frame: MapFrame) -> Non
         # A crop's bars sit over the map: keep the labels off them.
         bars: list[Corner] = ["br", "tr", "bl"] if args.ocean else ["br", "bl"]
         room = frame if frame.globe else dataclasses.replace(frame, outline=label_outline(frame, bars))
-        outcome = place([*water, *land_labels(land.kinds_from_labels(args.label), frame)], room, args.label)
+        outcome = place([*water, *land_labels(kinds_in(args.label, land.LAND_KINDS), frame)], room, args.label)
         draw_curved_labels(ax, outcome.placement, frame)
     if draws_rivers(args):
         draw_rivers(ax, shown_rivers(frame, bodies, water, outcome))
