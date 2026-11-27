@@ -208,6 +208,7 @@
       "countries": "4930492",
       "disputed": "215221",
       "etopo": "465969062",
+      "etopo_bed": "478386633",
       "freetype": "2.14.3",
       "gdal": "3.12.2",
       "geopandas": "1.2.0",
@@ -227,7 +228,7 @@
       "shapely": "2.2.0",
       "states": "5993148"
     },
-    "sha256": "91934131fca58c9ed13f0f082a6b10e854afad8f0acc870f8fff36e3d51de44a"
+    "sha256": "ef8a033e3d14d17117b190cfa9d26c165040d7ccf0e0bfdb195798a59b24e649"
   },
   "water": {
     "env": {

@@ -13,7 +13,7 @@ from worldmap.topographic import LAND_BELOW_SEA, LAND_TOP, Grid, PosterGrid, coa
 
 @pytest.fixture(scope="module")
 def grid() -> Grid:
-    return elevation_grid()
+    return elevation_grid(True)
 
 
 def test_grid_shape(grid: Grid) -> None:
@@ -216,11 +216,11 @@ def test_draw_topography_holds_little_memory() -> None:
     from worldmap.render import drawable_lakes, new_figure
 
     frame = make_frame()
-    elevation_grid(), load_ice()  # warm the caches outside the measurement
+    elevation_grid(True), load_ice()  # warm the caches outside the measurement
     lakes = drawable_lakes(frame)
     fig, ax = new_figure(frame)
     tracemalloc.start()
-    draw_topography(ax, frame, 50, True, lakes)
+    draw_topography(ax, frame, 50, True, True, lakes)
     held = tracemalloc.get_traced_memory()[0]
     tracemalloc.stop()
     plt.close(fig)
@@ -246,22 +246,30 @@ def test_soften_smooths_cell_facets_in_a_crop() -> None:
     assert out.mean() == pytest.approx(z.mean(), rel=1e-3)
 
 
+def test_bed_is_the_rock_under_the_ice() -> None:
+    pole, greenland = (np.array([0.0]), np.array([-89.9])), (np.array([-40.0]), np.array([72.0]))
+    for lon, lat in (pole, greenland):  # the ice is ~2-3 km thick in both
+        assert sample(elevation_grid(False), lon, lat)[0] < sample(elevation_grid(True), lon, lat)[0] - 1500
+    alps = np.array([7.0]), np.array([46.0])  # no ice sheet: the bed is the surface
+    assert sample(elevation_grid(False), *alps)[0] == sample(elevation_grid(True), *alps)[0]
+
+
 def test_elevation_window_is_full_resolution() -> None:
     from worldmap.topographic import FINE_STEP_DEG, elevation_window
 
-    w = elevation_window(np.array([86.0, 88.0]), np.array([27.0, 29.0]))
+    w = elevation_window(np.array([86.0, 88.0]), np.array([27.0, 29.0]), ice=True)
     assert w.step == FINE_STEP_DEG and w.z.shape[1] < 200
     everest = sample(w, np.array([86.925]), np.array([27.988]))[0]
-    assert everest > sample(elevation_grid(), np.array([86.925]), np.array([27.988]))[0] + 300
+    assert everest > sample(elevation_grid(True), np.array([86.925]), np.array([27.988]))[0] + 300
 
 
 def test_elevation_window_across_the_antimeridian() -> None:
     from worldmap.topographic import elevation_window
 
-    w = elevation_window(np.array([179.0, -179.0]), np.array([64.0, 66.0]))
+    w = elevation_window(np.array([179.0, -179.0]), np.array([64.0, 66.0]), ice=True)
     assert w.z.shape[1] < 200  # 2 degrees of longitude, not 358
     a, b = sample(w, np.array([179.99, -179.99]), np.array([65.0, 65.0]))  # Chukotka
-    coarse = sample(elevation_grid(), np.array([179.99]), np.array([65.0]))[0]
+    coarse = sample(elevation_grid(True), np.array([179.99]), np.array([65.0]))[0]
     assert abs(a - b) < 150 and abs(a - coarse) < 100
 
 
@@ -270,9 +278,9 @@ def test_crops_use_full_resolution() -> None:
     from worldmap.topographic import FINE_STEP_DEG, GRID_STEP_DEG, elevation_for
 
     alps = replace(crop_frame(box_region((5, 40, 17, 49)), 0), size_in=POSTER_WIDTH_IN)  # at the default ~9 in, the dpi would have to be higher
-    assert elevation_for(alps, poster_grid(alps, 20)).step == FINE_STEP_DEG
+    assert elevation_for(alps, poster_grid(alps, 20), True).step == FINE_STEP_DEG
     world = make_frame()
-    assert elevation_for(world, poster_grid(world, 20)).step == GRID_STEP_DEG
+    assert elevation_for(world, poster_grid(world, 20), True).step == GRID_STEP_DEG
 
 
 def alps_tiles() -> None:
@@ -286,14 +294,14 @@ def test_elevation_window_reads_15s_tiles_across_their_corners() -> None:
     from worldmap.topographic import FINE_STEP_DEG, TILE_STEP_DEG, elevation_window
 
     alps_tiles()
-    fine, tiles = (elevation_window(np.array([14.0, 16.0]), np.array([44.0, 46.0]), step) for step in (FINE_STEP_DEG, TILE_STEP_DEG))
+    fine, tiles = (elevation_window(np.array([14.0, 16.0]), np.array([44.0, 46.0]), step, ice=True) for step in (FINE_STEP_DEG, TILE_STEP_DEG))
     assert fine is not None and tiles is not None and tiles.step == TILE_STEP_DEG
     rng = np.random.default_rng(0)
     lon, lat = rng.uniform(14.2, 15.8, 400), rng.uniform(44.2, 45.8, 400)  # all four tiles
     assert np.median(np.abs(sample(tiles, lon, lat) - sample(fine, lon, lat))) < 30
     blanc = (np.array([6.865]), np.array([45.832]))
-    peak = elevation_window(np.array([6.5, 7.2]), np.array([45.5, 46.2]), TILE_STEP_DEG)
-    assert peak is not None and sample(peak, *blanc)[0] > sample(elevation_window(*blanc, FINE_STEP_DEG), *blanc)[0] + 100
+    peak = elevation_window(np.array([6.5, 7.2]), np.array([45.5, 46.2]), TILE_STEP_DEG, ice=True)
+    assert peak is not None and sample(peak, *blanc)[0] > sample(elevation_window(*blanc, FINE_STEP_DEG, ice=True), *blanc)[0] + 100
 
 
 def test_zoomed_crops_use_15s_tiles() -> None:
@@ -302,7 +310,7 @@ def test_zoomed_crops_use_15s_tiles() -> None:
 
     alps_tiles()
     alps = replace(crop_frame(box_region((5, 40, 17, 49)), 0), size_in=POSTER_WIDTH_IN)  # at the default ~9 in, the dpi would have to be higher
-    assert elevation_for(alps, poster_grid(alps, 80)).step == TILE_STEP_DEG
+    assert elevation_for(alps, poster_grid(alps, 80), True).step == TILE_STEP_DEG
 
 
 def test_15s_tiles_across_the_antimeridian_print_a_note(capsys: pytest.CaptureFixture[str]) -> None:
@@ -311,7 +319,7 @@ def test_15s_tiles_across_the_antimeridian_print_a_note(capsys: pytest.CaptureFi
 
     if not all((CACHE / etopo15_tile(-15, w)).exists() for w in (165, -180)):
         pytest.skip("the 15\" ETOPO tiles around Fiji aren't downloaded")
-    elevation_window(np.array([179.0, -179.0]), np.array([-17.0, -16.0]), TILE_STEP_DEG)
+    elevation_window(np.array([179.0, -179.0]), np.array([-17.0, -16.0]), TILE_STEP_DEG, ice=True)
     assert "+-180" in capsys.readouterr().out
-    elevation_window(np.array([178.0, 179.0]), np.array([-17.0, -16.0]), TILE_STEP_DEG)
+    elevation_window(np.array([178.0, 179.0]), np.array([-17.0, -16.0]), TILE_STEP_DEG, ice=True)
     assert capsys.readouterr().out == ""
